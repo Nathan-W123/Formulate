@@ -10,3 +10,19 @@ htmlcov/
 venv/
 .formulate_cache/
 *.sqlite
+
+# Scratch files written into the working directory by the physics backends.
+# xtb's GFN-FF dumps its topology and adjacency tables on every initialisation,
+# and PySCF writes temporary HDF5 scratch; all of it is regenerated per run and
+# none of it is an input to anything.
+gfnff_topo
+gfnff_adjacency
+gfnff_charges
+charges
+wbo
+xtbrestart
+xtbtopo.mol
+.xtboptok
+xtb*.log
+tmp*.h5
+*.molden
