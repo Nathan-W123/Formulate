@@ -108,6 +108,12 @@ class JobackThermalExpert(Expert):
     family = PropertyFamily.THERMAL
     supported_classes = frozenset({MaterialClass.MOLECULE})
     supported_properties = frozenset(_UNCERTAINTY)
+    #: Joback's critical-property correlations take the boiling point as an
+    #: input, and Joback & Reid state that a measured one should be used when
+    #: available. Declaring the dependency makes the registry run a lookup
+    #: expert first, so the critical constants are built on the measurement
+    #: rather than on this method's own estimate of it.
+    dependencies = frozenset({"normal_boiling_point"})
 
     def is_available(self) -> bool:
         from formulate import chem
@@ -220,6 +226,21 @@ class JobackThermalExpert(Expert):
             groups=str(dict(sorted(counts.items()))),
         )
 
+    def _external_boiling_point(self, request: PredictionRequest) -> float | None:
+        """A boiling point from someone other than this expert, in Kelvin.
+
+        Only an outside value is used. Passing this expert's own estimate back
+        into its critical-property correlation would change nothing, and taking
+        it from the context indiscriminately would risk feeding the correlation
+        its own output.
+        """
+        prediction = request.dependency("normal_boiling_point")
+        if prediction is None or prediction.quantity is None:
+            return None
+        if prediction.expert_id == self.id:
+            return None
+        return prediction.quantity.to("K").value
+
     def _compute(
         self, prop: str, est: Any, counts: dict[int, int], request: PredictionRequest
     ) -> tuple[float | None, str, Conditions | None, tuple[str, ...]]:
@@ -234,6 +255,17 @@ class JobackThermalExpert(Expert):
                 ("Joback melting points are the least reliable output of the method",),
             )
         if prop == "critical_temperature":
+            measured_tb = self._external_boiling_point(request)
+            if measured_tb is not None:
+                return (
+                    est.Tc(counts, measured_tb),
+                    "K",
+                    None,
+                    (
+                        "computed from a measured boiling point, which is how Joback "
+                        "and Reid intend the correlation to be used",
+                    ),
+                )
             return (
                 est.Tc(counts),
                 "K",

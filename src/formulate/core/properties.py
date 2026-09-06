@@ -257,6 +257,48 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "bulk_modulus", "Pa", _M, "Isothermal bulk modulus.",
             condition_dependent=True, bounds=(0.0, None),
         ),
+        # --- Hansen solubility parameters (specification section 4,
+        # "solubility/compatibility"; section 12, formulation compatibility).
+        # The three components resolve what a single Hildebrand parameter
+        # cannot: two liquids can share a total cohesive energy density while
+        # being immiscible because one holds it in hydrogen bonds and the other
+        # in dispersion forces.
+        _p(
+            "hansen_dispersion",
+            "Pa^0.5",
+            _I,
+            "Hansen dispersion component of the solubility parameter.",
+            bounds=(0.0, None),
+        ),
+        _p(
+            "hansen_polar",
+            "Pa^0.5",
+            _I,
+            "Hansen polar (dipolar) component of the solubility parameter.",
+            bounds=(0.0, None),
+        ),
+        _p(
+            "hansen_hydrogen_bonding",
+            "Pa^0.5",
+            _I,
+            "Hansen hydrogen-bonding component of the solubility parameter.",
+            bounds=(0.0, None),
+        ),
+        _p(
+            "hansen_distance",
+            "Pa^0.5",
+            _I,
+            "Hansen distance Ra between the least compatible pair in a formulation.",
+            bounds=(0.0, None),
+        ),
+        _p(
+            "relative_energy_difference",
+            "",
+            _I,
+            "Hansen distance divided by the interaction radius; below one predicts "
+            "miscibility.",
+            bounds=(0.0, None),
+        ),
     ]
 }
 

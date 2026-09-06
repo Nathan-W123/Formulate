@@ -178,7 +178,7 @@ class EvaluationEngine:
             for pred in cached:
                 if pred.is_usable:
                     incumbent = context.get(pred.property)
-                    if incumbent is None or _better(pred, incumbent):
+                    if incumbent is None or prefer(pred, incumbent):
                         context[pred.property] = pred
         return out, used
 
@@ -199,8 +199,17 @@ class EvaluationEngine:
         return spec.conditions
 
 
-def _better(candidate_pred: Prediction, incumbent: Prediction) -> bool:
-    """Prefer in-domain predictions, then higher applicability, then tighter spread."""
+def prefer(candidate_pred: Prediction, incumbent: Prediction) -> bool:
+    """True when ``candidate_pred`` should displace ``incumbent``.
+
+    The single authority on which of two predictions for the same property is
+    better: in-domain first, then applicability, then the tighter spread. It
+    lives here and is imported elsewhere rather than being restated, because a
+    second copy of this rule would let two parts of the system disagree about
+    which prediction the user is actually being shown - and the calibration
+    report did exactly that, crediting a group-contribution estimate for a
+    compound whose measured value was also available.
+    """
     if candidate_pred.applicability.in_domain != incumbent.applicability.in_domain:
         return candidate_pred.applicability.in_domain
     if candidate_pred.applicability.score != incumbent.applicability.score:

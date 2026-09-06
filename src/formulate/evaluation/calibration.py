@@ -26,6 +26,8 @@ from formulate.core.quantity import Quantity
 from formulate.experts.base import PredictionRequest
 from formulate.experts.registry import ExpertRegistry
 
+from .engine import prefer
+
 #: Reference fields mapped onto registry properties and their units.
 REFERENCE_PROPERTIES = {
     "boiling_point_c": ("normal_boiling_point", "degC"),
@@ -112,8 +114,17 @@ def calibrate(
     compounds: Sequence[dict],
     *,
     conditions: Conditions | None = None,
+    expert_id: str | None = None,
 ) -> dict[str, PropertyCalibration]:
-    """Predict every reference property and compare against measured values."""
+    """Predict every reference property and compare against measured values.
+
+    ``expert_id`` restricts the comparison to one expert. That matters because
+    a lookup expert answering from a compiled measurement will reproduce the
+    reference values almost exactly, which is correct behaviour but would
+    quietly turn a regression guard on an estimating method into a test that
+    the database agrees with itself. Guarding an estimator means asking that
+    estimator.
+    """
     conditions = conditions or Conditions.standard()
     wanted = {prop for prop, _ in REFERENCE_PROPERTIES.values()}
     # Pull in the dependencies the derived properties need.
@@ -134,7 +145,9 @@ def calibrate(
             conditions=conditions,
             label=record.get("name", ""),
         )
-        predictions = _predict(registry, candidate, frozenset(wanted), conditions)
+        predictions = _predict(
+            registry, candidate, frozenset(wanted), conditions, expert_id=expert_id
+        )
 
         for field_name, (prop, unit) in REFERENCE_PROPERTIES.items():
             measured = record.get(field_name)
@@ -166,6 +179,7 @@ def _predict(
     candidate: Candidate,
     wanted: frozenset[str],
     conditions: Conditions,
+    expert_id: str | None = None,
 ):
     """Run the panel over one candidate, honouring expert dependencies."""
     experts = registry.resolution_order(
@@ -173,17 +187,27 @@ def _predict(
     )
     context: dict = {}
     for expert in experts:
+        keep = expert_id is None or expert.id == expert_id
         request = PredictionRequest(
             candidate=candidate, properties=wanted, conditions=conditions, context=dict(context)
         )
         for prediction in expert.predict(request):
-            if prediction.is_usable:
-                incumbent = context.get(prediction.property)
-                if incumbent is None or (
-                    prediction.applicability.in_domain and not incumbent.applicability.in_domain
-                ):
-                    context[prediction.property] = prediction
+            if not prediction.is_usable:
+                continue
+            # Upstream experts still run, because a dependent expert needs
+            # their values; they just do not get to answer for the property
+            # under test when one expert was named.
+            if not keep and prediction.property in _REFERENCE_TARGETS:
+                context.setdefault("__" + prediction.property, prediction)
+                continue
+            incumbent = context.get(prediction.property)
+            if incumbent is None or prefer(prediction, incumbent):
+                context[prediction.property] = prediction
     return context
+
+
+#: Properties the calibration compares; only these are filtered by expert.
+_REFERENCE_TARGETS = frozenset(prop for prop, _ in REFERENCE_PROPERTIES.values())
 
 
 def describe(results: dict[str, PropertyCalibration]) -> str:

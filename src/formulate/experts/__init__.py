@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from .base import Expert, PredictionRequest
 from .feasibility import SynthesisFeasibilityExpert
+from .hansen import HansenSolubilityExpert
 from .interfacial import InterfacialCorrelationExpert
 from .joback import JobackThermalExpert
 from .lipophilicity import CrippenLipophilicityExpert
+from .measured import MeasuredPropertyExpert
+from .mixture import MixtureExpert
 from .registry import ExpertRegistry
 from .solubility import ESOLSolubilityExpert
 from .structural import StructuralDescriptorExpert
@@ -28,16 +31,29 @@ PHASE1_EXPERTS = (
     InterfacialCorrelationExpert,
     SynthesisFeasibilityExpert,
     StructuralDescriptorExpert,
+    HansenSolubilityExpert,
+    MeasuredPropertyExpert,
 )
 
+#: Phase 4 adds formulation coverage. A mixture expert delegates to the
+#: molecular panel for its components, so the two sets are kept separate to
+#: make that dependency explicit rather than circular.
+PHASE4_EXPERTS = (MixtureExpert,)
 
-def default_registry() -> ExpertRegistry:
-    """A registry populated with the Phase 1 expert panel."""
+
+def molecular_registry() -> ExpertRegistry:
+    """The molecule-only panel, used by formulation experts for components."""
     return ExpertRegistry(cls() for cls in PHASE1_EXPERTS)
 
 
+def default_registry() -> ExpertRegistry:
+    """Every expert: the molecular panel plus formulation coverage."""
+    return ExpertRegistry(cls() for cls in PHASE1_EXPERTS + PHASE4_EXPERTS)
+
+
 __all__ = [
-    "PHASE1_EXPERTS", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
+    "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
+    "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",
     "PredictionRequest", "StructuralDescriptorExpert", "SynthesisFeasibilityExpert",
     "default_registry",
