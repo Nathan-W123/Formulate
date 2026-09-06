@@ -258,7 +258,6 @@ class MDEngine:
         the surface, so this underestimates the bulk cohesive energy by an
         amount set by the cluster size and not by the sampling.
         """
-        from ase import Atoms
 
         n = max(2, request.n_molecules)
         cluster_geometry = build_cluster(request.geometry, n, seed=request.seed)
