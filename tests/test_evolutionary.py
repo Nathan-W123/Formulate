@@ -112,7 +112,6 @@ def test_atom_deletion_refuses_to_annihilate_a_tiny_molecule():
 
 def test_ring_closure_makes_rings_of_a_sane_size():
     """Unrestricted closure emitted strained bicyclics that sanitise but cannot be made."""
-    from rdkit import Chem
     from rdkit.Chem import rdMolDescriptors
 
     for proposal in RingFusion().propose("CCCCCCC", random.Random(2), 5):

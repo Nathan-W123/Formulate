@@ -23,7 +23,6 @@ from typing import Sequence
 
 from formulate.core.candidate import (
     Candidate,
-    ComponentRole,
     MaterialClass,
     MixtureComponent,
     MixtureSpec,
