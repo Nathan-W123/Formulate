@@ -172,7 +172,15 @@ def score_requirement(
         temperature_tolerance_k=config.temperature_tolerance_k,
         pressure_rtol=config.pressure_rtol,
     )
-    if not match.compatible:
+    # A property the registry marks condition-independent has no temperature or
+    # pressure to disagree about. A frontier orbital gap computed in vacuum at
+    # zero Kelvin answers a request stated at 25 degrees, because the quantity
+    # itself does not vary with either. Enforcing a match for such a property
+    # would reject every quantum result on a technicality; skipping it for a
+    # condition-dependent one would be the far worse error, which is why the
+    # distinction is read from the registry rather than from the caller.
+    condition_independent = not get_property(prop).condition_dependent
+    if not match.compatible and not condition_independent:
         reason = "; ".join(match.issues)
         return RequirementOutcome(
             requirement=req,

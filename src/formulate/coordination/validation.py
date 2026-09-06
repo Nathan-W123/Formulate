@@ -33,11 +33,20 @@ from enum import Enum
 from typing import Sequence
 
 from formulate.core.candidate import Candidate, CandidateResults
+from formulate.core.conditions import Conditions
 from formulate.core.prediction import Prediction, PredictionStatus
 from formulate.core.properties import get_property
 from formulate.core.provenance import ProvenanceKind, ProvenanceRecord
 from formulate.core.quantity import ApplicabilityDomain, Quantity, Uncertainty, UncertaintyKind
 from formulate.targets.spec import TargetSpec
+
+
+#: Where an isolated-molecule quantum calculation actually applies. Every
+#: result from the quantum backends is stamped with this rather than with the
+#: requested conditions.
+VACUUM_ZERO_KELVIN = Conditions(
+    temperature=Quantity(value=0.0, unit="K"), environment="vacuum"
+)
 
 
 class ValidationMethod(str, Enum):
@@ -53,7 +62,6 @@ class ValidationMethod(str, Enum):
 #: biological, synthesis, manufacturing, aging, and many macroscale behaviors
 #: require data-driven or higher-scale models/experiments."
 VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
-    "electronic_energy": frozenset({ValidationMethod.QUANTUM}),
     "homo_lumo_gap": frozenset({ValidationMethod.QUANTUM}),
     "dipole_moment": frozenset({ValidationMethod.QUANTUM}),
     "interaction_energy": frozenset({ValidationMethod.QUANTUM}),
@@ -68,6 +76,13 @@ VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
 
 #: Why a property that looks physical is nevertheless not validatable here.
 NOT_VALIDATABLE_REASONS: dict[str, str] = {
+    "electronic_energy": (
+        "an absolute electronic energy is monotone in the number of electrons "
+        "(-75 Hartree for water, -152 for ethanol, -228 for benzene at HF/STO-3G), so "
+        "ranking candidates on it would order them by size rather than by merit. Only "
+        "differences between consistent calculations of the same system carry meaning, "
+        "and a cross-candidate objective is not such a difference"
+    ),
     "normal_boiling_point": (
         "a boiling point is a phase-equilibrium property requiring free energies of "
         "two coexisting phases, which neither a single-molecule calculation nor a "
@@ -621,7 +636,12 @@ class PhysicsValidator:
                 _quantum_uncertainty(target.property, value),
                 backend=f"qm:{result.backend}",
                 method=result.method_signature,
-                conditions=spec.conditions,
+                # The conditions the calculation was actually performed at, not
+                # the ones that were requested. A gas-phase result at zero
+                # Kelvin is not a result at 25 degrees and one atmosphere, and
+                # stamping it with the request would make the condition check
+                # of section 11 pass on a claim it was written to catch.
+                conditions=VACUUM_ZERO_KELVIN,
                 provenance=result.provenance,
                 notes=tuple(result.limitations) + tuple(result.diagnostics),
             ),

@@ -52,7 +52,9 @@ def test_the_permitted_mapping_splits_requested_properties():
     assert "logp" in refused
 
 
-@pytest.mark.parametrize("prop", ["normal_boiling_point", "logp", "synthetic_accessibility"])
+@pytest.mark.parametrize(
+    "prop", ["normal_boiling_point", "logp", "synthetic_accessibility", "electronic_energy"]
+)
 def test_properties_outside_reach_are_refused_with_a_physical_reason(prop):
     """A refusal must say why, not merely that it is unsupported."""
     assert prop not in VALIDATABLE
@@ -66,8 +68,19 @@ def test_quantum_is_never_offered_a_bulk_property():
 
 
 def test_dynamics_is_never_offered_an_electronic_property():
-    for prop in ("homo_lumo_gap", "dipole_moment", "electronic_energy"):
+    for prop in ("homo_lumo_gap", "dipole_moment"):
         assert ValidationMethod.DYNAMICS not in VALIDATABLE[prop]
+
+
+def test_absolute_electronic_energy_is_not_a_rankable_objective():
+    """It is monotone in electron count, so ranking on it sorts by size.
+
+    HF/STO-3G gives -75 Hartree for water, -152 for ethanol and -228 for
+    benzene. A cross-candidate objective over those numbers measures how big
+    each molecule is and nothing else.
+    """
+    assert "electronic_energy" not in VALIDATABLE
+    assert "monotone" in NOT_VALIDATABLE_REASONS["electronic_energy"]
 
 
 # -- selection -------------------------------------------------------------
@@ -229,3 +242,76 @@ def test_validated_values_reach_the_objective_vector_and_the_ranking():
         assert candidate.results.simulation_ids
 
     assert "PHYSICS VALIDATION" in run.report(top_k=2)
+
+
+def test_quantum_results_carry_the_conditions_they_were_computed_at():
+    """A gas-phase result at zero Kelvin is not a result at 25 degrees.
+
+    Stamping it with the requested conditions would make the section 11
+    condition check pass on exactly the claim it was written to catch.
+    """
+    from formulate.coordination.validation import VACUUM_ZERO_KELVIN
+
+    assert VACUUM_ZERO_KELVIN.temperature_k == 0.0
+    assert VACUUM_ZERO_KELVIN.environment == "vacuum"
+
+
+def test_a_condition_independent_property_is_not_rejected_on_conditions():
+    """A frontier gap has no temperature to disagree about."""
+    from formulate.coordination.validation import VACUUM_ZERO_KELVIN
+    from formulate.evaluation.engine import EvaluationConfig
+    from formulate.evaluation.scoring import OutcomeStatus, score_requirement
+
+    requirement = next(r for r in _SPEC.requirements if r.property == "homo_lumo_gap")
+    prediction = Prediction(
+        property="homo_lumo_gap",
+        quantity=Quantity(value=7.0, unit="eV"),
+        uncertainty=Uncertainty(std=2.0, kind=UncertaintyKind.EPISTEMIC, basis="method"),
+        expert_id="qm:pyscf",
+        conditions=VACUUM_ZERO_KELVIN,
+    )
+    outcome = score_requirement(
+        requirement,
+        _SPEC,
+        [prediction],
+        requirement.desirability(),
+        EvaluationConfig(),
+    )
+    assert outcome.status is not OutcomeStatus.CONDITION_MISMATCH
+    assert outcome.effective_utility is not None
+
+
+def test_a_condition_dependent_property_is_still_rejected_on_conditions():
+    """The exemption must not leak to properties that genuinely vary."""
+    from formulate.core.conditions import Conditions
+    from formulate.evaluation.engine import EvaluationConfig
+    from formulate.evaluation.scoring import OutcomeStatus, score_requirement
+    from formulate.targets.spec import TargetSpec
+
+    spec = TargetSpec.from_dict(
+        {
+            "conditions": {"temperature": "200 degC"},
+            "requirements": [
+                {
+                    "property": "surface_tension",
+                    "direction": "minimize",
+                    "lower": 0.01,
+                    "upper": 0.05,
+                }
+            ],
+        }
+    )
+    prediction = Prediction(
+        property="surface_tension",
+        quantity=Quantity(value=0.02, unit="N/m"),
+        expert_id="test",
+        conditions=Conditions.standard(),
+    )
+    outcome = score_requirement(
+        spec.requirements[0],
+        spec,
+        [prediction],
+        spec.requirements[0].desirability(),
+        EvaluationConfig(),
+    )
+    assert outcome.status is OutcomeStatus.CONDITION_MISMATCH
