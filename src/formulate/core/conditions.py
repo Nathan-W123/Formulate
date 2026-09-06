@@ -52,14 +52,14 @@ class Conditions(BaseModel):
     @field_validator("temperature")
     @classmethod
     def _check_temperature(cls, v: Quantity | None) -> Quantity | None:
-        if v is not None and dimensionality(v.unit) != "[temperature]":
+        if v is not None and dimensionality(v.unit) != dimensionality("kelvin"):
             raise ValueError(f"temperature must have temperature units, got {v.unit!r}")
         return v
 
     @field_validator("pressure")
     @classmethod
     def _check_pressure(cls, v: Quantity | None) -> Quantity | None:
-        if v is not None and dimensionality(v.unit) != "[mass] / [length] / [time] ** 2":
+        if v is not None and dimensionality(v.unit) != dimensionality("pascal"):
             raise ValueError(f"pressure must have pressure units, got {v.unit!r}")
         return v
 

@@ -27,27 +27,28 @@ _REGISTRY: Final[pint.UnitRegistry] = pint.UnitRegistry(
 
 DIMENSIONLESS: Final[str] = "dimensionless"
 
-# Canonical unit per dimensionality.  SI base units are the default; these
-# entries pin the cases where the SI base form is unhelpful for reporting.
-_CANONICAL_BY_DIMENSIONALITY: Final[dict[str, str]] = {
-    "[temperature]": "kelvin",
-    "[mass] * [length] ** 2 / [time] ** 2 / [substance]": "joule / mole",
-    "[mass] * [length] ** 2 / [time] ** 2 / [substance] / [temperature]": "joule / mole / kelvin",
-    "[mass] / [length] / [time] ** 2": "pascal",
-    "[mass] / [length] ** 3": "kilogram / meter ** 3",
-    "[length] ** 3 / [substance]": "meter ** 3 / mole",
-    "[mass] / [substance]": "kilogram / mole",
-    "[mass] / [time] ** 2": "newton / meter",
-    "[mass] ** 0.5 / [length] ** 0.5 / [time]": "pascal ** 0.5",
+# Canonical unit per dimension, declared by naming a *reference unit* rather
+# than by writing a dimensionality string. Writing those strings by hand is
+# unsafe: pint's dimensionality repr is not order-stable across equivalent
+# spellings, so a hand-written key can silently fail to match. Deriving the key
+# from a real unit removes that whole class of mistake.
+_CANONICAL_UNIT_SPECS: Final[tuple[tuple[str, str], ...]] = (
+    ("kelvin", "kelvin"),
+    ("joule / mole", "joule / mole"),
+    ("joule / mole / kelvin", "joule / mole / kelvin"),
+    ("pascal", "pascal"),
+    ("kilogram / meter ** 3", "kilogram / meter ** 3"),
+    ("meter ** 3 / mole", "meter ** 3 / mole"),
+    ("kilogram / mole", "kilogram / mole"),
+    ("newton / meter", "newton / meter"),
+    ("pascal ** 0.5", "pascal ** 0.5"),
     # Bare energy appears only for orbital-energy differences, where the
     # electronvolt is the universal convention; joules would report a gap as
     # 1e-19 and help nobody.
-    "[mass] * [length] ** 2 / [time] ** 2": "electron_volt",
-    "[mass] / [length] / [time]": "pascal * second",
-    # Likewise the debye for dipole moments; the SI coulomb-metre is ~1e-30.
-    "[length] * [time] * [current]": "debye",
-    "dimensionless": DIMENSIONLESS,
-}
+    ("electron_volt", "electron_volt"),
+    ("pascal * second", "pascal * second"),
+    ("debye", "debye"),
+)
 
 
 def registry() -> pint.UnitRegistry:
@@ -69,8 +70,19 @@ def parse_unit(unit: str) -> pint.Unit:
 
 @lru_cache(maxsize=512)
 def dimensionality(unit: str) -> str:
-    """Return a stable string key for the dimensionality of ``unit``."""
-    return str(parse_unit(unit).dimensionality)
+    """Return a canonically ordered key for the dimension of ``unit``.
+
+    pint's own dimensionality repr is not order-stable across equivalent
+    spellings: ``debye`` reports ``[length] * [time] * [current]`` while
+    ``coulomb * meter`` reports ``[current] * [time] * [length]``. Comparing
+    those strings directly would declare two spellings of the *same* dimension
+    incompatible and reject a perfectly valid unit, so the exponent mapping is
+    sorted into one canonical form here.
+    """
+    dims = parse_unit(unit).dimensionality
+    if not dims:
+        return DIMENSIONLESS
+    return " ".join(f"{name}**{exponent:g}" for name, exponent in sorted(dims.items()))
 
 
 def are_compatible(unit_a: str, unit_b: str) -> bool:
@@ -78,11 +90,17 @@ def are_compatible(unit_a: str, unit_b: str) -> bool:
     return dimensionality(unit_a) == dimensionality(unit_b)
 
 
+@lru_cache(maxsize=1)
+def _canonical_by_dimension() -> dict[str, str]:
+    """Map canonical dimension key -> canonical unit, built from reference units."""
+    return {dimensionality(ref): canonical for ref, canonical in _CANONICAL_UNIT_SPECS}
+
+
 @lru_cache(maxsize=512)
 def canonical_unit(unit: str) -> str:
     """Return the canonical unit string for the dimension of ``unit``."""
     dim = dimensionality(unit)
-    pinned = _CANONICAL_BY_DIMENSIONALITY.get(dim)
+    pinned = _canonical_by_dimension().get(dim)
     if pinned is not None:
         return pinned
     # Fall back to SI base units for dimensions we have not pinned.
@@ -134,7 +152,7 @@ def convert_delta(value: float, from_unit: str, to_unit: str) -> float:
         )
     if src == dst:
         return float(value)
-    if dimensionality(from_unit) == "[temperature]":
+    if dimensionality(from_unit) == dimensionality("kelvin"):
         # Kelvin and Celsius share a degree size; Fahrenheit and Rankine do not.
         scale_src = _REGISTRY.Quantity(1.0, f"delta_{src}" if _is_degree(src) else src)
         scale_dst = f"delta_{dst}" if _is_degree(dst) else str(dst)
