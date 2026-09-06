@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .conditions import Conditions
 from .errors import CandidateError
 from .hashing import content_hash
-from .prediction import Prediction
+from .prediction import Prediction, best_prediction
 from .provenance import ProvenanceRecord
 from .quantity import Quantity
 
@@ -357,12 +357,13 @@ class CandidateResults(BaseModel):
     simulation_ids: tuple[str, ...] = ()
 
     def prediction_for(self, prop: str) -> Prediction | None:
-        """The usable prediction for ``prop``, preferring in-domain results."""
-        matches = [p for p in self.predictions if p.property == prop and p.is_usable]
-        if not matches:
-            return None
-        matches.sort(key=lambda p: (not p.applicability.in_domain, -p.applicability.score))
-        return matches[0]
+        """The usable prediction for ``prop``: whichever :func:`prefer` ranks first.
+
+        This is what a report shows and what a recommendation is justified by,
+        so it has to agree with what dispatch and scoring chose. It calls the
+        shared rule rather than restating it.
+        """
+        return best_prediction(self.predictions, prop)
 
     def predictions_for(self, prop: str) -> list[Prediction]:
         return [p for p in self.predictions if p.property == prop]

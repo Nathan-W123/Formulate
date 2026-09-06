@@ -284,3 +284,77 @@ def test_scoring_preserves_raw_predictions(registry, solvent_spec, small_pool):
         bp = candidate.results.prediction_for("normal_boiling_point")
         if bp is not None:
             assert bp.quantity.unit == "kelvin"
+
+
+# -- one rule for choosing between two predictions -------------------------
+
+
+def _density(value, unit, std, expert_id, in_domain=True, score=1.0):
+    from formulate.core.quantity import ApplicabilityDomain
+
+    return Prediction(
+        property="amorphous_density",
+        quantity=Quantity(value=value, unit=unit),
+        uncertainty=Uncertainty(std=std, kind=UncertaintyKind.EPISTEMIC),
+        applicability=ApplicabilityDomain(in_domain=in_domain, score=score),
+        status=PredictionStatus.OK if in_domain else PredictionStatus.OUT_OF_DOMAIN,
+        expert_id=expert_id,
+        conditions=Conditions.standard(),
+    )
+
+
+def test_the_tighter_spread_is_decided_in_one_unit():
+    """An uncertainty is in the expert's unit, so raw floats are not comparable."""
+    from formulate.core.prediction import prefer
+
+    # 40 kg/m^3 is tighter than 0.05 g/cm^3, which is 50 kg/m^3. Comparing the
+    # numbers as written would say 0.05 < 40 and pick the looser one.
+    tight = _density(1074.0, "kg/m^3", 40.0, "si")
+    loose = _density(1.074, "g/cm^3", 0.05, "cgs")
+    assert prefer(tight, loose)
+    assert not prefer(loose, tight)
+
+
+def test_a_stated_spread_beats_an_unstated_one_in_both_directions():
+    from formulate.core.prediction import prefer
+
+    stated = _density(1074.0, "kg/m^3", 40.0, "stated")
+    silent = _density(1074.0, "kg/m^3", None, "silent")
+    assert prefer(stated, silent)
+    assert not prefer(silent, stated)
+
+
+def test_dispatch_scoring_and_the_results_record_pick_the_same_prediction():
+    """Three places used to restate this rule and two of them got it wrong.
+
+    Both predictions here are in domain with equal applicability, which is the
+    exact tie a sort on applicability alone cannot break - and the two that
+    sorted took whichever happened to come first.
+    """
+    from formulate.core.candidate import CandidateResults
+    from formulate.core.prediction import best_prediction, prefer
+    from formulate.evaluation.scoring import _best_prediction
+
+    loose = _density(1200.0, "kg/m^3", 90.0, "estimate")
+    tight = _density(1195.0, "kg/m^3", 12.0, "measured")
+
+    for order in ([loose, tight], [tight, loose]):
+        assert best_prediction(order, "amorphous_density").expert_id == "measured"
+        assert _best_prediction(order, "amorphous_density").expert_id == "measured"
+        results = CandidateResults(predictions=tuple(order))
+        assert results.prediction_for("amorphous_density").expert_id == "measured"
+
+        folded = None
+        for prediction in order:
+            if folded is None or prefer(prediction, folded):
+                folded = prediction
+        assert folded.expert_id == "measured"
+
+
+def test_an_out_of_domain_prediction_never_wins_on_a_tighter_spread():
+    from formulate.core.prediction import best_prediction
+
+    confident_but_outside = _density(1200.0, "kg/m^3", 1.0, "outside", in_domain=False, score=0.2)
+    honest_and_inside = _density(1100.0, "kg/m^3", 80.0, "inside")
+    for order in ([confident_but_outside, honest_and_inside], [honest_and_inside, confident_but_outside]):
+        assert best_prediction(order, "amorphous_density").expert_id == "inside"

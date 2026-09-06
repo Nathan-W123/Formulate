@@ -49,6 +49,13 @@ the marginal likelihood discontinuous in a parameter being optimised over.
 And the explorer declines to propose for a template with no evaluated recipes
 behind it, rather than sampling its untrained prior.
 
+It runs in the default iterative, validating and adaptive coordinators. It
+first shipped wired into none of them — unit-tested, correct, and unreachable
+from any run, which is a subsystem that does not exist as far as a user is
+concerned. There is now a test asserting each factory carries it and another
+asserting composition proposals reach the pool of a real multi-round search,
+because a test that calls `propose` directly cannot see that gap.
+
 **Not done.** A generative explorer. Optional in section 3, and section 3
 requires it never be treated as a validator.
 

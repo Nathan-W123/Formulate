@@ -228,6 +228,37 @@ def test_proposals_are_valid_compositions_of_the_same_components():
         assert candidate.parent_ids
 
 
+def test_the_separation_floor_survives_the_local_refinement():
+    """The floor has to bind on what is returned, not only on what is scanned.
+
+    This is the shape of a bug that shipped: the penalty was applied to the
+    random scan samples and the L-BFGS refinement that followed minimised raw
+    expected improvement, so the refined point walked straight back onto the
+    batch member the scan had just excluded. A surrogate with one sharp optimum
+    pulls every refinement to the same place, which is exactly the case that
+    exposed it.
+    """
+    rng = np.random.default_rng(11)
+    x = rng.random((24, 2))
+    peak = np.array([0.5, 0.5])
+    y = -np.linalg.norm(x - peak, axis=1) ** 2
+    gp = GaussianProcess().fit(x, y, restarts=3, seed=0)
+
+    floor = 0.25
+    explorer = BayesOptExplorer(
+        BayesOptConfig(acquisition_samples=256, acquisition_refinements=6, minimum_separation=floor)
+    )
+    chosen: list[np.ndarray] = []
+    for _ in range(4):
+        chosen.append(
+            explorer._maximise_acquisition(gp, float(y.max()), 2, np.random.default_rng(5), chosen)
+        )
+
+    for i in range(len(chosen)):
+        for j in range(i + 1, len(chosen)):
+            assert np.linalg.norm(chosen[i] - chosen[j]) >= floor - 1e-9
+
+
 @requires_rdkit
 def test_a_batch_does_not_collapse_onto_one_composition():
     from formulate.coordination import DeterministicCoordinator, RunConfig
@@ -237,11 +268,41 @@ def test_a_batch_does_not_collapse_onto_one_composition():
     run = DeterministicCoordinator(config=RunConfig(pool_size=40)).run(_SPEC, candidates=seeds)
     pool = [entry.candidate for entry in run.ranking.ranked]
 
+    floor = 0.05
     proposals = BayesOptExplorer(
-        BayesOptConfig(minimum_observations=4, acquisition_samples=128, fit_restarts=3)
+        BayesOptConfig(
+            minimum_observations=4,
+            acquisition_samples=128,
+            fit_restarts=3,
+            minimum_separation=floor,
+        )
     ).propose(_SPEC, 5, scored=pool, seed=2)
+
     ids = [c.structure_id for c in proposals]
     assert len(set(ids)) == len(ids)
+
+    # Distinct ids are not separation: two blends 3e-4 apart hash differently
+    # and are the same recipe for any purpose a chemist cares about. Measure the
+    # distance in the coordinates the floor is actually stated in.
+    #
+    # Grouped by component set, because a proposal that drives a component to
+    # nothing is a different recipe rather than a nearby proportion of this one,
+    # and its coordinates do not live in the same cube.
+    by_components: dict[tuple[str, ...], list[np.ndarray]] = {}
+    for proposal in proposals:
+        components = proposal.mixture.components
+        key = tuple(sorted(c.canonical_key() for c in components))
+        order = sorted(range(len(components)), key=lambda i: components[i].canonical_key())
+        fractions = np.array([components[i].fraction for i in order], dtype=float)
+        by_components.setdefault(key, []).append(simplex_to_stick_breaking(fractions))
+
+    compared = 0
+    for points in by_components.values():
+        for i in range(len(points)):
+            for j in range(i + 1, len(points)):
+                assert np.linalg.norm(points[i] - points[j]) >= floor - 1e-6
+                compared += 1
+    assert compared, "no two proposals shared a component set, so nothing was checked"
 
 
 @requires_rdkit
@@ -273,3 +334,75 @@ def test_the_optimiser_improves_the_objective():
         pool = [entry.candidate for entry in run.ranking.ranked]
 
     assert best(run) >= start
+
+
+# -- reachability ----------------------------------------------------------
+
+
+def test_the_default_coordinators_actually_carry_the_composition_explorer():
+    """A subsystem no run can reach is not a feature, whatever its tests say.
+
+    This module tested ``propose`` directly and passed for a version in which
+    every coordinator factory hard-coded retrieval and evolution only, so the
+    optimiser never ran outside its own tests while the README said searches
+    used it.
+    """
+    from formulate.coordination.adaptive import default_adaptive_coordinator
+    from formulate.coordination.iterative import (
+        default_iterative_coordinator,
+        default_validating_coordinator,
+    )
+
+    for factory in (
+        default_iterative_coordinator,
+        default_validating_coordinator,
+        default_adaptive_coordinator,
+    ):
+        explorers = factory().explorers
+        assert any(isinstance(e, BayesOptExplorer) for e in explorers), factory.__name__
+
+
+@requires_rdkit
+def test_composition_proposals_reach_the_pool_of_a_real_iterative_run():
+    from formulate.coordination.iterative import IterationConfig, default_iterative_coordinator
+    from formulate.coordination.coordinator import RunConfig
+
+    rng = np.random.default_rng(7)
+    seeds = [_blend(f / f.sum()) for f in rng.dirichlet(np.ones(3), size=8)]
+    coordinator = default_iterative_coordinator(
+        config=RunConfig(pool_size=24),
+        iteration=IterationConfig(max_rounds=2, batch_size=9, plateau_rounds=5),
+    )
+    result = coordinator.run_iterative(_SPEC, seed_candidates=seeds)
+
+    strategies = {
+        entry.candidate.generation_strategy for entry in result.final.ranking.ranked
+    }
+    assert "bayesopt:composition" in strategies
+
+
+def test_a_budget_smaller_than_the_strategy_count_does_not_starve_the_same_one():
+    """The last explorer in the list must not be the one always cut."""
+    from formulate.coordination.coordinator import DeterministicCoordinator, RunConfig
+    from formulate.exploration.base import Explorer
+
+    class Counting(Explorer):
+        def __init__(self, name):
+            self.id = name
+            self.version = "1"
+            self.asked = 0
+
+        def propose(self, spec, count, *, scored=(), seed=0):
+            self.asked += 1
+            return []
+
+    explorers = [Counting("a"), Counting("b"), Counting("c")]
+    for seed in range(6):
+        DeterministicCoordinator(
+            explorers=explorers, config=RunConfig(pool_size=2, seed=seed)
+        )._explore(_SPEC, budget=2)
+
+    # Every explorer gets a first-pass share in at least one of the six rounds.
+    assert all(e.asked > 0 for e in explorers)
+    fewest, most = min(e.asked for e in explorers), max(e.asked for e in explorers)
+    assert most - fewest <= 2

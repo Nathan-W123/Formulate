@@ -27,7 +27,7 @@ from typing import Sequence
 
 from formulate.core.candidate import Candidate, CandidateResults, ConstraintViolation
 from formulate.core.conditions import ConditionMatch, match_conditions
-from formulate.core.prediction import Prediction
+from formulate.core.prediction import Prediction, best_prediction
 from formulate.core.properties import get_property
 from formulate.targets.desirability import Desirability
 from formulate.targets.spec import Requirement, TargetSpec
@@ -126,11 +126,11 @@ def _pool_values(
 
 
 def _best_prediction(predictions: Sequence[Prediction], prop: str) -> Prediction | None:
-    matches = [p for p in predictions if p.property == prop and p.is_usable]
-    if not matches:
-        return None
-    matches.sort(key=lambda p: (not p.applicability.in_domain, -p.applicability.score))
-    return matches[0]
+    # Deliberately the shared rule and not a local sort. Sorting on
+    # applicability alone leaves a measured value tied with a group-contribution
+    # estimate, and the pool statistics that anchor pool-relative targets were
+    # being built from whichever of the two happened to be dispatched first.
+    return best_prediction(predictions, prop)
 
 
 def score_requirement(

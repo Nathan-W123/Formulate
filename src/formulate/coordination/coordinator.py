@@ -177,22 +177,38 @@ class DeterministicCoordinator:
         # left. Section 3 wants the strategies running in parallel and budget
         # reserved for distinct regions, which a fair share is the minimum
         # expression of.
-        share = max(1, budget // len(usable))
-        for explorer in usable:
+        # A budget smaller than the number of strategies cannot be split evenly.
+        # Handing the remainder to whoever happens to be first in the list
+        # starves the same explorer every round - and it is always the last one,
+        # which is the newest and least established. Rotating the order by the
+        # seed spreads the shortfall across rounds instead of concentrating it.
+        base, extra = divmod(budget, len(usable))
+        offset = effective_seed % len(usable)
+        rotated = usable[offset:] + usable[:offset]
+        shares = [base + (1 if i < extra else 0) for i in range(len(rotated))]
+
+        for explorer, share in zip(rotated, shares):
             room = min(share, budget - len(pool))
             if room <= 0:
-                break
+                continue
             pool.extend(
                 explorer.propose(spec, room, scored=already + pool, seed=effective_seed)
             )
 
         # Redistribute whatever the first pass left unspent, since an explorer
         # that has exhausted its source should not strand the budget.
-        for explorer in usable:
+        #
+        # On a different seed: a seeded explorer asked twice with one seed
+        # replays its opening draws and spends the second pass rediscovering
+        # candidates already in the pool. The offset is large and odd rather
+        # than +1 so that a round's second pass cannot collide with the next
+        # round's first, which the iterate loop numbers sequentially.
+        second_pass = effective_seed + 1013904223
+        for explorer in rotated:
             remaining = budget - len(pool)
             if remaining <= 0:
                 break
             pool.extend(
-                explorer.propose(spec, remaining, scored=already + pool, seed=effective_seed)
+                explorer.propose(spec, remaining, scored=already + pool, seed=second_pass)
             )
         return pool

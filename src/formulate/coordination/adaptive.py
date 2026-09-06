@@ -621,12 +621,13 @@ def _shrunk(observations: Sequence[float], prior: float, weight: float) -> float
 def default_adaptive_coordinator(
     config: RunConfig | None = None, adaptive: AdaptiveConfig | None = None
 ) -> AdaptiveCoordinator:
-    """Retrieval plus evolution, driven by the adaptive policy."""
+    """Retrieval, evolution and composition search, driven by the adaptive policy."""
+    from formulate.exploration.bayesopt import BayesOptExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
 
     return AdaptiveCoordinator(
-        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer()],
+        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer(), BayesOptExplorer()],
         config=config or RunConfig(),
         adaptive=adaptive,
     )

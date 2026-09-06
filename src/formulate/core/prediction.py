@@ -14,6 +14,7 @@ mid-range result.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -123,3 +124,67 @@ class Prediction(BaseModel):
             return f"{self.property}: {self.status.value} ({'; '.join(self.notes)})"
         flag = "" if self.applicability.in_domain else " [out of domain]"
         return f"{self.property}: {self.quantity} {self.uncertainty}{flag}"
+
+
+# --------------------------------------------------------------------------
+# Choosing between two predictions of the same property
+# --------------------------------------------------------------------------
+
+
+def canonical_std(prediction: Prediction) -> float | None:
+    """One-sigma spread in the property's canonical unit, or None.
+
+    An ``Uncertainty`` is expressed in the same unit as the value it
+    accompanies, and an expert may report in whatever unit reads best.  Two
+    spreads are therefore only comparable once both are in the same unit, and
+    comparing the raw floats would rank a density expert reporting 0.05 g/cm^3
+    ahead of one reporting 40 kg/m^3 - which is the tighter of the two by a
+    factor of twenty in the wrong direction.
+    """
+    if prediction.quantity is None or prediction.uncertainty.std is None:
+        return None
+    unit = get_property(prediction.property).canonical_unit
+    return prediction.uncertainty.converted(prediction.quantity.unit, unit).std
+
+
+def prefer(candidate: Prediction, incumbent: Prediction) -> bool:
+    """True when ``candidate`` should displace ``incumbent``.
+
+    The single authority on which of two predictions for the same property is
+    better: in-domain first, then applicability, then the tighter spread.  It
+    lives beside :class:`Prediction` rather than in the evaluation layer
+    because three places need it - dispatch, scoring and the results record -
+    and the lowest of those is ``core``.  A second copy of the rule would let
+    two parts of the system disagree about which prediction the user is
+    actually being shown, and both the calibration report and the scoring pool
+    have done exactly that: they sorted on applicability alone, which is a tie
+    between a measured value and a group-contribution estimate, and then took
+    whichever happened to come first.
+
+    Ties keep the incumbent, so a fold over predictions in dispatch order is
+    stable.
+    """
+    if candidate.applicability.in_domain != incumbent.applicability.in_domain:
+        return candidate.applicability.in_domain
+    if candidate.applicability.score != incumbent.applicability.score:
+        return candidate.applicability.score > incumbent.applicability.score
+    a = canonical_std(candidate)
+    b = canonical_std(incumbent)
+    if a is not None and b is not None:
+        return a < b
+    # A stated spread beats an unstated one: an expert that admits how wrong it
+    # might be has said more than one that did not.
+    return a is not None and b is None
+
+
+def best_prediction(
+    predictions: "Sequence[Prediction]", prop: str
+) -> Prediction | None:
+    """The usable prediction for ``prop`` that :func:`prefer` ranks highest."""
+    best: Prediction | None = None
+    for prediction in predictions:
+        if prediction.property != prop or not prediction.is_usable:
+            continue
+        if best is None or prefer(prediction, best):
+            best = prediction
+    return best

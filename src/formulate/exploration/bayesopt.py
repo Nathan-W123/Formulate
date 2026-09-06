@@ -205,7 +205,7 @@ class BayesOptExplorer(Explorer):
         best: float,
         dimensions: int,
         rng: np.random.Generator,
-        already: list[np.ndarray],
+        already: Sequence[np.ndarray],
     ) -> np.ndarray:
         """Scan the cube, then refine the best points locally."""
         from scipy.optimize import minimize
@@ -214,21 +214,22 @@ class BayesOptExplorer(Explorer):
         samples = rng.random((config.acquisition_samples, dimensions))
         mean, sigma = gp.predict(samples)
         scores = expected_improvement(mean, sigma, best, config.exploration)
-
-        # Push the acquisition down near points already chosen in this batch so
-        # the next member cannot land on the same argmax.
-        for chosen in already:
-            distance = np.linalg.norm(samples - chosen[None, :], axis=1)
-            scores = np.where(distance < config.minimum_separation, 0.0, scores)
+        scores = scores * self._separation_penalty(samples, already)
 
         order = np.argsort(-scores)[: config.acquisition_refinements]
         best_u, best_score = samples[order[0]], float(scores[order[0]])
 
-        for index in order:
-            def negative(u: np.ndarray) -> float:
-                m, s = gp.predict(np.atleast_2d(u))
-                return -float(expected_improvement(m, s, best, config.exploration)[0])
+        def negative(u: np.ndarray) -> float:
+            # The separation term has to be inside the objective the refinement
+            # actually minimises. Applying it only to the scan samples, as this
+            # first did, lets L-BFGS-B walk the refined point straight back onto
+            # a batch member already chosen: the scan is filtered, the thing
+            # returned is not.
+            m, s = gp.predict(np.atleast_2d(u))
+            acquisition = float(expected_improvement(m, s, best, config.exploration)[0])
+            return -acquisition * float(self._separation_penalty(np.atleast_2d(u), already)[0])
 
+        for index in order:
             try:
                 result = minimize(
                     negative,
@@ -241,7 +242,44 @@ class BayesOptExplorer(Explorer):
                 continue
             if np.isfinite(result.fun) and -result.fun > best_score:
                 best_score, best_u = -float(result.fun), np.clip(result.x, 0.0, 1.0)
+
+        # The penalty is a ramp, not a wall: it shrinks the acquisition towards
+        # a coincident point but never forbids one, so a large enough
+        # improvement still buys a step inside the floor. The floor is a promise
+        # the configuration makes, so it is enforced here rather than hoped for.
+        if self._nearest(np.atleast_2d(best_u), already)[0] < config.minimum_separation:
+            distances = self._nearest(samples, already)
+            admissible = distances >= config.minimum_separation
+            if admissible.any():
+                best_u = samples[int(np.argmax(np.where(admissible, scores, -np.inf)))]
+            else:
+                # Nothing in the scan clears the floor either. Returning the
+                # most separated point is the best available answer and is still
+                # not a duplicate; silently returning the argmax would be.
+                best_u = samples[int(np.argmax(distances))]
         return best_u
+
+    @staticmethod
+    def _nearest(points: np.ndarray, already: Sequence[np.ndarray]) -> np.ndarray:
+        """Distance from each row of ``points`` to the closest already-chosen point."""
+        if not already:
+            return np.full(len(points), np.inf)
+        chosen = np.vstack(already)
+        return np.linalg.norm(points[:, None, :] - chosen[None, :, :], axis=2).min(axis=1)
+
+    def _separation_penalty(
+        self, points: np.ndarray, already: Sequence[np.ndarray]
+    ) -> np.ndarray:
+        """A factor in [0, 1] that falls to zero as a point approaches the batch.
+
+        A hard cut would be discontinuous, and a gradient-based refinement given
+        a step function either ignores it or stalls on it. A linear ramp up to
+        the separation floor gives L-BFGS-B something to descend away from.
+        """
+        floor = self.config.minimum_separation
+        if floor <= 0.0 or not already:
+            return np.ones(len(points))
+        return np.clip(self._nearest(points, already) / floor, 0.0, 1.0)
 
     # -- construction ------------------------------------------------------
 

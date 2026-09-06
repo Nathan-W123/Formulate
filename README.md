@@ -134,7 +134,7 @@ a bounded budget on the few candidate-property pairs where uncertainty could
 still reorder the ranking, and refuses any property quantum chemistry or
 molecular dynamics cannot legitimately produce.
 
-The expert panel spans five families, reusing published open implementations
+The expert panel spans six families, reusing published open implementations
 where they exist:
 
 | Expert | Family | Class | Predicts |
@@ -184,6 +184,6 @@ uncovered for the material classes they would apply to.
 ## Development
 
 ```bash
-python -m pytest          # 389 tests
+python -m pytest          # 397 tests
 python -m pytest --cov=formulate
 ```

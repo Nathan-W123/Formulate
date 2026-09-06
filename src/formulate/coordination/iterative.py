@@ -237,14 +237,18 @@ def default_iterative_coordinator(
     """An iterative coordinator seeded by the database and driven by evolution.
 
     Section 3 expects multiple strategies running in parallel and merging into
-    one deduplicated pool: retrieval supplies a starting population that
-    evolution then has something to work from.
+    one deduplicated pool: retrieval supplies a starting population, evolution
+    works on its structures, and Bayesian optimisation works on the continuous
+    composition of any formulation among them. The third only fires when the
+    target names a mixture and some recipe has already been evaluated; on a
+    molecule-only search it returns nothing and costs nothing.
     """
+    from formulate.exploration.bayesopt import BayesOptExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
 
     return IterativeCoordinator(
-        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer()],
+        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer(), BayesOptExplorer()],
         config=config or RunConfig(),
         iteration=iteration,
     )
@@ -380,12 +384,13 @@ def default_validating_coordinator(
     iteration: IterationConfig | None = None,
     validation=None,
 ) -> "ValidatingCoordinator":
-    """Retrieval plus evolution, followed by a bounded physics validation stage."""
+    """Retrieval, evolution and composition search, then a bounded physics stage."""
+    from formulate.exploration.bayesopt import BayesOptExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
 
     return ValidatingCoordinator(
-        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer()],
+        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer(), BayesOptExplorer()],
         config=config or RunConfig(),
         iteration=iteration,
         validation=validation,

@@ -17,7 +17,7 @@ from typing import Sequence
 
 from formulate.core.candidate import Candidate
 from formulate.core.conditions import Conditions
-from formulate.core.prediction import Prediction
+from formulate.core.prediction import Prediction, prefer
 from formulate.experts.base import Expert, PredictionRequest
 from formulate.experts.registry import ExpertRegistry
 from formulate.store.cache import PredictionCache
@@ -197,25 +197,3 @@ class EvaluationEngine:
         if len(stated) == 1:
             return stated[0]
         return spec.conditions
-
-
-def prefer(candidate_pred: Prediction, incumbent: Prediction) -> bool:
-    """True when ``candidate_pred`` should displace ``incumbent``.
-
-    The single authority on which of two predictions for the same property is
-    better: in-domain first, then applicability, then the tighter spread. It
-    lives here and is imported elsewhere rather than being restated, because a
-    second copy of this rule would let two parts of the system disagree about
-    which prediction the user is actually being shown - and the calibration
-    report did exactly that, crediting a group-contribution estimate for a
-    compound whose measured value was also available.
-    """
-    if candidate_pred.applicability.in_domain != incumbent.applicability.in_domain:
-        return candidate_pred.applicability.in_domain
-    if candidate_pred.applicability.score != incumbent.applicability.score:
-        return candidate_pred.applicability.score > incumbent.applicability.score
-    a = candidate_pred.uncertainty.std
-    b = incumbent.uncertainty.std
-    if a is not None and b is not None:
-        return a < b
-    return a is not None
