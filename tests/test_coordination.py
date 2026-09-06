@@ -57,7 +57,11 @@ def test_the_report_carries_evidence_and_guardrails(solvent_spec):
     assert "WHAT THIS RUN DOES NOT ESTABLISH" in report
     assert "not experimental proof" in report
     assert "utility" in report
-    assert "via joback" in report
+    # Every reported value names the expert behind it. For the reference
+    # compounds that is the measurement rather than the estimate, because the
+    # engine prefers the tighter in-domain prediction.
+    assert "via measured" in report
+    assert "via " in report
 
 
 @requires_rdkit
