@@ -309,22 +309,30 @@ def brics_crossover(
     rng.shuffle(fragment_mols)
 
     parents = {parent_a, parent_b}
-    out: list[str] = []
+    harvested: list[str] = []
     # BRICSBuild enumerates a combinatorial space; take a bounded slice rather
     # than exhausting it. Only per-product failures are caught - a bad call
     # signature is a programming error and must surface, not be swallowed into
     # an empty result.
     builder = BRICS.BRICSBuild(fragment_mols, scrambleReagents=False)
     for index, product in enumerate(builder):
-        if index >= limit * 8 or len(out) >= limit:
+        if index >= limit * 12 or len(harvested) >= limit * 5:
             break
         try:
             candidate = _sanitized_smiles(Chem.RWMol(product))
         except Exception:
             continue
-        if candidate and candidate not in parents and candidate not in out:
-            out.append(candidate)
-    return out
+        if candidate and candidate not in parents and candidate not in harvested:
+            harvested.append(candidate)
+
+    # Sample from the harvested pool rather than returning its head. BRICSBuild
+    # enumerates in a fixed order that barely responds to the order of the
+    # fragments it is given, so taking the first few products returned the same
+    # children for every seed and quietly cost the search its crossover
+    # diversity. Sampling is where the seed actually earns its keep.
+    if len(harvested) <= limit:
+        return harvested
+    return [harvested[i] for i in sorted(rng.sample(range(len(harvested)), limit))]
 
 
 def _shuffled(items: Sequence[str], rng: random.Random) -> list[str]:

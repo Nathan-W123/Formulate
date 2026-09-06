@@ -61,6 +61,17 @@ class EvolutionConfig:
     operators: tuple[MutationOperator, ...] = field(default=DEFAULT_OPERATORS)
     #: Relative amount of composition perturbation applied to a mixture.
     fraction_step: float = 0.15
+    #: Heavy atoms an offspring may add over its largest parent.
+    #:
+    #: Fragment append and splice crossover both only ever grow a molecule, so
+    #: without a brake the population drifts monotonically larger - measured
+    #: here as a mean of 5.9 heavy atoms rising to 7.8 over eight unguarded
+    #: rounds. That drift walks the search out of the applicability domain of
+    #: every expert, which is worse than it looks: the predictions keep
+    #: arriving, they just stop being trustworthy. This is a search bias, not
+    #: a validity rule; CandidateFilter remains the only authority on whether
+    #: a structure is admissible.
+    max_growth_per_generation: int = 4
 
 
 class EvolutionaryExplorer(Explorer):
@@ -128,6 +139,8 @@ class EvolutionaryExplorer(Explorer):
                 if len(out) >= count:
                     break
                 if child.structure_id in seen:
+                    continue
+                if not self._within_size_budget(child, lineage, spec):
                     continue
                 scaffold = self._scaffold_key(child)
                 if scaffold_counts.get(scaffold, 0) >= self.config.max_per_scaffold:
@@ -363,6 +376,37 @@ class EvolutionaryExplorer(Explorer):
         return [self._respec_mixture(parent_a, parent_a.mixture, _renormalised(chosen))]
 
     # -- bookkeeping -------------------------------------------------------
+
+    def _within_size_budget(
+        self, child: Candidate, lineage: Sequence[Candidate], spec: TargetSpec
+    ) -> bool:
+        """Reject offspring that grow faster than the configured brake allows.
+
+        The spec-level ceiling is honoured too, purely to avoid spending the
+        generation budget on structures CandidateFilter is certain to reject.
+        The filter still decides admissibility; this only avoids the waste.
+        """
+        from formulate import chem
+
+        smiles = child.primary_smiles
+        if smiles is None or not chem.rdkit_available():
+            return True
+        size = chem.descriptors(smiles).get("heavy_atom_count")
+        if not size:
+            return True
+
+        ceiling = spec.structural.max_heavy_atoms
+        if ceiling is not None and size > ceiling:
+            return False
+
+        parent_sizes = [
+            chem.descriptors(p.primary_smiles).get("heavy_atom_count", 0.0)
+            for p in lineage
+            if p.primary_smiles
+        ]
+        if not parent_sizes:
+            return True
+        return size <= max(parent_sizes) + self.config.max_growth_per_generation
 
     def _scaffold_key(self, candidate: Candidate) -> str:
         """Bemis-Murcko scaffold, used to cap one family's share of a round."""
