@@ -22,7 +22,6 @@ from typing import Sequence
 
 from formulate.core.candidate import Candidate, MaterialClass, MoleculeSpec
 from formulate.core.conditions import Conditions
-from formulate.core.properties import get_property
 from formulate.core.quantity import Quantity
 from formulate.experts.base import PredictionRequest
 from formulate.experts.registry import ExpertRegistry

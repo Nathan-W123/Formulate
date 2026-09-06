@@ -19,7 +19,7 @@ from typing import Sequence
 
 from formulate.core.candidate import Candidate, dedupe
 from formulate.evaluation.engine import DispatchReport, EvaluationConfig, EvaluationEngine
-from formulate.evaluation.scoring import OutcomeStatus, RequirementOutcome, score_pool
+from formulate.evaluation.scoring import RequirementOutcome, score_pool
 from formulate.experts.registry import ExpertRegistry
 from formulate.exploration.base import Explorer
 from formulate.exploration.filters import CandidateFilter, FilterReport

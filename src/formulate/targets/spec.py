@@ -24,7 +24,7 @@ from formulate.core.candidate import MaterialClass
 from formulate.core.conditions import Conditions
 from formulate.core.properties import get_property, validate_unit_for
 from formulate.core.quantity import Quantity
-from formulate.core.units import canonical_unit, convert
+from formulate.core.units import convert
 
 from .desirability import Desirability, Direction
 
@@ -88,7 +88,7 @@ class Requirement(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "Requirement":
-        prop = get_property(self.property)
+        get_property(self.property)  # raises for an unregistered name
         for field in ("target", "lower", "upper"):
             q: Quantity | None = getattr(self, field)
             if q is not None:
@@ -199,15 +199,23 @@ class Requirement(BaseModel):
             return (lo, hi)
         return (lo, hi) if tgt is not None else (None, None)
 
-    def describe(self) -> str:
-        kind = "hard" if self.hard else f"soft(w={self.weight:g})"
+    def describe_constraint(self) -> str:
+        """The requirement clause alone, without the property name or hard/soft tag.
+
+        Used inside a ConstraintViolation, whose own rendering already states
+        both, so that the two do not read back doubled.
+        """
         unit = self.canonical_unit
         try:
             shape = self.desirability().describe(unit)
         except ValueError:
             shape = f"{self.direction.value} (anchors from pool)"
         cond = f" at {self.conditions.describe()}" if self.conditions else ""
-        return f"{self.property} [{kind}]: {shape}{cond}"
+        return f"{shape}{cond}"
+
+    def describe(self) -> str:
+        kind = "hard" if self.hard else f"soft(w={self.weight:g})"
+        return f"{self.property} [{kind}]: {self.describe_constraint()}"
 
 
 class StructuralConstraints(BaseModel):

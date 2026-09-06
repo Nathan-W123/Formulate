@@ -66,8 +66,6 @@ class CandidateFilter:
         from formulate import chem
 
         reasons: list[str] = []
-        constraints = self.constraints
-
         smiles_list = candidate.all_smiles()
         if not smiles_list:
             return FilterResult.rejected("candidate contains no structures")

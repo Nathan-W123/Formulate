@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from formulate.core.candidate import Candidate
 from formulate.core.conditions import Conditions

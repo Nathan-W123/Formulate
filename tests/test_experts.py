@@ -11,7 +11,6 @@ from formulate.core.conditions import Conditions
 from formulate.core.prediction import PredictionStatus
 from formulate.core.properties import get_property
 from formulate.core.quantity import Quantity
-from formulate.experts import default_registry
 from formulate.experts.base import Expert, PredictionRequest
 from formulate.experts.interfacial import (
     association_factor,

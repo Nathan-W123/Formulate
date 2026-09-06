@@ -231,7 +231,7 @@ def _missing_violation(req: Requirement, reason: str) -> ConstraintViolation | N
         return None
     return ConstraintViolation(
         property=req.property,
-        requirement=req.describe(),
+        requirement=req.describe_constraint(),
         hard=True,
         reason=f"hard requirement could not be verified ({reason})",
     )
@@ -246,17 +246,17 @@ def _bound_violation(req: Requirement, value: float, unit: str) -> ConstraintVio
         margin = value - upper
     if margin is None:
         return None
-    bound = f"below {lower:.6g}" if value < (lower if lower is not None else value) else None
-    statement = req.describe()
+    side = (
+        f"below the lower bound of {lower:.6g}"
+        if margin < 0
+        else f"above the upper bound of {upper:.6g}"
+    )
     return ConstraintViolation(
         property=req.property,
-        requirement=statement,
+        requirement=req.describe_constraint(),
         margin=margin,
         hard=req.hard,
-        reason=(
-            f"predicted {value:.6g} {unit} lies outside the required bound"
-            + (f" ({bound})" if bound else "")
-        ),
+        reason=f"predicted {value:.6g} {unit} is {side} {unit}",
     )
 
 
