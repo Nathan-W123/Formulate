@@ -32,6 +32,7 @@ formulate run solvent.yaml --validate 3     # add selective QM/MD validation
 formulate experts                           # what the panel can predict
 formulate properties                        # the canonical property registry
 formulate physics                           # which QM/MD backends are usable here
+formulate benchmark solvent.yaml            # adaptive vs fixed, and which to use
 formulate calibrate                         # accuracy and uncertainty vs. reference data
 ```
 
@@ -119,9 +120,13 @@ the run refuses and estimates what an adequate calculation would cost.
 
 ## What is implemented
 
-Phase 1 (the evaluator) and Phase 2 (inverse search) complete, and most of
-Phase 3 (physics validation). See [docs/ROADMAP.md](docs/ROADMAP.md) for what
-is deliberately not built and why.
+Phases 1, 2 and 5 complete; most of Phase 3, and the formulation half of
+Phase 4. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is deliberately not
+built and why.
+
+Phase 5's deliverable is a measurement, not a coordinator: the adaptive policy
+is benchmarked against the fixed pipeline at equal wall-clock, and currently
+**does not** earn its complexity, which the benchmark reports plainly.
 
 Search iterates: retrieval seeds a population, evolution mutates and
 recombines it, and scores feed back each round. Physics validation then spends

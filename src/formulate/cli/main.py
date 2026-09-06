@@ -121,6 +121,20 @@ def _build_parser() -> argparse.ArgumentParser:
         "physics", help="report which quantum and dynamics backends are usable here"
     )
 
+    bench = subparsers.add_parser(
+        "benchmark",
+        help=(
+            "compare the adaptive coordinator against the fixed pipeline at equal "
+            "wall-clock budget, and say which to use"
+        ),
+    )
+    bench.add_argument("spec", help="path to a target specification")
+    bench.add_argument("--seeds", type=int, default=3, help="paired runs to perform")
+    bench.add_argument(
+        "--budget", type=float, default=60.0, help="seconds each arm may spend per run"
+    )
+    bench.add_argument("--pool", type=int, default=20, help="initial pool size")
+
     calibrate = subparsers.add_parser(
         "calibrate", help="check expert accuracy and uncertainty against reference compounds"
     )
@@ -251,6 +265,37 @@ def _cmd_physics(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    from formulate.coordination import IncomparableTarget, run_benchmark
+    from formulate.targets import TargetSpec
+
+    path = Path(args.spec)
+    if not path.exists():
+        print(f"error: no such specification: {path}", file=sys.stderr)
+        return 2
+    try:
+        spec = TargetSpec.from_file(path)
+    except Exception as exc:
+        print(f"error: could not read {path}: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        result = run_benchmark(
+            spec,
+            seeds=tuple(range(max(1, args.seeds))),
+            budget_seconds=args.budget,
+            pool_size=args.pool,
+        )
+    except IncomparableTarget as exc:
+        print(f"error: this target cannot be benchmarked.\n{exc}", file=sys.stderr)
+        return 2
+
+    print(result.describe())
+    # A negative result is a legitimate finding, not a failure, so it does not
+    # set a failing exit status; only an inability to decide does.
+    return 0 if result.pairs else 1
+
+
 def _cmd_calibrate(args: argparse.Namespace) -> int:
     from formulate.evaluation.calibration import calibrate, describe
     from formulate.experts import default_registry
@@ -287,6 +332,7 @@ _COMMANDS = {
     "properties": _cmd_properties,
     "example": _cmd_example,
     "physics": _cmd_physics,
+    "benchmark": _cmd_benchmark,
     "calibrate": _cmd_calibrate,
 }
 

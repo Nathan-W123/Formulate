@@ -83,24 +83,90 @@ adequate run would cost. Run `formulate physics` to see the capability report.
   would misrepresent what it is.
 - **The optional minimal Hartree-Fock teaching backend** of section 7.
 
-## Phase 4 — polymers and formulations
+## Phase 4 — polymers and formulations ◐
 
-The candidate schema already covers polymers (monomers, topology, tacticity,
-chain-length targets, crosslink density) and mixtures (components, roles,
-fraction basis, phase assumptions), and the evolutionary explorer mutates
-both. What is missing is the experts: no registered expert covers a polymer or
-a mixture, and `formulate` reports those properties as uncovered rather than
-returning a single-molecule number in their place.
+*"Extend candidate schema, generators, preparation, and experts to
+composition, architecture, chain statistics, interfaces, and processing."*
 
-## Phase 5 — adaptive coordination
+The schema and the generators were already there from earlier phases: the
+candidate model describes polymers and mixtures, and the evolutionary explorer
+mutates both. The gap was that **no expert covered either**. A mixture had five
+properties, all graph descriptors; a polymer had none.
 
-Not started, by design. The deterministic and iterative coordinators are the
-baseline that comparison needs. An adaptive coordinator would choose the next
-*action* — generate more, diversify, call another expert, raise fidelity, run
-physics, stop — by expected information gain, and would have to demonstrably
-beat the baseline per unit compute before replacing it.
+**Done — formulations.**
 
-The validation stage already contains the first piece of that machinery: its
-selection policy scores candidate-property pairs by how much a validated value
-could move the ranking, which is expected-information-gain reasoning applied
-to one decision.
+- **Hansen solubility parameters** from a curated published compilation, not a
+  correlation. A single Hildebrand parameter cannot answer a compatibility
+  question: ethanol and nitromethane share a cohesive energy density and are
+  poor substitutes, because one holds it in hydrogen bonds and the other in
+  dipolar interactions. Structures resolve through their InChIKey, because a
+  SMILES lookup fails on benzene, toluene, acetone and DMSO.
+- **Mixture expert** evaluating each component through the molecular panel and
+  applying mixing rules to what comes back, so a component's density is the
+  same number it would have had as a candidate in its own right. Volume
+  fractions are formed explicitly, since a mass fraction used where a volume
+  fraction belongs is a silent error of tens of percent.
+- **Compatibility** via the Hansen distance between the least compatible pair.
+  No relative energy difference is reported, because that needs a measured
+  interaction radius which is defined per polymer and not for a solvent pair.
+- **Measured pure-component lookups** for boiling and melting point. This needs
+  no precedence rule: the engine already prefers the in-domain prediction with
+  the tighter spread, so a measurement wins because it is better. Panel
+  accuracy on the reference set improved from 13.7 to 0.2 degrees on boiling
+  point and 25.6 to 0.9 on melting point.
+
+Mixture coverage went from 5 properties to 10.
+
+**Not done — polymers.** `glass_transition_temperature`, polymer density and
+polymer Hansen parameters remain uncovered, and the registry reports them as
+uncovered rather than returning a single-molecule number in their place. These
+need van Krevelen and Hoftyzer-Van Krevelen group-contribution tables, and a
+wrong group value produces a plausible result that is wrong by a constant —
+the hardest kind of error to notice and one no test of the code's logic would
+catch. Shipping tables recalled rather than verified would be the wrong trade.
+
+## Phase 5 — adaptive coordination ✅ (with a negative result)
+
+*"Compare fixed pipeline against uncertainty/expected-value-driven compute
+allocation. The coordinator earns complexity only if it improves quality per
+unit compute."*
+
+Both halves are built: the coordinator, and the benchmark that judges it.
+
+**The coordinator** scores every action — generate, diversify, validate, stop —
+by the ranking movement it is expected to buy divided by what it costs, and
+takes the best ratio. The expected-value model is built from what the run
+measures (observed hypervolume gain per candidate, observed cost of a physics
+call) rather than from constants chosen to make the policy look good. No
+scientific decision routes through a language model; given a seed it is
+deterministic.
+
+Three defects were found by running it rather than by reading it:
+
+- A plain mean over observations let one unlucky zero disqualify an action
+  permanently. The first version spent its whole budget on validations that
+  returned nothing. Estimates are now shrunk toward a prior.
+- Hypervolume is a degenerate progress signal while any objective is
+  uncovered: an identically zero axis gives zero volume however good the rest
+  is, so the policy could not see that acquiring the missing axis was the only
+  thing worth doing. Coverage now dominates until everything is measured.
+- Generation destroyed validated evidence, because re-evaluation rebuilds each
+  candidate's results from expert predictions alone. Physics results are now
+  held outside the candidate and restored.
+
+**The benchmark** holds wall-clock equal — the only currency both arms spend
+from the same purse — refuses targets whose utility axes come from the pool
+rather than the request, gives each arm its own cache so neither free-rides on
+the other, and compares paired runs with an exact sign test.
+
+**The measured answer is that adaptive does not currently earn its
+complexity.** On a three-seed paired benchmark, both arms reached identical
+hypervolume (0.4796) on every seed, while the adaptive arm evaluated 138
+candidates to the fixed arm's 38 and spent roughly three times the wall clock.
+The benchmark reports `KEEP THE FIXED PIPELINE`, which section 10 treats as
+the expected outcome rather than a failure.
+
+That result also exposes a limitation of the benchmark itself: this target
+saturates, so both arms max out and every pair ties. A discriminating target
+suite — including one where the frontier is genuinely hard to reach — is what
+would let the comparison say something stronger than "no difference here".
