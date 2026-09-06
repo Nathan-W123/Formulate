@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import math
 from enum import Enum
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -504,6 +504,34 @@ def molecule_candidate(smiles: str, **kwargs: Any) -> Candidate:
     """Convenience constructor for a single-molecule candidate."""
     return Candidate(
         material_class=MaterialClass.MOLECULE, molecule=MoleculeSpec(smiles=smiles), **kwargs
+    )
+
+
+def polymer_candidate(
+    repeat_units: str | Sequence[str] | Sequence[tuple[str, float]], **kwargs: Any
+) -> Candidate:
+    """Convenience constructor for a linear homopolymer or random copolymer.
+
+    ``repeat_units`` is one repeat-unit SMILES, several of them in equal
+    proportion, or explicit ``(smiles, mole_fraction)`` pairs.  Every other
+    field of :class:`PolymerSpec` - topology, tacticity, chain statistics -
+    stays at its default, which is what "unspecified" has to mean: those
+    defaults are read by the polymer experts, not ignored by them.
+    """
+    if isinstance(repeat_units, str):
+        pairs: list[tuple[str, float]] = [(repeat_units, 1.0)]
+    else:
+        items = list(repeat_units)
+        if items and isinstance(items[0], str):
+            share = 1.0 / len(items)
+            pairs = [(str(s), share) for s in items]
+        else:
+            pairs = [(str(s), float(f)) for s, f in items]  # type: ignore[misc]
+    monomers = tuple(
+        MonomerUnit(smiles=smiles, mole_fraction=fraction) for smiles, fraction in pairs
+    )
+    return Candidate(
+        material_class=MaterialClass.POLYMER, polymer=PolymerSpec(monomers=monomers), **kwargs
     )
 
 

@@ -15,6 +15,7 @@ from .joback import JobackThermalExpert
 from .lipophilicity import CrippenLipophilicityExpert
 from .measured import MeasuredPropertyExpert
 from .mixture import MixtureExpert
+from .polymer import PolymerDensityExpert, PolymerGlassTransitionExpert
 from .registry import ExpertRegistry
 from .solubility import ESOLSolubilityExpert
 from .structural import StructuralDescriptorExpert
@@ -35,10 +36,12 @@ PHASE1_EXPERTS = (
     MeasuredPropertyExpert,
 )
 
-#: Phase 4 adds formulation coverage. A mixture expert delegates to the
-#: molecular panel for its components, so the two sets are kept separate to
-#: make that dependency explicit rather than circular.
-PHASE4_EXPERTS = (MixtureExpert,)
+#: Phase 4 adds formulation and polymer coverage. A mixture expert delegates
+#: to the molecular panel for its components, so the two sets are kept
+#: separate to make that dependency explicit rather than circular. The polymer
+#: experts delegate to nothing: a repeat unit is not a molecule, and section 13
+#: forbids answering for the bulk polymer with the monomer's properties.
+PHASE4_EXPERTS = (MixtureExpert, PolymerGlassTransitionExpert, PolymerDensityExpert)
 
 
 def molecular_registry() -> ExpertRegistry:
@@ -53,6 +56,7 @@ def default_registry() -> ExpertRegistry:
 
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
+    "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",
     "PredictionRequest", "StructuralDescriptorExpert", "SynthesisFeasibilityExpert",

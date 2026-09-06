@@ -120,30 +120,43 @@ the run refuses and estimates what an adequate calculation would cost.
 
 ## What is implemented
 
-Phases 1, 2 and 5 complete; most of Phase 3, and the formulation half of
-Phase 4. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is deliberately not
-built and why.
+Phases 1, 2, 4 and 5 complete; most of Phase 3. See
+[docs/ROADMAP.md](docs/ROADMAP.md) for what is deliberately not built and why.
 
 Phase 5's deliverable is a measurement, not a coordinator: the adaptive policy
 is benchmarked against the fixed pipeline at equal wall-clock, and currently
 **does not** earn its complexity, which the benchmark reports plainly.
 
 Search iterates: retrieval seeds a population, evolution mutates and
-recombines it, and scores feed back each round. Physics validation then spends
+recombines it, Bayesian optimisation tunes the continuous composition of the
+blends it finds, and scores feed back each round. Physics validation then spends
 a bounded budget on the few candidate-property pairs where uncertainty could
 still reorder the ranking, and refuses any property quantum chemistry or
 molecular dynamics cannot legitimately produce.
 
-The expert panel spans four families, reusing published open implementations:
+The expert panel spans five families, reusing published open implementations
+where they exist:
 
-| Expert | Family | Predicts |
-|---|---|---|
-| `joback` | thermal | boiling and melting point, critical constants, enthalpies, ideal-gas heat capacity |
-| `crippen` | chemical | partition coefficient, molar refractivity |
-| `esol` | chemical | aqueous solubility |
-| `interfacial` | interfacial | surface tension, liquid density, molar volume, Hildebrand parameter |
-| `feasibility` | feasibility | synthetic accessibility with structural alerts |
-| `structural` | structural | exact graph descriptors |
+| Expert | Family | Class | Predicts |
+|---|---|---|---|
+| `joback` | thermal | molecule | boiling and melting point, critical constants, enthalpies, ideal-gas heat capacity |
+| `measured` | thermal | molecule | compiled experimental boiling point, melting point, molar mass |
+| `crippen` | chemical | molecule | partition coefficient, molar refractivity |
+| `esol` | chemical | molecule | aqueous solubility |
+| `interfacial` | interfacial | molecule | surface tension, liquid density, molar volume, Hildebrand parameter |
+| `hansen` | interfacial | molecule | Hansen dispersion, polar and hydrogen-bonding components |
+| `feasibility` | feasibility | molecule | synthetic accessibility with structural alerts |
+| `structural` | structural | molecule | exact graph descriptors |
+| `mixture` | interfacial | mixture | density and Hansen parameters by mixing rules, plus compatibility distance |
+| `polymer_tg` | thermal | polymer | glass transition from an additive molar function over repeat-unit groups |
+| `polymer_density` | mechanical | polymer | amorphous density from van der Waals volume and a fitted packing factor |
+
+The two polymer experts are the only ones whose coefficients are fitted in this
+repository rather than published elsewhere, so they carry their own validation
+set: ten polymers withheld from the fit and from the choice of descriptors,
+against which the glass transition comes out at 22 K RMSE and the density at
+3.7%. In-sample agreement is not reported as evidence, because a fitted model
+reproduces what it was fitted to by construction.
 
 `formulate calibrate` measures both accuracy and whether the stated uncertainty
 is honest — a model with a 3 K error claiming 1 K is more dangerous to a
@@ -164,12 +177,13 @@ report next to the numbers they qualify:
 - No quantum or molecular-dynamics validation runs in this phase, so no result
   yet carries physics evidence.
 
-Mechanical and electrical experts are deliberately absent rather than stubbed:
-they need the quantum module of Phase 3 or the polymer preparation of Phase 4.
+Electrical experts, and the mechanical properties beyond density, are
+deliberately absent rather than stubbed. `formulate experts` reports them as
+uncovered for the material classes they would apply to.
 
 ## Development
 
 ```bash
-python -m pytest          # 174 tests
+python -m pytest          # 389 tests
 python -m pytest --cov=formulate
 ```

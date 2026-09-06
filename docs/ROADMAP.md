@@ -18,7 +18,7 @@ caching and provenance; infeasibility diagnosis; an evidence store; a CLI.
 Verification is `formulate calibrate`, which reports accuracy *and* uncertainty
 calibration against the bundled reference compounds.
 
-## Phase 2 — inverse search ◐
+## Phase 2 — inverse search ✅
 
 *"Add database retrieval + evolutionary generator; iterate generation and
 evaluation; measure hit rate, diversity, sample efficiency, and failure modes."*
@@ -33,15 +33,24 @@ recall, and failure modes aggregated from filter rejections.
 Measured on a 50-candidate seed pool, hypervolume rises 0.1405 → 0.2112 over
 five rounds and reaches 90% of its final value in 80 of 140 evaluations.
 
-**Not done.**
+**Bayesian optimisation over recipe composition** closes the gap the
+evolutionary explorer leaves. Evolution proposes structures; a four-component
+blend has a continuous three-dimensional simplex behind it that evolution can
+only sample blindly. A Matern-5/2 Gaussian process with per-dimension
+lengthscales is fitted per component template, and the acquisition is
+maximised over the simplex through a stick-breaking transform, so a
+constrained problem is solved as an unconstrained one. Each proposal in a
+batch draws fresh ParEGO weights and is held a minimum distance from the
+others, which is what stops a batch collapsing onto a single point.
 
-- **Bayesian optimisation over continuous recipe variables.** Designed in
-  detail (numpy/scipy Matern-5/2 GP, ParEGO scalarisation, stick-breaking
-  simplex transform) but not implemented. Its value is currently limited
-  anyway: no registered expert covers a mixture, so there is nothing to
-  optimise a recipe *against* until Phase 4.
-- **A generative explorer.** Optional in section 3, and section 3 requires it
-  never be treated as a validator.
+Two details are not incidental. The Cholesky jitter ladder uses absolute
+values rather than values scaled by the signal variance: a scaled floor makes
+the marginal likelihood discontinuous in a parameter being optimised over.
+And the explorer declines to propose for a template with no evaluated recipes
+behind it, rather than sampling its untrained prior.
+
+**Not done.** A generative explorer. Optional in section 3, and section 3
+requires it never be treated as a validator.
 
 ## Phase 3 — physics ◐
 
@@ -83,7 +92,7 @@ adequate run would cost. Run `formulate physics` to see the capability report.
   would misrepresent what it is.
 - **The optional minimal Hartree-Fock teaching backend** of section 7.
 
-## Phase 4 — polymers and formulations ◐
+## Phase 4 — polymers and formulations ✅
 
 *"Extend candidate schema, generators, preparation, and experts to
 composition, architecture, chain statistics, interfaces, and processing."*
@@ -117,13 +126,64 @@ properties, all graph descriptors; a polymer had none.
 
 Mixture coverage went from 5 properties to 10.
 
-**Not done — polymers.** `glass_transition_temperature`, polymer density and
-polymer Hansen parameters remain uncovered, and the registry reports them as
-uncovered rather than returning a single-molecule number in their place. These
-need van Krevelen and Hoftyzer-Van Krevelen group-contribution tables, and a
-wrong group value produces a plausible result that is wrong by a constant —
-the hardest kind of error to notice and one no test of the code's logic would
-catch. Shipping tables recalled rather than verified would be the wrong trade.
+**Done — polymers.** The earlier reason for holding back was that shipping a
+group-contribution table recalled rather than verified would be wrong: a wrong
+group value produces a plausible result off by a constant, which no test of the
+code's logic catches. The way through was to stop treating the table as
+something to recall.
+
+- **Glass transition** uses van Krevelen's *form* — the additive molar function
+  `Tg = Σ nᵢYgᵢ / M` — over Joback's *group set*, taken from the `thermo`
+  package rather than retyped. The Yg coefficients are then **fitted here**
+  against a reference set of measured polymers that ships with the repository,
+  and are not presented as anybody's published table. A repeat unit is
+  decomposed by fragmenting a trimer and a dimer and subtracting, which
+  isolates one interior unit exactly; decomposing the bare unit is not an
+  option, since its dangling valences are not a chemical environment any group
+  definition describes.
+
+  One descriptor beyond the group counts survived: a backbone atom carrying two
+  *identical* substituents. Polyisobutylene sits 53 K below polypropylene and
+  poly(vinylidene chloride) 99 K below poly(vinyl chloride), and an additive
+  sum cannot see why, because Joback's `>C<` is the same group in
+  polyisobutylene as in PMMA where the effect runs the other way. Adding it cut
+  held-out RMSE from 54 K to 34 K. Four other structural descriptors —
+  backbone length, side-chain size, backbone aromaticity, backbone rotatable
+  bonds — were tried and **all four made held-out error worse**, so none of
+  them are in the model.
+
+- **Amorphous density** takes a different route on purpose: the van der Waals
+  volume of the repeat unit computed geometrically from a 3D structure, times
+  one fitted packing factor. It reproduces Bondi's group volumes to within a
+  couple of percent on the hydrocarbons where those are unambiguous, and the
+  fitted packing factor lands at 1.53 against van Krevelen's published 1.6 —
+  nothing was fitted to that number, so recovering it is corroboration rather
+  than consistency. Because the volume is geometric, this expert answers for
+  repeat units the group table cannot express: bisphenol-A polycarbonate comes
+  out within 0.5% despite having no Joback group for a carbonate.
+
+  Separate glassy and rubbery packing factors, and a full expansion model about
+  Tg, were both tried. Both improved the fit split and made the validation split
+  worse, so the single factor is what shipped.
+
+**What the two are worth, measured rather than claimed.** Tg: 34 K RMSE leaving
+one fitted polymer out at a time, 22 K over ten polymers withheld from the fit
+and from the descriptor choice entirely, with a +13 K systematic offset on
+those ten — real, but inside the quoted error bar, and left uncorrected because
+correcting to a validation set is how a validation set stops meaning anything.
+Density: 4.3% on the fit split, 3.7% on the withheld one.
+
+**What they refuse.** A siloxane or carbonate backbone for Tg (no group exists,
+so no number is produced). A stereoregular or crosslinked polymer (out of
+domain, not answered as though it were atactic and linear). A chain short
+enough that its ends set the transition. A group resting on fewer than three
+reference polymers. For density, any element the packing factor was not fitted
+over: poly(dimethylsiloxane) measures 0.97 g/cm³ where a carbon-backbone
+packing factor says 1.13, and the expert says out-of-domain rather than
+presenting the 16% error as an answer.
+
+**Still not done — polymer Hansen parameters** and the mechanical properties.
+The registry reports `youngs_modulus` as uncovered rather than inventing it.
 
 ## Phase 5 — adaptive coordination ✅ (with a negative result)
 

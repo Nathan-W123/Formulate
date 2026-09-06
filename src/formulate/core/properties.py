@@ -257,6 +257,19 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "bulk_modulus", "Pa", _M, "Isothermal bulk modulus.",
             condition_dependent=True, bounds=(0.0, None),
         ),
+        # Deliberately not "liquid_density": a glassy polymer is not a
+        # saturated liquid, and a semicrystalline sample is denser than its
+        # amorphous phase by an amount that depends on how it was processed
+        # rather than on what it is made of.  Naming the amorphous phase keeps
+        # the prediction honest about which number it is.
+        _p(
+            "amorphous_density",
+            "kg/m^3",
+            _M,
+            "Density of the amorphous phase of a polymer.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
         # --- Hansen solubility parameters (specification section 4,
         # "solubility/compatibility"; section 12, formulation compatibility).
         # The three components resolve what a single Hildebrand parameter
