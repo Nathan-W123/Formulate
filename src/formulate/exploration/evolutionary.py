@@ -111,6 +111,13 @@ class EvolutionaryExplorer(Explorer):
             return []
 
         rng = random.Random(seed)
+        # Bias operators away from elements the target forbids. The filter still
+        # decides; this only stops the budget going on certain rejections.
+        allowed = (
+            frozenset(spec.structural.allowed_elements) | {"H"}
+            if spec.structural.allowed_elements
+            else None
+        )
         seen = {c.structure_id for c in scored}
         scaffold_counts: dict[str, int] = {}
         out: list[Candidate] = []
@@ -131,7 +138,7 @@ class EvolutionaryExplorer(Explorer):
                 children = self._crossover(parent, other, rng)
                 lineage = [parent, other]
             else:
-                children = self._mutate(parent, rng)
+                children = self._mutate(parent, rng, allowed)
                 lineage = [parent]
 
             for child in children:
@@ -201,21 +208,30 @@ class EvolutionaryExplorer(Explorer):
 
     # -- variation ---------------------------------------------------------
 
-    def _mutate(self, parent: Candidate, rng: random.Random) -> list[Candidate]:
+    def _mutate(
+        self,
+        parent: Candidate,
+        rng: random.Random,
+        allowed: frozenset[str] | None = None,
+    ) -> list[Candidate]:
         if parent.material_class is MaterialClass.MOLECULE:
-            return self._mutate_molecule(parent, rng)
+            return self._mutate_molecule(parent, rng, allowed)
         if parent.material_class is MaterialClass.POLYMER:
-            return self._mutate_polymer(parent, rng)
+            return self._mutate_polymer(parent, rng, allowed)
         if parent.mixture is not None:
-            return self._mutate_mixture(parent, rng)
+            return self._mutate_mixture(parent, rng, allowed)
         return []
 
-    def _mutate_molecule(self, parent: Candidate, rng: random.Random) -> list[Candidate]:
+    def _mutate_molecule(
+        self, parent: Candidate, rng: random.Random, allowed: frozenset[str] | None = None
+    ) -> list[Candidate]:
         smiles = parent.molecule.smiles  # type: ignore[union-attr]
         operators = list(self.config.operators)
         rng.shuffle(operators)
         for operator in operators:
-            proposals = operator.propose(smiles, rng, self.config.proposals_per_operator)
+            proposals = operator.propose(
+                smiles, rng, self.config.proposals_per_operator, allowed
+            )
             if proposals:
                 return [
                     parent.model_copy(
@@ -225,7 +241,9 @@ class EvolutionaryExplorer(Explorer):
                 ]
         return []
 
-    def _mutate_polymer(self, parent: Candidate, rng: random.Random) -> list[Candidate]:
+    def _mutate_polymer(
+        self, parent: Candidate, rng: random.Random, allowed: frozenset[str] | None = None
+    ) -> list[Candidate]:
         """Alter monomer identity, comonomer fraction, chain length or architecture.
 
         Specification section 3 names exactly these axes for polymer mutation.
@@ -243,7 +261,7 @@ class EvolutionaryExplorer(Explorer):
         operators = list(self.config.operators)
         rng.shuffle(operators)
         for operator in operators:
-            proposals = operator.propose(chain[target].smiles, rng, 2)
+            proposals = operator.propose(chain[target].smiles, rng, 2, allowed)
             if not proposals:
                 continue
             for smiles in proposals:
@@ -292,7 +310,9 @@ class EvolutionaryExplorer(Explorer):
         updated = polymer.model_copy(update={"monomers": monomers})
         return parent.model_copy(update={"polymer": updated, "results": None, "label": ""})
 
-    def _mutate_mixture(self, parent: Candidate, rng: random.Random) -> list[Candidate]:
+    def _mutate_mixture(
+        self, parent: Candidate, rng: random.Random, allowed: frozenset[str] | None = None
+    ) -> list[Candidate]:
         """Perturb composition or swap a component.
 
         Fractions are renormalised to sum to one because MixtureSpec validates
@@ -326,7 +346,7 @@ class EvolutionaryExplorer(Explorer):
             operators = list(self.config.operators)
             rng.shuffle(operators)
             for operator in operators:
-                proposals = operator.propose(component.molecule.smiles, rng, 1)
+                proposals = operator.propose(component.molecule.smiles, rng, 1, allowed)
                 if proposals:
                     swapped = list(components)
                     swapped[index] = component.model_copy(

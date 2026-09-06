@@ -80,6 +80,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="rank on predicted values rather than on uncertainty-adjusted ones",
     )
+    run.add_argument(
+        "--rounds",
+        type=int,
+        default=0,
+        help=(
+            "search iteratively for this many rounds after the seeding round. "
+            "Evolutionary search only contributes when scores are fed back, so "
+            "it does nothing at the default of 0"
+        ),
+    )
+    run.add_argument("--batch", type=int, default=25, help="new candidates proposed per round")
+    run.add_argument(
+        "--max-evaluations", type=int, default=None, help="ceiling on candidates evaluated"
+    )
     run.add_argument("--save", metavar="DIR", help="write the run record to this directory")
     run.add_argument("--json", action="store_true", help="emit the run record instead of a report")
 
@@ -118,12 +132,29 @@ def _cmd_run(args: argparse.Namespace) -> int:
         pool_size=args.pool,
         top_k=args.top,
     )
-    run = DeterministicCoordinator(config=config).run(spec)
+
+    if args.rounds > 0:
+        from formulate.coordination import IterationConfig, default_iterative_coordinator
+
+        coordinator = default_iterative_coordinator(
+            config,
+            IterationConfig(
+                max_rounds=args.rounds,
+                batch_size=args.batch,
+                max_evaluations=args.max_evaluations,
+            ),
+        )
+        iterative = coordinator.run_iterative(spec)
+        run = iterative.final
+        rendered = iterative.report(top_k=args.top)
+    else:
+        run = DeterministicCoordinator(config=config).run(spec)
+        rendered = run.report(top_k=args.top)
 
     if args.json:
         print(json.dumps(EvidenceStore(".").record(run), indent=2))
     else:
-        print(run.report(top_k=args.top))
+        print(rendered)
 
     if args.save:
         written = EvidenceStore(args.save).write(run)

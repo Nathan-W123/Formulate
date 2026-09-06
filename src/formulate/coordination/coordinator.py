@@ -105,6 +105,7 @@ class DeterministicCoordinator:
         check evaluates a fixed known set rather than a proposed one.
         """
         proposed = list(candidates) if candidates is not None else self._explore(spec)
+
         proposed = dedupe(proposed)
 
         filter_report = CandidateFilter(spec.structural).apply(proposed)
@@ -141,21 +142,57 @@ class DeterministicCoordinator:
             evaluated=len(scored),
         )
 
-    def _explore(self, spec: TargetSpec) -> list[Candidate]:
+    def _explore(
+        self,
+        spec: TargetSpec,
+        scored: Sequence[Candidate] = (),
+        seed: int | None = None,
+        budget: int | None = None,
+    ) -> list[Candidate]:
         """Draw candidates from every explorer and merge into one pool.
 
         Section 3: "Multiple search strategies operate in parallel and merge
         into one deduplicated candidate pool."
+
+        ``scored`` must contain candidates that have actually been evaluated.
+        Passing the pool being accumulated in this very call would be a lie: at
+        that moment none of it carries results, so a population-based explorer
+        would find no parents and silently contribute nothing. Feeding real
+        scores back is the iterate loop's job (section 3, "Iteration"), which
+        is why this takes them as an argument rather than inventing them.
         """
-        budget = self.config.pool_size
+        budget = self.config.pool_size if budget is None else budget
+        already = list(scored)
+        usable = [e for e in self.explorers if e.is_available()]
+        if not usable or budget <= 0:
+            return []
+
+        effective_seed = self.config.seed if seed is None else seed
         pool: list[Candidate] = []
-        for explorer in self.explorers:
-            if not explorer.is_available():
-                continue
+
+        # Split the budget between strategies rather than serving them in order.
+        # First-come-first-served let whichever explorer ran first consume the
+        # whole allocation: with retrieval ahead of evolution, evolution
+        # contributed nothing for as long as the database had unseen compounds
+        # left. Section 3 wants the strategies running in parallel and budget
+        # reserved for distinct regions, which a fair share is the minimum
+        # expression of.
+        share = max(1, budget // len(usable))
+        for explorer in usable:
+            room = min(share, budget - len(pool))
+            if room <= 0:
+                break
+            pool.extend(
+                explorer.propose(spec, room, scored=already + pool, seed=effective_seed)
+            )
+
+        # Redistribute whatever the first pass left unspent, since an explorer
+        # that has exhausted its source should not strand the budget.
+        for explorer in usable:
             remaining = budget - len(pool)
             if remaining <= 0:
                 break
             pool.extend(
-                explorer.propose(spec, remaining, scored=pool, seed=self.config.seed)
+                explorer.propose(spec, remaining, scored=already + pool, seed=effective_seed)
             )
         return pool

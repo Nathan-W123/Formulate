@@ -75,8 +75,21 @@ class MutationOperator(abc.ABC):
     id: str = "operator"
 
     @abc.abstractmethod
-    def propose(self, smiles: str, rng: random.Random, limit: int) -> list[str]:
-        """Return up to ``limit`` variant SMILES, possibly empty."""
+    def propose(
+        self,
+        smiles: str,
+        rng: random.Random,
+        limit: int,
+        allowed_elements: frozenset[str] | None = None,
+    ) -> list[str]:
+        """Return up to ``limit`` variant SMILES, possibly empty.
+
+        ``allowed_elements`` is a *bias*, not a rule. An operator that can
+        cheaply avoid introducing an element the target forbids should do so,
+        because proposing candidates the filter is certain to reject wastes
+        the generation budget. CandidateFilter remains the only authority on
+        whether a structure is admissible.
+        """
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<{type(self).__name__} {self.id}>"
@@ -87,7 +100,13 @@ class AtomSubstitution(MutationOperator):
 
     id = "atom_substitution"
 
-    def propose(self, smiles: str, rng: random.Random, limit: int) -> list[str]:
+    def propose(
+        self,
+        smiles: str,
+        rng: random.Random,
+        limit: int,
+        allowed_elements: frozenset[str] | None = None,
+    ) -> list[str]:
         from rdkit import Chem
 
         mol = Chem.MolFromSmiles(smiles)
@@ -102,7 +121,10 @@ class AtomSubstitution(MutationOperator):
         out: list[str] = []
         for idx in sites:
             symbol = mol.GetAtomWithIdx(idx).GetSymbol()
-            for replacement in _shuffled(_ELEMENT_SWAPS[symbol], rng):
+            options = _ELEMENT_SWAPS[symbol]
+            if allowed_elements:
+                options = tuple(e for e in options if e in allowed_elements)
+            for replacement in _shuffled(options, rng):
                 edit = Chem.RWMol(mol)
                 atom = edit.GetAtomWithIdx(idx)
                 atom.SetAtomicNum(_ATOMIC_NUMBERS[replacement])
@@ -124,7 +146,13 @@ class FragmentAppend(MutationOperator):
     def __init__(self, fragments: Sequence[str] = _FRAGMENTS) -> None:
         self.fragments = tuple(fragments)
 
-    def propose(self, smiles: str, rng: random.Random, limit: int) -> list[str]:
+    def propose(
+        self,
+        smiles: str,
+        rng: random.Random,
+        limit: int,
+        allowed_elements: frozenset[str] | None = None,
+    ) -> list[str]:
         from rdkit import Chem
 
         mol = Chem.MolFromSmiles(smiles)
@@ -139,6 +167,8 @@ class FragmentAppend(MutationOperator):
             for fragment_smiles in _shuffled(self.fragments, rng):
                 fragment = Chem.MolFromSmiles(fragment_smiles)
                 if fragment is None:
+                    continue
+                if allowed_elements and not _elements_of(fragment) <= allowed_elements:
                     continue
                 combined = Chem.RWMol(Chem.CombineMols(mol, fragment))
                 try:
@@ -158,7 +188,13 @@ class AtomDeletion(MutationOperator):
 
     id = "atom_deletion"
 
-    def propose(self, smiles: str, rng: random.Random, limit: int) -> list[str]:
+    def propose(
+        self,
+        smiles: str,
+        rng: random.Random,
+        limit: int,
+        allowed_elements: frozenset[str] | None = None,
+    ) -> list[str]:
         from rdkit import Chem
 
         mol = Chem.MolFromSmiles(smiles)
@@ -183,7 +219,13 @@ class BondOrderChange(MutationOperator):
 
     id = "bond_order_change"
 
-    def propose(self, smiles: str, rng: random.Random, limit: int) -> list[str]:
+    def propose(
+        self,
+        smiles: str,
+        rng: random.Random,
+        limit: int,
+        allowed_elements: frozenset[str] | None = None,
+    ) -> list[str]:
         from rdkit import Chem
 
         mol = Chem.MolFromSmiles(smiles)
@@ -223,7 +265,13 @@ class RingFusion(MutationOperator):
 
     id = "ring_closure"
 
-    def propose(self, smiles: str, rng: random.Random, limit: int) -> list[str]:
+    def propose(
+        self,
+        smiles: str,
+        rng: random.Random,
+        limit: int,
+        allowed_elements: frozenset[str] | None = None,
+    ) -> list[str]:
         from rdkit import Chem
         from rdkit.Chem import rdmolops
 
@@ -333,6 +381,10 @@ def brics_crossover(
     if len(harvested) <= limit:
         return harvested
     return [harvested[i] for i in sorted(rng.sample(range(len(harvested)), limit))]
+
+
+def _elements_of(mol) -> frozenset[str]:
+    return frozenset(a.GetSymbol() for a in mol.GetAtoms())
 
 
 def _shuffled(items: Sequence[str], rng: random.Random) -> list[str]:
