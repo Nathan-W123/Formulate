@@ -39,6 +39,13 @@ _CANONICAL_BY_DIMENSIONALITY: Final[dict[str, str]] = {
     "[mass] / [substance]": "kilogram / mole",
     "[mass] / [time] ** 2": "newton / meter",
     "[mass] ** 0.5 / [length] ** 0.5 / [time]": "pascal ** 0.5",
+    # Bare energy appears only for orbital-energy differences, where the
+    # electronvolt is the universal convention; joules would report a gap as
+    # 1e-19 and help nobody.
+    "[mass] * [length] ** 2 / [time] ** 2": "electron_volt",
+    "[mass] / [length] / [time]": "pascal * second",
+    # Likewise the debye for dipole moments; the SI coulomb-metre is ~1e-30.
+    "[length] * [time] * [current]": "debye",
     "dimensionless": DIMENSIONLESS,
 }
 

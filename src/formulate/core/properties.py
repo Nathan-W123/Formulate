@@ -73,6 +73,8 @@ _C = PropertyFamily.CHEMICAL
 _I = PropertyFamily.INTERFACIAL
 _F = PropertyFamily.FEASIBILITY
 _S = PropertyFamily.STRUCTURAL
+_E = PropertyFamily.ELECTRICAL
+_M = PropertyFamily.MECHANICAL
 
 #: The properties Phase 1 can predict, plus structural descriptors used by
 #: filters and diversity selection.  Phases 3-4 extend this with mechanical,
@@ -165,6 +167,96 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
         _p("topological_polar_surface_area", "angstrom^2", _S, "TPSA.", bounds=(0.0, None)),
         _p("aromatic_atom_fraction", "", _S, "Fraction of heavy atoms that are aromatic.",
            bounds=(0.0, 1.0)),
+        # --- Quantum-derived observables (specification section 7 outputs). ---
+        # Registered so a target can request them and so the coordinator can
+        # route them to QM; a property with no expert is reported as uncovered
+        # rather than silently omitted.
+        _p(
+            "electronic_energy",
+            "J/mol",
+            _E,
+            "Total electronic energy. Only differences between consistent "
+            "calculations are meaningful; the absolute value is method-dependent.",
+        ),
+        _p(
+            "homo_lumo_gap",
+            "eV",
+            _E,
+            "Frontier orbital energy gap. An orbital-energy difference, not an "
+            "optical or fundamental gap.",
+            bounds=(0.0, None),
+        ),
+        _p("dipole_moment", "debye", _E, "Electric dipole moment.", bounds=(0.0, None)),
+        _p(
+            "interaction_energy",
+            "J/mol",
+            _C,
+            "Binding energy of an assembly relative to its separated parts.",
+            condition_dependent=True,
+        ),
+        _p(
+            "atomization_energy",
+            "J/mol",
+            _C,
+            "Energy to separate a molecule into free atoms.",
+        ),
+        # --- Dynamics-derived observables (specification section 6 workflows). ---
+        _p(
+            "self_diffusion_coefficient",
+            "m^2/s",
+            _I,
+            "Self-diffusion coefficient from the Einstein relation.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "shear_viscosity",
+            "Pa*s",
+            _I,
+            "Shear viscosity.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "cohesive_energy_density",
+            "J/m^3",
+            _I,
+            "Cohesive energy per unit volume; the square of the Hildebrand parameter.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "work_of_separation",
+            "J/m^2",
+            _I,
+            "Reversible work to separate an interface into two free surfaces.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "radius_of_gyration",
+            "angstrom",
+            _S,
+            "Mass-weighted radius of gyration, averaged over a conformational ensemble.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        # --- Bulk properties requiring condensed-phase models (Phase 4). ---
+        _p(
+            "glass_transition_temperature",
+            "K",
+            _T,
+            "Glass transition temperature.",
+            bounds=(0.0, None),
+        ),
+        _p(
+            "youngs_modulus", "Pa", _M, "Tensile elastic modulus.",
+            condition_dependent=True, bounds=(0.0, None),
+        ),
+        _p(
+            "bulk_modulus", "Pa", _M, "Isothermal bulk modulus.",
+            condition_dependent=True, bounds=(0.0, None),
+        ),
     ]
 }
 
