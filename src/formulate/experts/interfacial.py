@@ -32,13 +32,47 @@ from .base import Expert, PredictionRequest
 
 R_GAS = 8.31446261815324  # J/(mol K)
 
-#: Correlation error, as a fraction of the value, on *measured* inputs.
+#: Correlation error, as a fraction of the value, on *measured* inputs, for a
+#: normal (non-associating) fluid.
 _METHOD_RELATIVE_ERROR = {
     "molar_volume_liquid": 0.05,
     "liquid_density": 0.05,
     "surface_tension": 0.10,
     "hildebrand_solubility_parameter": 0.07,
 }
+
+#: Multiplier on the correlation error for hydrogen-bonding liquids, indexed by
+#: hydrogen-bond donor count (capped at 2).
+#:
+#: Corresponding-states correlations assume the only intermolecular forces are
+#: dispersion and dipolar. Hydrogen bonding breaks that assumption, and the
+#: error grows sharply with the number of donors. Measured against the bundled
+#: reference compounds, surface tension carries a mean absolute error of
+#: 2.0 mN/m at zero donors, 9.9 at one and 21-53 at two or three; liquid
+#: density runs 4% / 10% / 18% over the same groups. Reporting one fixed error
+#: bar across all three groups would be overconfident for alcohols and acids,
+#: which is precisely the failure section 12 asks the system to detect.
+#:
+#: The multipliers are chosen so that the fraction of reference compounds
+#: falling inside their own stated one-sigma bound lands near the ~68% a
+#: correct estimate implies, erring slightly wide rather than slightly narrow.
+_ASSOCIATION_FACTOR: dict[str, dict[int, float]] = {
+    "surface_tension": {0: 1.0, 1: 2.5, 2: 4.5},
+    "hildebrand_solubility_parameter": {0: 1.0, 1: 3.0, 2: 4.0},
+    "liquid_density": {0: 1.0, 1: 2.5, 2: 3.5},
+    "molar_volume_liquid": {0: 1.0, 1: 2.5, 2: 3.5},
+}
+
+
+def _hbd_count(smiles: str) -> int:
+    from formulate import chem
+
+    return int(chem.descriptors(smiles).get("hbd", 0.0))
+
+
+def association_factor(prop: str, hbd: int) -> float:
+    """Error multiplier for ``prop`` given a hydrogen-bond donor count."""
+    return _ASSOCIATION_FACTOR[prop][min(hbd, 2)]
 
 _DEPENDENCY_UNITS = {
     "critical_temperature": "K",
@@ -176,14 +210,16 @@ class InterfacialCorrelationExpert(Expert):
         # Brock-Bird and Rackett are corresponding-states correlations. They
         # were developed for normal fluids; strongly hydrogen-bonding liquids
         # (alcohols, acids, water, amides) deviate systematically.
-        hbd = descriptors.get("hbd", 0.0)
+        hbd = int(descriptors.get("hbd", 0.0))
         if hbd >= 1:
             warnings.append(
-                f"{hbd:.0f} hydrogen-bond donor(s): corresponding-states correlations are "
+                f"{hbd} hydrogen-bond donor(s): corresponding-states correlations are "
                 "developed for normal fluids and deviate systematically for strongly "
-                "associating liquids such as alcohols, acids and amides"
+                "associating liquids such as alcohols, acids and amides. Against the "
+                "reference set, surface tension errs by about 10 mN/m at one donor and "
+                "20-50 mN/m at two or more"
             )
-            score = min(score, 0.5 if hbd == 1 else 0.35)
+            score = min(score, 0.5 if hbd == 1 else 0.2)
 
         if descriptors.get("formal_charge", 0.0):
             return ApplicabilityDomain.outside(
@@ -236,7 +272,11 @@ class InterfacialCorrelationExpert(Expert):
         except (ValueError, ZeroDivisionError, OverflowError) as exc:
             return Prediction.failed(prop, self.id, f"correlation failed: {exc}")
 
-        method_std = abs(value) * _METHOD_RELATIVE_ERROR[prop]
+        smiles = request.candidate.molecule.smiles  # type: ignore[union-attr]
+        hbd = _hbd_count(smiles)
+        factor = association_factor(prop, hbd)
+        relative = _METHOD_RELATIVE_ERROR[prop] * factor
+        method_std = abs(value) * relative
         total = math.hypot(method_std, propagated)
 
         dominant = "propagated input error" if propagated > method_std else "correlation error"
@@ -249,11 +289,16 @@ class InterfacialCorrelationExpert(Expert):
             std=total,
             kind=UncertaintyKind.COMBINED,
             basis=(
-                f"correlation error {_METHOD_RELATIVE_ERROR[prop]:.0%} on measured inputs "
-                f"({method_std:.4g}) combined in quadrature with {propagated:.4g} propagated "
-                f"from the estimated critical constants; {dominant} dominates. Inputs are "
-                "treated as independent, which understates the spread when several come "
-                "from the same group-contribution fit"
+                f"correlation error {relative:.0%} on measured inputs ({method_std:.4g}), "
+                + (
+                    f"widened {factor:.1f}x for {hbd} hydrogen-bond donor(s), "
+                    if factor > 1.0
+                    else ""
+                )
+                + f"combined in quadrature with {propagated:.4g} propagated from the "
+                f"estimated critical constants; {dominant} dominates. Inputs are treated "
+                "as independent, which understates the spread when several come from the "
+                "same group-contribution fit"
             ),
             notes=(
                 f"derived from upstream estimates of {', '.join(sorted(inputs))}, "

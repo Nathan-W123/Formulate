@@ -1,0 +1,46 @@
+# A Formulate target specification.
+#
+# Every requirement states a property, a direction, and the bounds that define
+# where desirability reaches 0 and 1. Quantities may be written as bare numbers
+# (read in the property's canonical unit) or as "value unit" strings.
+name: low-VOC coating solvent
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+
+material_classes: [molecule]
+
+structural:
+  allowed_elements: [C, H, O]
+  allow_charged: false
+  max_heavy_atoms: 20
+
+requirements:
+  # A hard requirement eliminates a candidate that breaches it.
+  - property: normal_boiling_point
+    direction: in_range
+    lower: 140 degC
+    upper: 200 degC
+    hard: true
+    rationale: slow enough to level, fast enough to cure
+
+  - property: surface_tension
+    direction: minimize
+    lower: 0.020 N/m
+    upper: 0.035 N/m
+    weight: 2.0
+    rationale: wetting of a low-energy substrate
+
+  - property: synthetic_accessibility
+    direction: minimize
+    lower: 1
+    upper: 5
+
+# Anything the request did not say, that the system had to decide, belongs here.
+assumptions:
+  - statement: >-
+      Low-VOC was read as a boiling-point window rather than a regulatory
+      VOC definition.
+    source: inferred
+    made_by: operator
