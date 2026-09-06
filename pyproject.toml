@@ -34,7 +34,8 @@ formulate = ["data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-filterwarnings = ["ignore::DeprecationWarning"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+markers = ["slow: runs real molecular dynamics and takes tens of seconds"]
 
 [tool.ruff]
 line-length = 100

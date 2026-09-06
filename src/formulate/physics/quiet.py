@@ -14,10 +14,33 @@ exactly the output we are suppressing.
 from __future__ import annotations
 
 import contextlib
+import ctypes
+import ctypes.util
 import os
 import sys
 import tempfile
 from typing import Iterator
+
+
+def _flush_native_streams() -> None:
+    """Flush the C runtime's own buffers.
+
+    Restoring the file descriptor is not enough on its own. A Fortran or C
+    library buffers its writes, and whatever is still sitting in that buffer
+    when the descriptor is restored gets flushed afterwards - to the real
+    stdout, typically at process exit, which is how suppressed output
+    reappears at the end of a run. fflush(NULL) empties every stream while the
+    redirect is still in place.
+    """
+    try:
+        libc_name = ctypes.util.find_library("c")
+        if libc_name is None:
+            return
+        ctypes.CDLL(libc_name).fflush(None)
+    except Exception:
+        # Best effort: a platform without a reachable libc simply keeps the
+        # old behaviour rather than failing the calculation.
+        pass
 
 
 @contextlib.contextmanager
@@ -43,6 +66,7 @@ def suppress_native_output(capture: bool = True) -> Iterator[dict[str, str]]:
         finally:
             sys.stdout.flush()
             sys.stderr.flush()
+            _flush_native_streams()
             os.dup2(saved_out, 1)
             os.dup2(saved_err, 2)
             if capture:

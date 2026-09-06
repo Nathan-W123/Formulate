@@ -27,7 +27,7 @@ import abc
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from formulate.core.provenance import ProvenanceRecord
 from formulate.core.quantity import Quantity, Uncertainty

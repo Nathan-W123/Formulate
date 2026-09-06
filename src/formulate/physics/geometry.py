@@ -14,7 +14,7 @@ cannot say which conformer it used cannot be judged.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 
