@@ -323,6 +323,28 @@ class ValidatingCoordinator(IterativeCoordinator):
         rescored, outcomes, desirabilities = score_pool(
             validated, predictions, spec, self.config.evaluation
         )
+
+        # score_pool builds fresh results from the predictions, which drops the
+        # simulation ids the merge recorded. Those ids are the link from a
+        # recommendation back to the calculation supporting it, and losing them
+        # would leave a validated result with no traceable evidence, which is
+        # the reproducibility invariant of section 11.
+        evidence = {
+            candidate.candidate_id: candidate.results.simulation_ids
+            for candidate in validated
+            if candidate.results is not None and candidate.results.simulation_ids
+        }
+        rescored = [
+            candidate.with_results(
+                candidate.results.model_copy(
+                    update={"simulation_ids": evidence[candidate.candidate_id]}
+                )
+            )
+            if candidate.candidate_id in evidence and candidate.results is not None
+            else candidate
+            for candidate in rescored
+        ]
+
         reranked = self.ranker.rank(rescored, spec)
         final = DesignRun(
             spec=spec,
