@@ -88,8 +88,31 @@ class EvidenceStore:
             },
             "candidates": entries,
         }
+        # The record id must identify the *outcome*, so it is hashed over a
+        # projection that excludes wall-clock time. Hashing the full candidate
+        # dumps would fold in provenance timestamps and change on every run,
+        # which would defeat the point of a content address.
         document["record_id"] = content_hash(
-            {k: v for k, v in document.items() if k != "created_at"}, prefix="run"
+            {
+                "target": document["target"],
+                "ranking": document["ranking"],
+                "pipeline": {
+                    k: v
+                    for k, v in document["pipeline"].items()
+                    if k != "unavailable_experts"
+                },
+                "candidates": [
+                    {
+                        "rank": entry["rank"],
+                        "front": entry["front"],
+                        "feasible": entry["feasible"],
+                        "scalar_baseline": entry["scalar_baseline"],
+                        "candidate_id": entry["candidate_id"],
+                    }
+                    for entry in document["candidates"]
+                ],
+            },
+            prefix="run",
         )
         return document
 
