@@ -25,11 +25,14 @@ experts report themselves unavailable rather than crashing.
 ## Quick start
 
 ```bash
-formulate example > solvent.yaml     # a commented specification to edit
-formulate run solvent.yaml --top 5   # search, rank and report
-formulate experts                    # what the panel can predict
-formulate properties                 # the canonical property registry
-formulate calibrate                  # accuracy and uncertainty vs. reference data
+formulate example > solvent.yaml            # a commented specification to edit
+formulate run solvent.yaml --top 5          # search, rank and report
+formulate run solvent.yaml --rounds 5       # iterative search with evolution
+formulate run solvent.yaml --validate 3     # add selective QM/MD validation
+formulate experts                           # what the panel can predict
+formulate properties                        # the canonical property registry
+formulate physics                           # which QM/MD backends are usable here
+formulate calibrate                         # accuracy and uncertainty vs. reference data
 ```
 
 A specification states what you want, in units:
@@ -82,8 +85,9 @@ and the reasoning layer explains. No module silently substitutes for another.
 | `experts` | model-agnostic property prediction with declared dependencies and applicability domains |
 | `evaluation` | expert dispatch, dimensional and condition validation, raw values to dimensionless utilities |
 | `ranking` | constraints, Pareto frontier, hypervolume, structural diversity, scalar baseline |
-| `exploration` | candidate generation and cheap validity filters |
-| `coordination` | the deterministic pipeline, infeasibility diagnosis, reporting |
+| `exploration` | candidate generation (retrieval, evolution) and cheap validity filters |
+| `physics` | quantum and molecular-dynamics validation behind established packages |
+| `coordination` | the pipeline, the iterate loop, selective validation, reporting |
 | `store` | content-addressed prediction cache and the evidence store |
 
 ### Four rules that shape the code
@@ -107,10 +111,23 @@ which constraint eliminated what, which single relaxation would admit
 candidates, how far the nearest miss is, and which constraints were never
 satisfied together.
 
+**Physics refuses what it cannot support.** A bulk density needs a periodic
+condensed phase, and on this installation no potential can provide one at the
+required size. Rather than returning a number from eight molecules with a wide
+error bar — the error is systematic, so the error bar would not rescue it —
+the run refuses and estimates what an adequate calculation would cost.
+
 ## What is implemented
 
-Phase 1 of the specification's MVP sequence — the evaluator — end to end, with
-the interfaces the later phases plug into. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Phase 1 (the evaluator) and Phase 2 (inverse search) complete, and most of
+Phase 3 (physics validation). See [docs/ROADMAP.md](docs/ROADMAP.md) for what
+is deliberately not built and why.
+
+Search iterates: retrieval seeds a population, evolution mutates and
+recombines it, and scores feed back each round. Physics validation then spends
+a bounded budget on the few candidate-property pairs where uncertainty could
+still reorder the ranking, and refuses any property quantum chemistry or
+molecular dynamics cannot legitimately produce.
 
 The expert panel spans four families, reusing published open implementations:
 

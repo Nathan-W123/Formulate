@@ -94,12 +94,32 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--max-evaluations", type=int, default=None, help="ceiling on candidates evaluated"
     )
+    run.add_argument(
+        "--validate",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "after searching, spend quantum or dynamics calculations on the N most "
+            "informative candidate-property pairs and re-rank on the result. Only "
+            "properties physics can legitimately produce are eligible"
+        ),
+    )
+    run.add_argument(
+        "--validate-seconds",
+        type=float,
+        default=600.0,
+        help="wall-clock ceiling for the validation stage",
+    )
     run.add_argument("--save", metavar="DIR", help="write the run record to this directory")
     run.add_argument("--json", action="store_true", help="emit the run record instead of a report")
 
     subparsers.add_parser("experts", help="list registered experts and their coverage")
     subparsers.add_parser("properties", help="list the canonical property registry")
     subparsers.add_parser("example", help="print an example target specification")
+    subparsers.add_parser(
+        "physics", help="report which quantum and dynamics backends are usable here"
+    )
 
     calibrate = subparsers.add_parser(
         "calibrate", help="check expert accuracy and uncertainty against reference compounds"
@@ -133,7 +153,28 @@ def _cmd_run(args: argparse.Namespace) -> int:
         top_k=args.top,
     )
 
-    if args.rounds > 0:
+    if args.validate > 0:
+        from formulate.coordination import (
+            IterationConfig,
+            ValidationPolicy,
+            default_validating_coordinator,
+        )
+
+        coordinator = default_validating_coordinator(
+            config,
+            IterationConfig(
+                max_rounds=max(0, args.rounds),
+                batch_size=args.batch,
+                max_evaluations=args.max_evaluations,
+            ),
+            ValidationPolicy(
+                max_candidates=args.validate, max_seconds=args.validate_seconds
+            ),
+        )
+        validated = coordinator.run_validated(spec)
+        run = validated.final
+        rendered = validated.report(top_k=args.top)
+    elif args.rounds > 0:
         from formulate.coordination import IterationConfig, default_iterative_coordinator
 
         coordinator = default_iterative_coordinator(
@@ -193,6 +234,23 @@ def _cmd_example(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_physics(_: argparse.Namespace) -> int:
+    from formulate.physics import describe as describe_backends
+    from formulate.physics.md import REQUIREMENTS
+
+    print(describe_backends())
+    print()
+    print("What each dynamics protocol needs before its output means anything:")
+    for protocol, requirement in REQUIREMENTS.items():
+        periodic = "a periodic cell" if requirement.needs_periodic else "no periodic cell"
+        print(
+            f"  {protocol.value:24s} {periodic}, at least {requirement.min_molecules} "
+            f"molecules, {requirement.min_production_ps:.0f} ps"
+        )
+        print(f"      {requirement.rationale}")
+    return 0
+
+
 def _cmd_calibrate(args: argparse.Namespace) -> int:
     from formulate.evaluation.calibration import calibrate, describe
     from formulate.experts import default_registry
@@ -228,6 +286,7 @@ _COMMANDS = {
     "experts": _cmd_experts,
     "properties": _cmd_properties,
     "example": _cmd_example,
+    "physics": _cmd_physics,
     "calibrate": _cmd_calibrate,
 }
 

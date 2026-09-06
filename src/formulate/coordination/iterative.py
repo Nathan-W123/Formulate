@@ -26,8 +26,10 @@ from formulate.core.candidate import Candidate, dedupe
 from formulate.targets.spec import TargetSpec
 
 from .coordinator import DesignRun, DeterministicCoordinator, RunConfig
+from .feasibility import analyze
 from .metrics import RoundRecord, SearchMetrics, top_k_recall
 from .report import render_report
+from .validation import ValidationReport
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,4 +247,124 @@ def default_iterative_coordinator(
         explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer()],
         config=config or RunConfig(),
         iteration=iteration,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Physics-validated runs (specification section 9, stages 8 and 9)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ValidatedRun:
+    """A search whose leading candidates were checked against physics."""
+
+    search: IterativeRun
+    validation: "ValidationReport"
+    #: The ranking after validated results were merged back in.
+    final: DesignRun
+
+    def report(self, top_k: int = 5) -> str:
+        rule = "-" * 72
+        return "\n".join(
+            [
+                render_report(self.final, top_k=top_k),
+                "",
+                rule,
+                "SEARCH",
+                rule,
+                "",
+                self.search.metrics.describe(),
+                "",
+                rule,
+                "PHYSICS VALIDATION",
+                rule,
+                "",
+                self.validation.describe(),
+            ]
+        )
+
+
+class ValidatingCoordinator(IterativeCoordinator):
+    """Search, then spend a physics budget on the candidates worth checking.
+
+    Section 9 puts validation after ranking for a reason: which candidates
+    deserve expensive physics is a question only the ranking can answer, and
+    running QM on everything would spend the entire budget confirming
+    candidates that were never in contention.
+    """
+
+    def __init__(self, *args, validation=None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        from .validation import PhysicsValidator, ValidationPolicy
+
+        self.validation_policy = validation or ValidationPolicy()
+        self._validator = PhysicsValidator(self.validation_policy)
+
+    def run_validated(
+        self, spec: TargetSpec, seed_candidates: Sequence[Candidate] | None = None
+    ) -> ValidatedRun:
+        search = self.run_iterative(spec, seed_candidates=seed_candidates)
+        ranked = [entry.candidate for entry in search.final.ranking.ranked]
+
+        validated, report = self._validator.validate(ranked, spec)
+
+        # Re-score before re-ranking. Merging a validated value into the
+        # prediction list is not enough on its own: the objective vector is
+        # computed from predictions, so a property that no expert could supply
+        # would still score zero and the physics would change nothing. Section
+        # 9 stage 9 asks for the predictions to be augmented AND the ranking
+        # recomputed, and this is where the first turns into the second.
+        from formulate.evaluation.scoring import score_pool
+
+        predictions = [
+            list(c.results.predictions) if c.results is not None else [] for c in validated
+        ]
+        rescored, outcomes, desirabilities = score_pool(
+            validated, predictions, spec, self.config.evaluation
+        )
+        reranked = self.ranker.rank(rescored, spec)
+        final = DesignRun(
+            spec=spec,
+            ranking=reranked,
+            dispatch=search.final.dispatch,
+            filters=search.final.filters,
+            feasibility=analyze(rescored, spec),
+            outcomes={
+                candidate.candidate_id: outcome
+                for candidate, outcome in zip(rescored, outcomes)
+            },
+            desirabilities=desirabilities,
+            proposed=search.final.proposed,
+            evaluated=search.final.evaluated,
+        )
+        report.rank_changes = _rank_movement(search.final, final)
+        return ValidatedRun(search=search, validation=report, final=final)
+
+
+def _rank_movement(before: DesignRun, after: DesignRun) -> dict[str, tuple[int, int]]:
+    """Which candidates changed position once physics was folded in."""
+    previous = {entry.candidate.candidate_id: entry.rank for entry in before.ranking.ranked}
+    changes: dict[str, tuple[int, int]] = {}
+    for entry in after.ranking.ranked:
+        was = previous.get(entry.candidate.candidate_id)
+        if was is not None and was != entry.rank:
+            changes[entry.candidate.candidate_id] = (was, entry.rank)
+    return changes
+
+
+def default_validating_coordinator(
+    config: RunConfig | None = None,
+    iteration: IterationConfig | None = None,
+    validation=None,
+) -> "ValidatingCoordinator":
+    """Retrieval plus evolution, followed by a bounded physics validation stage."""
+    from formulate.exploration.database import ReferenceDatabaseExplorer
+    from formulate.exploration.evolutionary import EvolutionaryExplorer
+
+    return ValidatingCoordinator(
+        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer()],
+        config=config or RunConfig(),
+        iteration=iteration,
+        validation=validation,
     )
