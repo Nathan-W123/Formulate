@@ -96,6 +96,67 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
     "self_diffusion": 5400.0,
 }
 
+#: Measured systematic error of each force field in the condensed phase, as a
+#: fraction of the value, per protocol.
+#:
+#: This exists because the sampling error these protocols report is not the
+#: error. A block average over a hundred picoseconds puts a few parts in a
+#: thousand on a density; the force field puts twenty-six per cent on the same
+#: number. Quoting only the first tells the ranker a wrong value is a certain
+#: one, and the calibration suite exists to catch exactly that.
+#:
+#: Both rows are measured against experiment at 298 K, not assumed. OPLS-AA:
+#: five liquids (ethanol, acetone, toluene, cyclohexane, hexane), mean absolute
+#: error 1.2 per cent on density and 3.7 per cent on the energy of
+#: vaporisation. MMFF94: one density (ethanol, 26 per cent low) and three
+#: vaporisation energies (toluene 11, ethanol 15, hexane 3 per cent low), so
+#: its density entry rests on a single point and is the weaker number of the
+#: two - it is kept deliberately large rather than refined on no evidence.
+#:
+#: Self-diffusion is absent from both rows because neither was measured for it,
+#: and a coefficient that spans orders of magnitude is not a place to
+#: interpolate a systematic error from a density. Runs of it say so instead.
+CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
+    "opls-aa": {"density": 0.012, "cohesive_energy_density": 0.037},
+    "mmff94": {"density": 0.26, "cohesive_energy_density": 0.15},
+}
+
+
+#: How each force field is named in a prediction's method string.
+_FORCE_FIELD_NAMES = {"opls-aa": "OPLS-AA", "mmff94": "MMFF94"}
+
+#: What a reader of a condensed-phase prediction needs to know about the force
+#: field that produced it. Each figure here was measured against experiment.
+_CONDENSED_NOTES: dict[str, tuple[str, ...]] = {
+    "opls-aa": (
+        "OPLS-AA types assigned from foyer's SMARTS definitions; the charges come "
+        "from the type table rather than from a quantum calculation, which is why "
+        "this force field is reachable here at all",
+        "OPLS-AA was fitted to liquids. Against experiment at 298 K over ethanol, "
+        "acetone, toluene, cyclohexane and hexane: density within 1.2 per cent mean "
+        "absolute error, energy of vaporisation within 3.7",
+        "the assigned types were checked to carry zero net charge, which is what "
+        "catches this force field's silent failure on substituted aromatics and "
+        "polychloroalkanes",
+        "electrostatics by particle-mesh Ewald; van der Waals mixed geometrically as "
+        "OPLS-AA requires, truncated at the cutoff with a long-range correction",
+    ),
+    "mmff94": (
+        "MMFF94 parameters taken from RDKit and translated into OpenMM forces; "
+        "the translation reproduces RDKit's own energy to 1e-11 kcal/mol",
+        "MMFF94 was fitted to gas-phase geometries, not to liquids, and "
+        "under-binds a condensed phase. Measured here: potential energy of "
+        "vaporisation 11 per cent low for toluene, 15 per cent for ethanol, "
+        "3 per cent for hexane, and a density 26 per cent low for ethanol. "
+        "Use these to rank candidates, where the bias is shared, not as "
+        "quantitative values",
+        "electrostatics by particle-mesh Ewald, which drops MMFF's 0.05 A "
+        "buffering; van der Waals truncated at the cutoff with a long-range "
+        "correction",
+    ),
+}
+
+
 #: Which molecular-dynamics workflow produces which property.
 #:
 #: Every entry of VALIDATABLE marked DYNAMICS must appear here. Selecting a
@@ -811,6 +872,35 @@ class PhysicsValidator:
             "",
         )
 
+    @staticmethod
+    def _condensed_force_field(mol) -> tuple[str | None, str]:
+        """Pick the force field for a box, and say why if it is the weaker one.
+
+        OPLS-AA is preferred wherever it will type the molecule. Its refusals
+        are worth passing on verbatim: one of them is that the types it found
+        do not carry a neutral molecule's charge, which is a statement about
+        this specific structure rather than a missing feature, and a note
+        saying so is more use than "OPLS-AA was unavailable".
+        """
+        from formulate.physics.md import opls
+        from formulate.physics.md.mmff import extract_parameters
+
+        reason = ""
+        if not opls.available():
+            reason = "OPLS-AA is not installed in this environment"
+        else:
+            refused = opls.refusal(mol)
+            if refused is None:
+                return "opls-aa", ""
+            reason = refused
+
+        if extract_parameters(mol) is None:
+            return None, (
+                f"neither force field can parameterise this structure: {reason}, "
+                "and MMFF94 has no parameters for it either"
+            )
+        return "mmff94", reason
+
     def _run_condensed(self, target: ValidationTarget, spec: TargetSpec):
         """Run a periodic condensed-phase protocol, or say what it would cost.
 
@@ -824,7 +914,7 @@ class PhysicsValidator:
         """
         from formulate import chem
         from formulate.physics.md import condensed
-        from formulate.physics.md.mmff import extract_parameters, openmm_available
+        from formulate.physics.md.mmff import openmm_available
 
         protocol = CONDENSED_PROTOCOLS[target.property]
         cost = CONDENSED_COST_SECONDS[protocol]
@@ -852,8 +942,16 @@ class PhysicsValidator:
             AllChem.MMFFOptimizeMolecule(mol)
         except Exception as exc:
             return None, f"could not build a 3D structure ({type(exc).__name__}: {exc})"
-        if extract_parameters(mol) is None:
-            return None, "MMFF94 has no parameters for this structure"
+        # OPLS-AA first, MMFF94 second, and the difference is not marginal:
+        # over five liquids OPLS-AA lands within 1.2 per cent on density and
+        # 3.7 on the energy of vaporisation, where MMFF94 is 26 per cent low on
+        # ethanol's density. OPLS-AA only types about three quarters of the
+        # reference set, though, so the fallback is what keeps the protocol
+        # answerable at all, and the reason for it is carried through to the
+        # notes rather than dropped.
+        force_field, fallback_reason = self._condensed_force_field(mol)
+        if force_field is None:
+            return None, fallback_reason
 
         temperature = spec.conditions.temperature_k or 298.15
         molecules = self.policy.condensed_molecules
@@ -861,7 +959,8 @@ class PhysicsValidator:
             if protocol == "self_diffusion":
                 density = self.policy.assumed_density
                 result = condensed.run_self_diffusion(
-                    mol, molecules, temperature, density_g_cm3=density
+                    mol, molecules, temperature, density_g_cm3=density,
+                    force_field=force_field,
                 )
                 value = Quantity(value=result.coefficient_m2_s, unit="m^2/s")
                 uncertainty = Uncertainty(
@@ -876,7 +975,9 @@ class PhysicsValidator:
                 diagnostics = result.diagnostics
                 in_domain = abs(result.log_log_slope - 1.0) <= 0.15
             else:
-                liquid = condensed.run_npt(mol, molecules, temperature)
+                liquid = condensed.run_npt(
+                    mol, molecules, temperature, force_field=force_field
+                )
                 if protocol == "density":
                     value = Quantity(value=liquid.density_g_cm3, unit="g/cm^3")
                     uncertainty = Uncertainty(
@@ -887,7 +988,9 @@ class PhysicsValidator:
                     diagnostics = liquid.diagnostics
                     in_domain = not liquid.diagnostics
                 else:
-                    gas, gas_error = condensed.sample_isolated_energy(mol, temperature)
+                    gas, gas_error = condensed.sample_isolated_energy(
+                        mol, temperature, force_field=force_field
+                    )
                     cohesive = condensed.cohesive_energy_density(liquid, gas, gas_error)
                     value = Quantity(value=cohesive.cohesive_energy_density_pa, unit="Pa")
                     uncertainty = Uncertainty(
@@ -904,28 +1007,32 @@ class PhysicsValidator:
         except Exception as exc:  # a failed simulation is a skip, not a crash
             return None, f"the condensed-phase run failed ({type(exc).__name__}: {exc})"
 
+        uncertainty = _widen_for_force_field(uncertainty, value, force_field, protocol)
+        notes = _CONDENSED_NOTES[force_field]
+        if fallback_reason:
+            notes = notes + (
+                f"OPLS-AA would have been the more accurate choice and was not used: "
+                f"{fallback_reason}",
+            )
+        if protocol == "self_diffusion":
+            notes = notes + (
+                "the force field's systematic error on a diffusion coefficient was not "
+                "measured, so the quoted uncertainty is sampling error only and is a "
+                "floor rather than an estimate",
+            )
+
         return (
             physics_prediction(
                 target.property,
                 value,
                 uncertainty,
                 backend="md:openmm",
-                method=f"MMFF94 periodic {protocol}, {molecules} molecules",
+                method=(
+                    f"{_FORCE_FIELD_NAMES[force_field]} periodic {protocol}, "
+                    f"{molecules} molecules"
+                ),
                 conditions=spec.conditions,
-                notes=(
-                    "MMFF94 parameters taken from RDKit and translated into OpenMM forces; "
-                    "the translation reproduces RDKit's own energy to 1e-11 kcal/mol",
-                    "MMFF94 was fitted to gas-phase geometries, not to liquids, and "
-                    "under-binds a condensed phase. Measured here: potential energy of "
-                    "vaporisation 11 per cent low for toluene, 15 per cent for ethanol, "
-                    "3 per cent for hexane, and a density 26 per cent low for ethanol. "
-                    "Use these to rank candidates, where the bias is shared, not as "
-                    "quantitative values",
-                    "electrostatics by particle-mesh Ewald, which drops MMFF's 0.05 A "
-                    "buffering; van der Waals truncated at the cutoff with a long-range "
-                    "correction",
-                )
-                + tuple(diagnostics),
+                notes=notes + tuple(diagnostics),
                 in_domain=in_domain,
                 domain_warnings=tuple(diagnostics),
             ),
@@ -965,6 +1072,36 @@ class PhysicsValidator:
             if previous is not None and previous != index:
                 changes[candidate.candidate_id] = (previous, index)
         return changes
+
+
+def _widen_for_force_field(
+    uncertainty: Uncertainty, value: Quantity, force_field: str, protocol: str
+) -> Uncertainty:
+    """Add the force field's measured systematic error to the sampling error.
+
+    Reporting the sampling error alone is the overconfidence the calibration
+    suite is built to catch. A hundred picoseconds of block averaging puts a
+    few parts in a thousand on an MMFF94 density; the force field puts
+    twenty-six per cent on it. The two are independent, so they add in
+    quadrature, and the basis string names both so the number can be argued
+    with rather than taken on trust.
+    """
+    systematic_fraction = CONDENSED_SYSTEMATIC.get(force_field, {}).get(protocol)
+    if systematic_fraction is None:
+        return uncertainty
+
+    systematic = abs(value.value) * systematic_fraction
+    sampling = uncertainty.std or 0.0
+    return Uncertainty(
+        std=math.hypot(sampling, systematic),
+        kind=UncertaintyKind.EPISTEMIC,
+        basis=(
+            f"{uncertainty.basis}; widened in quadrature by {_FORCE_FIELD_NAMES[force_field]}'s "
+            f"measured {systematic_fraction * 100:.1f} per cent systematic error on this "
+            "observable, which dominates the sampling error and is what the value is "
+            "actually worth"
+        ),
+    )
 
 
 def _quantum_uncertainty(prop: str, value: Quantity) -> Uncertainty:

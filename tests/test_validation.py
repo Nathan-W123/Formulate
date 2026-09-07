@@ -518,3 +518,106 @@ def test_interaction_energy_states_the_two_errors_it_does_not_remove():
     source = inspect.getsource(thermochemistry.interaction_energy)
     assert "superposition" in source
     assert "minim" in source  # the geometry is relaxed, not searched
+
+
+# --------------------------------------------------------------------------
+# Which force field runs a condensed phase, and what its answer is worth
+# --------------------------------------------------------------------------
+
+
+def _embed(smiles):
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
+    AllChem.EmbedMolecule(mol, randomSeed=0xF00D)
+    AllChem.MMFFOptimizeMolecule(mol)
+    return mol
+
+
+@requires_rdkit
+def test_a_liquid_fitted_force_field_is_preferred_where_it_types_the_molecule():
+    from formulate.coordination.validation import PhysicsValidator
+    from formulate.physics.md import opls
+
+    if not opls.available():
+        pytest.skip("foyer/OPLS-AA is not installed")
+    field, reason = PhysicsValidator._condensed_force_field(_embed("CCO"))
+    assert field == "opls-aa"
+    assert reason == ""
+
+
+@requires_rdkit
+def test_falling_back_to_mmff94_carries_the_reason_it_fell_back():
+    """"OPLS-AA was unavailable" would be true and useless.
+
+    Chloroform is refused because the types OPLS-AA assigns it do not add up to
+    a neutral molecule, which is a fact about this structure. Whoever reads the
+    prediction should see that rather than a generic unavailability.
+    """
+    from formulate.coordination.validation import PhysicsValidator
+    from formulate.physics.md import opls
+
+    if not opls.available():
+        pytest.skip("foyer/OPLS-AA is not installed")
+    field, reason = PhysicsValidator._condensed_force_field(_embed("ClC(Cl)Cl"))
+    assert field == "mmff94"
+    assert "net charge" in reason
+
+
+@pytest.mark.parametrize(
+    ("force_field", "protocol", "fraction"),
+    [
+        ("opls-aa", "density", 0.012),
+        ("mmff94", "density", 0.26),
+        ("opls-aa", "cohesive_energy_density", 0.037),
+        ("mmff94", "cohesive_energy_density", 0.15),
+    ],
+)
+def test_the_force_fields_measured_error_dominates_the_sampling_error(
+    force_field, protocol, fraction
+):
+    """A block average says a wrong density is a certain one unless this runs."""
+    from formulate.coordination.validation import _widen_for_force_field
+
+    value = Quantity(value=0.8, unit="g/cm^3")
+    sampling = Uncertainty(std=0.002, kind=UncertaintyKind.SAMPLING, basis="block average")
+
+    widened = _widen_for_force_field(sampling, value, force_field, protocol)
+    assert widened.std == pytest.approx((0.002**2 + (0.8 * fraction) ** 2) ** 0.5)
+    assert widened.std > sampling.std
+    assert widened.kind is UncertaintyKind.EPISTEMIC
+    assert "block average" in widened.basis
+    assert f"{fraction * 100:.1f} per cent" in widened.basis
+
+
+def test_an_unmeasured_systematic_error_is_not_invented():
+    """Self-diffusion spans orders of magnitude and was never measured here.
+
+    Interpolating a systematic error for it from a density would be a made-up
+    number wearing the same units as a measured one.
+    """
+    from formulate.coordination.validation import (
+        CONDENSED_SYSTEMATIC,
+        _widen_for_force_field,
+    )
+
+    for row in CONDENSED_SYSTEMATIC.values():
+        assert "self_diffusion" not in row
+
+    sampling = Uncertainty(std=1e-11, kind=UncertaintyKind.SAMPLING, basis="fit error")
+    unchanged = _widen_for_force_field(
+        sampling, Quantity(value=2e-9, unit="m^2/s"), "opls-aa", "self_diffusion"
+    )
+    assert unchanged is sampling
+
+
+def test_the_liquid_fitted_force_field_claims_a_tighter_error_than_the_gas_fitted_one():
+    """The whole point of the switch, asserted rather than assumed."""
+    from formulate.coordination.validation import CONDENSED_SYSTEMATIC
+
+    for protocol in ("density", "cohesive_energy_density"):
+        assert (
+            CONDENSED_SYSTEMATIC["opls-aa"][protocol]
+            < CONDENSED_SYSTEMATIC["mmff94"][protocol]
+        )
