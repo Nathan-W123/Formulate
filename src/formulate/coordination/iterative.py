@@ -246,9 +246,15 @@ def default_iterative_coordinator(
     from formulate.exploration.bayesopt import BayesOptExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
+    from formulate.exploration.mixtures import MixtureSeedExplorer
 
     return IterativeCoordinator(
-        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer(), BayesOptExplorer()],
+        explorers=[
+            ReferenceDatabaseExplorer(),
+            MixtureSeedExplorer(),
+            EvolutionaryExplorer(),
+            BayesOptExplorer(),
+        ],
         config=config or RunConfig(),
         iteration=iteration,
     )
@@ -388,9 +394,15 @@ def default_validating_coordinator(
     from formulate.exploration.bayesopt import BayesOptExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
+    from formulate.exploration.mixtures import MixtureSeedExplorer
 
     return ValidatingCoordinator(
-        explorers=[ReferenceDatabaseExplorer(), EvolutionaryExplorer(), BayesOptExplorer()],
+        explorers=[
+            ReferenceDatabaseExplorer(),
+            MixtureSeedExplorer(),
+            EvolutionaryExplorer(),
+            BayesOptExplorer(),
+        ],
         config=config or RunConfig(),
         iteration=iteration,
         validation=validation,
