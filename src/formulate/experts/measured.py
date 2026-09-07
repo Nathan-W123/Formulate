@@ -28,7 +28,7 @@ from .base import Expert, PredictionRequest
 from .hansen import resolve_cas
 
 try:  # pragma: no cover
-    from chemicals import MW, Tb, Tm
+    from chemicals import MW, Tb, Tc, Tm
 
     _HAVE_CHEMICALS = True
     _IMPORT_ERROR = ""
@@ -72,7 +72,48 @@ _LOOKUPS = {
         "clean, because a trace of surfactant lowers it far more than the measurement "
         "uncertainty",
     ),
+    "critical_temperature": (
+        "Tc",
+        "K",
+        2.0,
+        "spread between compilations for a measured critical temperature; a substance "
+        "that decomposes near its critical point is extrapolated rather than measured "
+        "and the disagreement is larger than this",
+    ),
+    "liquid_density": (
+        "rho",
+        "kg/m^3",
+        1.0,
+        "measured against the reference set at 25 degrees Celsius: 43 of the 48 tabulated "
+        "densities are covered by a data method, mean absolute error 0.07 per cent and "
+        "worst case 0.38. One kilogram per cubic metre is about a tenth of a per cent of "
+        "a typical organic liquid and is where compilations disagree with each other",
+    ),
 }
+
+#: Liquid-density methods in ``thermo`` that carry tabulated data or a
+#: reference equation of state, as opposed to predicting from structure.
+#:
+#: The same distinction as for surface tension, and it matters more here
+#: because the fallbacks are silent. ``thermo`` will drop through to Rackett,
+#: Yen-Woods or Campbell-Thodos, which need only critical constants and return
+#: a number for anything; the panel's own corresponding-states route is already
+#: that, and the point of this expert is to be better than it or say nothing.
+#:
+#: ``HTCOSTALDFIT``, ``RACKETTFIT`` and ``MMSNM0FIT`` are deliberately absent
+#: even though they are fitted to real densities. They were not needed: every
+#: reference compound that resolves to a CAS number is covered by the list
+#: below, so admitting a fitted correlation would widen the door without
+#: answering a single extra compound.
+_MEASURED_DENSITY_METHODS = (
+    "HEOS_FIT",
+    "COOLPROP",
+    "DIPPR_PERRY_8E",
+    "VDI_PPDS",
+    "VDI_TABULAR",
+    "CRC_INORG_L",
+    "CRC_INORG_L_CONST",
+)
 
 #: Surface-tension methods in ``thermo`` that are fits to measured data rather
 #: than predictions from structure.
@@ -105,11 +146,50 @@ def measured_value(prop: str, smiles: str) -> float | None:
     name = _LOOKUPS[prop][0]
     if name == "sigma":
         return _measured_surface_tension(cas)
+    if name == "rho":
+        return _measured_liquid_density(cas)
     try:
-        value = {"Tb": Tb, "Tm": Tm, "MW": MW}[name](cas)
+        value = {"Tb": Tb, "Tm": Tm, "MW": MW, "Tc": Tc}[name](cas)
     except Exception:
         return None
     return None if value is None else float(value)
+
+
+def _measured_liquid_density(cas: str, temperature: float = 298.15) -> float | None:
+    """Density at 25 degrees Celsius in kg/m^3, from a data method only.
+
+    This is what unblocks water, and through water most of the formulation
+    panel. Liquid density reached the mixture experts by one route only - a
+    corresponding-states correlation that needs a critical temperature, which
+    came from Joback group contribution, which cannot type a molecule with no
+    carbon in it. So water had no critical temperature, therefore no density,
+    therefore no volume fraction, and every blend containing it lost its
+    density and all three volume-weighted Hansen parameters at once. Water's
+    density is one of the better known numbers in physical chemistry and was
+    sitting in a compilation already installed here.
+    """
+    try:
+        from chemicals import MW as molar_mass
+        from thermo import VolumeLiquid
+
+        model = VolumeLiquid(CASRN=cas)
+        mass = molar_mass(cas)
+    except Exception:
+        return None
+    if not mass:
+        return None
+    available = set(getattr(model, "all_methods", ()) or ())
+    for method in _MEASURED_DENSITY_METHODS:
+        if method not in available:
+            continue
+        try:
+            molar_volume = model.calculate(temperature, method)
+        except Exception:
+            continue
+        if molar_volume and molar_volume == molar_volume and molar_volume > 0:
+            # g/mol / (m^3/mol) = g/m^3; a thousandth of that is kg/m^3.
+            return float(mass / molar_volume / 1000.0)
+    return None
 
 
 def _measured_surface_tension(cas: str, temperature: float = 298.15) -> float | None:

@@ -273,3 +273,60 @@ def test_the_mixture_expert_covers_the_mixture_class():
     }
     assert "hansen_distance" in covered
     assert "liquid_density" in covered
+
+
+# --------------------------------------------------------------------------
+# The component that used to take the whole blend down with it
+# --------------------------------------------------------------------------
+
+
+@requires_rdkit
+def test_a_blend_containing_water_gets_a_density_and_hansen_parameters():
+    """Water broke every one of these, and nothing said so in physical terms.
+
+    The chain was: blend density needs component densities, which came from a
+    corresponding-states correlation, which needs a critical temperature, which
+    came from Joback group contribution, which raises "zero matching groups"
+    on a molecule with no carbon. So a blend containing the commonest
+    formulation solvent there is declined its density and, because volume
+    fractions could not be formed without it, all three volume-weighted Hansen
+    parameters as well.
+    """
+    blend = _blend([("CCO", 0.5), ("O", 0.5)])
+    predictions = _predict(MixtureExpert(), blend)
+
+    for prop in ("liquid_density", "hansen_dispersion", "hansen_polar",
+                 "hansen_hydrogen_bonding"):
+        assert predictions[prop].quantity is not None, f"{prop} declined on a water blend"
+
+
+@requires_rdkit
+def test_the_blend_density_is_the_ideal_volume_average_of_its_components():
+    """Stated rather than inferred, because the rule is an assumption.
+
+    Half and half by volume of ethanol at 785 and water at 997 kg/m^3 is 891 on
+    ideal mixing. The real value is nearer 914: ethanol and water contract on
+    mixing by about two and a half per cent, which is exactly the excess volume
+    an ideal rule cannot know about. The prediction's uncertainty has to be
+    wide enough to cover that or the number is a trap.
+    """
+    blend = _blend([("CCO", 0.5), ("O", 0.5)])
+    density = _predict(MixtureExpert(), blend, ["liquid_density"])["liquid_density"]
+
+    assert density.quantity.value == pytest.approx(891.0, abs=2.0)
+    spread = density.uncertainty.std
+    assert spread is not None
+    assert density.quantity.value + 2 * spread >= 914.0, (
+        "the stated uncertainty does not reach the measured density, so an ideal "
+        "mixing rule is being presented as if excess volume did not exist"
+    )
+
+
+@requires_rdkit
+def test_a_measured_density_is_preferred_over_the_correlation_that_needs_joback():
+    from formulate.experts.measured import measured_value
+
+    # Methanol is where the correlation is worst: it is out by a third of a
+    # gram per cubic centimetre, which is forty per cent.
+    assert measured_value("liquid_density", "CO") == pytest.approx(786.6, abs=2.0)
+    assert measured_value("critical_temperature", "CO") == pytest.approx(512.5, abs=1.0)

@@ -67,7 +67,32 @@ def test_melting_point_is_poor_but_not_unbounded(results):
 
 
 def test_liquid_density_accuracy(panel_results):
-    assert panel_results["liquid_density"].mean_absolute_error < 0.10
+    """Was 0.064 g/cm^3 from a corresponding-states correlation alone.
+
+    The correlation needs a critical temperature, gets it from Joback group
+    contribution, and is wrong by a third of a gram per cubic centimetre on
+    methanol. Compiled densities now cover forty-three of the forty-eight
+    tabulated compounds to better than a tenth of a per cent, and the five they
+    miss are the ones with no data method in the compilation - they still fall
+    through to the correlation and are what is left of this number.
+    """
+    assert panel_results["liquid_density"].mean_absolute_error < 0.03
+
+
+def test_water_has_a_density_at_all(panel_results):
+    """It had none, and that took the formulation panel down with it.
+
+    Joback cannot type a molecule with no carbon, so water had no critical
+    temperature, so the correlation could not give it a density. A blend
+    containing water then lost its own density and all three volume-weighted
+    Hansen parameters, because volume fractions could not be formed without
+    every component's density.
+    """
+    from formulate.experts.measured import measured_value
+
+    density = measured_value("liquid_density", "O")
+    assert density is not None
+    assert density == pytest.approx(997.05, abs=1.0)  # kg/m^3 at 25 degrees C
 
 
 def test_surface_tension_accuracy(panel_results):
