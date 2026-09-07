@@ -8,6 +8,7 @@ candidates; they only predict.
 from __future__ import annotations
 
 from .activity import UNIFACActivityExpert
+from .adhesion import AdhesionExpert
 from .base import Expert, PredictionRequest
 from .feasibility import SynthesisFeasibilityExpert
 from .hansen import HansenSolubilityExpert
@@ -44,6 +45,7 @@ PHASE1_EXPERTS = (
 #: forbids answering for the bulk polymer with the monomer's properties.
 PHASE4_EXPERTS = (
     MixtureExpert,
+    AdhesionExpert,
     UNIFACActivityExpert,
     PolymerGlassTransitionExpert,
     PolymerDensityExpert,
@@ -62,7 +64,8 @@ def default_registry() -> ExpertRegistry:
 
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
-    "PolymerDensityExpert", "PolymerGlassTransitionExpert", "UNIFACActivityExpert",
+    "AdhesionExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
+    "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",
     "PredictionRequest", "StructuralDescriptorExpert", "SynthesisFeasibilityExpert",

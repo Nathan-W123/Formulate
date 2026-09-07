@@ -71,7 +71,10 @@ def test_liquid_density_accuracy(panel_results):
 
 
 def test_surface_tension_accuracy(panel_results):
-    assert panel_results["surface_tension"].mean_absolute_error < 9.0
+    # Was 9 mN/m when a corresponding-states correlation answered for every
+    # compound. With measurements covering the associating ones it sits near
+    # 0.3, so the guard is tightened to where it can still catch a regression.
+    assert panel_results["surface_tension"].mean_absolute_error < 2.0
 
 
 @pytest.mark.parametrize(
@@ -101,11 +104,25 @@ def test_no_property_is_reported_as_overconfident(panel_results, prop):
     assert "OVERCONFIDENT" not in panel_results[prop].verdict()
 
 
-def test_the_worst_cases_are_the_associating_compounds(panel_results):
-    """Errors should concentrate where the domain warnings say they will."""
-    worst = panel_results["surface_tension"].worst
+def test_the_associating_compounds_are_no_longer_the_worst_cases(panel_results):
+    """They were, and a measured lookup is what stopped them being.
+
+    Brock-Bird is a corresponding-states correlation for non-associating
+    fluids, and on the ones it was never meant for it did not fail quietly: it
+    refused water outright and overestimated ethanol by 63 per cent and
+    ethylene glycol by 65. Measured surface tensions now cover them, the panel
+    prefers a measurement over an estimate on uncertainty alone, and the mean
+    absolute error over the reference set fell to a few tenths of a millinewton
+    per metre. What is left is no longer concentrated on the hydrogen bonders.
+    """
+    result = panel_results["surface_tension"]
+    assert result.count >= 30
+    assert result.mean_absolute_error < 1.0
+
+    worst = result.worst
     assert worst is not None
-    assert worst[0] in {"glycerol", "ethylene glycol", "acetic acid", "water"}
+    assert worst[0] not in {"glycerol", "ethylene glycol", "acetic acid", "water"}
+    assert worst[1] < 5.0
 
 
 def test_description_states_that_this_is_not_a_benchmark(panel_results):

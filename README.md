@@ -140,7 +140,7 @@ where they exist:
 | Expert | Family | Class | Predicts |
 |---|---|---|---|
 | `joback` | thermal | molecule | boiling and melting point, critical constants, enthalpies, ideal-gas heat capacity |
-| `measured` | thermal | molecule | compiled experimental boiling point, melting point, molar mass |
+| `measured` | thermal | molecule | compiled experimental boiling point, melting point, molar mass, surface tension |
 | `crippen` | chemical | molecule | partition coefficient, molar refractivity |
 | `esol` | chemical | molecule | aqueous solubility |
 | `interfacial` | interfacial | molecule | surface tension, liquid density, molar volume, Hildebrand parameter |
@@ -149,6 +149,7 @@ where they exist:
 | `structural` | structural | molecule | exact graph descriptors |
 | `mixture` | interfacial | mixture | density and Hansen parameters by mixing rules, plus compatibility distance |
 | `unifac` | chemical | mixture | excess Gibbs energy and phase stability from modified UNIFAC |
+| `adhesion` | interfacial | molecule | work of separation on a named substrate, Owens-Wendt |
 | `polymer_tg` | thermal | polymer | glass transition from an additive molar function over repeat-unit groups |
 | `polymer_density` | mechanical | polymer | amorphous density from van der Waals volume and a fitted packing factor |
 

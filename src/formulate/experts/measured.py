@@ -64,7 +64,34 @@ _LOOKUPS = {
         0.0,
         "computed exactly from the standard atomic weights",
     ),
+    "surface_tension": (
+        "sigma",
+        "N/m",
+        0.0005,
+        "spread between compilations for a measured surface tension; the liquid must be "
+        "clean, because a trace of surfactant lowers it far more than the measurement "
+        "uncertainty",
+    ),
 }
+
+#: Surface-tension methods in ``thermo`` that are fits to measured data rather
+#: than predictions from structure.
+#:
+#: The distinction is the whole point of this expert. ``thermo`` will happily
+#: fall back to Brock-Bird or Sastri-Rao, which are corresponding-states
+#: correlations for non-associating fluids and are the very things this is
+#: meant to displace: the panel's own Brock-Bird route refuses water outright
+#: and overestimates ethanol by 63 per cent and ethylene glycol by 65.
+_MEASURED_SURFACE_TENSION_METHODS = (
+    "IAPWS_SIGMA",
+    "REFPROP_FIT",
+    "REFPROP",
+    "SOMAYAJULU2",
+    "SOMAYAJULU",
+    "VDI_PPDS",
+    "VDI_TABULAR",
+    "JASPER",
+)
 
 
 @functools.lru_cache(maxsize=4096)
@@ -76,11 +103,39 @@ def measured_value(prop: str, smiles: str) -> float | None:
     if cas is None:
         return None
     name = _LOOKUPS[prop][0]
+    if name == "sigma":
+        return _measured_surface_tension(cas)
     try:
         value = {"Tb": Tb, "Tm": Tm, "MW": MW}[name](cas)
     except Exception:
         return None
     return None if value is None else float(value)
+
+
+def _measured_surface_tension(cas: str, temperature: float = 298.15) -> float | None:
+    """Surface tension at 298 K, from a data method only.
+
+    Returns None rather than falling through to a correlation: an estimate is
+    what the interfacial expert already provides, and the point of this expert
+    is to be better than it or silent.
+    """
+    try:
+        from thermo import SurfaceTension
+
+        model = SurfaceTension(CASRN=cas)
+    except Exception:
+        return None
+    available = set(getattr(model, "all_methods", ()) or ())
+    for method in _MEASURED_SURFACE_TENSION_METHODS:
+        if method not in available:
+            continue
+        try:
+            value = model.calculate(temperature, method)
+        except Exception:
+            continue
+        if value is not None and value == value and value > 0:
+            return float(value)
+    return None
 
 
 class MeasuredPropertyExpert(Expert):

@@ -295,6 +295,40 @@ checked against the table before a number is returned. No cloud point or UCST
 is derived: UNIFAC's temperature dependence is fitted to vapour-liquid data and
 a demixing temperature taken from it is wrong by tens to hundreds of kelvin.
 
+**Adhesion, and the surface tension it rests on.** The work of separation is
+now covered for a liquid on a named substrate, read from `Conditions.surfaces`
+— a coating is a candidate, the aluminium it is painted onto is a condition of
+use, and the schema has carried that field since the start. Owens-Wendt's
+two-component form, checked by turning it back into contact angles: water on
+PTFE 108° (measured 108–112), on PMMA 80° (70–75), on clean glass 0°. Hexane
+spreads on PTFE where water beads on it — same solid, opposite outcome, which
+is the thing a single-component model cannot express.
+
+Getting there fixed a worse problem underneath. The panel's surface tension
+came from Brock-Bird, a corresponding-states correlation for non-associating
+fluids, and on the fluids it was never meant for it did not fail quietly: it
+**refused water outright**, and overestimated ethanol by 63% and ethylene
+glycol by 65%. The `measured` expert now covers surface tension from data
+methods only, and the panel's mean absolute error over the reference set fell
+from several mN/m to **0.28**. The calibration test that asserted the worst
+cases were the associating compounds had to be rewritten, because they no
+longer are.
+
+Two routes to the dispersive/polar split were tried before settling on
+tabulated components, and both are recorded in the module because both looked
+plausible. Splitting a measured surface tension by the ratio of Hansen
+parameters puts water's dispersive part at 11.3 mN/m against a measured 21.8,
+and ethanol's at 10.2 against 18.8 — Hansen's decomposition and Owens-Wendt's
+are different decompositions, not rescalings of each other. Beerbower's
+relation as recalled here misses hexane's total by a factor of four and a half.
+So the components are tabulated and anything not in the table is refused, which
+is the same limit the Hansen expert already works under.
+
+Practical adhesion — peel strength, lap shear — is **not** produced. It exceeds
+the thermodynamic work by one to three orders of magnitude, because nearly all
+the energy in peeling a real joint goes into deforming the adherends, and the
+two are not related by a constant.
+
 **Still not done — polymer Hansen parameters** and the mechanical properties.
 The registry reports `youngs_modulus` as uncovered rather than inventing it.
 
