@@ -201,3 +201,88 @@ def test_an_exception_inside_an_expert_becomes_a_recorded_failure():
     prediction = expert.predict(_request("CCO", expert))[0]
     assert prediction.status is PredictionStatus.FAILED
     assert "backend exploded" in prediction.notes[0]
+
+
+# --------------------------------------------------------------------------
+# A liquid property for something that is not a liquid
+# --------------------------------------------------------------------------
+
+
+@requires_rdkit
+def test_a_solid_is_refused_a_liquid_density_by_every_route():
+    """Naphthalene melts at 80 C. Both routes answered anyway.
+
+    A corresponding-states correlation is a smooth function of reduced
+    temperature and does not know where the substance freezes, so below the
+    melting point it keeps returning a liquid density. The compiled route was
+    worse: it returned 1020 kg/m^3 flagged in-domain, labelled "measured, not
+    estimated", with an error bar of one kilogram per cubic metre.
+
+    Nothing caught this. It surfaced by reading the top of a ranking, where a
+    request for a coating solvent blend had been answered with toluene and
+    solid naphthalene.
+    """
+    from formulate.core.candidate import molecule_candidate
+    from formulate.core.conditions import Conditions
+    from formulate.experts import default_registry
+    from formulate.experts.base import PredictionRequest
+
+    registry = default_registry()
+    for smiles in ("c1ccc2ccccc2c1", "Oc1ccccc1"):  # naphthalene, phenol
+        candidate = molecule_candidate(smiles)
+        answered = []
+        for expert in registry:
+            if "liquid_density" not in expert.supported_properties:
+                continue
+            if MaterialClass.MOLECULE not in expert.supported_classes:
+                continue
+            for prediction in expert.predict(
+                PredictionRequest(
+                    candidate=candidate,
+                    properties=frozenset({"liquid_density"}),
+                    conditions=Conditions.standard(),
+                )
+            ):
+                if prediction.quantity is not None:
+                    answered.append((expert.id, prediction.quantity.value))
+        assert not answered, f"{smiles} was given a liquid density: {answered}"
+
+
+@requires_rdkit
+def test_the_refusal_names_the_melting_point_rather_than_being_generic():
+    from formulate.experts.measured import not_liquid_at
+
+    reason = not_liquid_at("c1ccc2ccccc2c1", 298.15)
+    assert reason is not None
+    assert "solid at 25" in reason
+    assert "melting at 80" in reason
+
+
+@requires_rdkit
+def test_a_liquid_is_untouched_by_the_phase_gate():
+    from formulate.experts.measured import measured_value, not_liquid_at
+
+    for smiles in ("Cc1ccccc1", "O", "CCO", "CCCCCC"):
+        assert not_liquid_at(smiles, 298.15) is None
+        assert measured_value("liquid_density", smiles) is not None
+
+
+@requires_rdkit
+def test_an_unknown_melting_point_does_not_cause_a_refusal():
+    """Silence about the phase is not evidence of the wrong one.
+
+    Refusing whenever a melting point is missing would decline half the panel
+    on no evidence at all.
+    """
+    from formulate.experts.measured import not_liquid_at
+
+    assert not_liquid_at("CC(C)(C)c1ccc(cc1)C(C)(C)CCC(C)(C)C", 298.15) is None
+
+
+@requires_rdkit
+def test_a_temperature_above_the_boiling_point_is_refused_too():
+    from formulate.experts.measured import not_liquid_at
+
+    reason = not_liquid_at("CCO", 400.0)  # ethanol boils at 78 C
+    assert reason is not None
+    assert "boils at 78" in reason

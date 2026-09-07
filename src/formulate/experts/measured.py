@@ -135,6 +135,55 @@ _MEASURED_SURFACE_TENSION_METHODS = (
 )
 
 
+#: Properties that describe a liquid, and are therefore meaningless for a
+#: substance that is not one at the stated temperature.
+#:
+#: Naphthalene melts at 80 degrees Celsius. Ask a correlation for its liquid
+#: density at 25 and it returns 1020 kg/m^3 without complaint, because the
+#: fitted equation is a smooth function of temperature and does not know that
+#: it has been extrapolated below the melting point into a state the substance
+#: does not occupy. Nothing about that number is flagged, and the compiled
+#: route makes it worse than the correlation did: it arrives labelled
+#: "measured, not estimated" with an error bar of one kilogram per cubic metre.
+#:
+#: This was not caught by any test. It was caught by reading the top of a
+#: ranking - the engine had been asked for a coating solvent blend and had
+#: proposed toluene with solid naphthalene, and isopropanol with a naphthylamine
+#: that melts at 65 degrees.
+LIQUID_PHASE_PROPERTIES = frozenset(
+    {"liquid_density", "surface_tension", "molar_volume_liquid"}
+)
+
+
+@functools.lru_cache(maxsize=4096)
+def liquid_range(smiles: str) -> tuple[float | None, float | None]:
+    """Melting and boiling points in kelvin, either of which may be unknown."""
+    return measured_value("melting_point", smiles), measured_value("normal_boiling_point", smiles)
+
+
+def not_liquid_at(smiles: str, temperature_k: float) -> str | None:
+    """Why this substance is not a liquid at this temperature, or None.
+
+    Silence when the melting point is unknown. Refusing on an absent
+    measurement would decline half the panel on no evidence, and the honest
+    reading of a missing melting point is that the phase is unknown rather
+    than that the substance is solid.
+    """
+    melting, boiling = liquid_range(smiles)
+    if melting is not None and temperature_k < melting:
+        return (
+            f"it is a solid at {temperature_k - 273.15:.0f} degrees Celsius, melting at "
+            f"{melting - 273.15:.0f}; a liquid property here would be a correlation "
+            "extrapolated below the melting point into a state the substance does not occupy"
+        )
+    if boiling is not None and temperature_k > boiling:
+        return (
+            f"it boils at {boiling - 273.15:.0f} degrees Celsius and the request is for "
+            f"{temperature_k - 273.15:.0f}, so there is no liquid at one atmosphere"
+        )
+    return None
+
+
 @functools.lru_cache(maxsize=4096)
 def measured_value(prop: str, smiles: str) -> float | None:
     """Look up a measured value for a structure, or None if it is not tabulated."""
@@ -264,6 +313,11 @@ class MeasuredPropertyExpert(Expert):
         self, prop: str, request: PredictionRequest, domain: ApplicabilityDomain
     ) -> Prediction | None:
         smiles = request.candidate.molecule.smiles  # type: ignore[union-attr]
+        if prop in LIQUID_PHASE_PROPERTIES:
+            temperature = request.conditions.temperature_k
+            wrong_phase = None if temperature is None else not_liquid_at(smiles, temperature)
+            if wrong_phase:
+                return Prediction.unsupported(prop, self.id, wrong_phase)
         value = measured_value(prop, smiles)
         if value is None:
             # Silence, not a guess. The estimating experts cover this compound,

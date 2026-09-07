@@ -266,6 +266,21 @@ class InterfacialCorrelationExpert(Expert):
                 f"critical temperature {tc:.1f} K; there is no liquid phase to describe",
             )
 
+        # The same question at the other end of the range, which the critical
+        # temperature does not answer. A corresponding-states correlation is a
+        # smooth function of reduced temperature and has no idea where the
+        # substance freezes: below the melting point it keeps returning a
+        # liquid density, and that number is a supercooled extrapolation into a
+        # state the substance does not occupy. Checked after the critical test
+        # rather than before it, so that a supercritical request keeps the
+        # sharper answer it already had.
+        from .measured import LIQUID_PHASE_PROPERTIES, not_liquid_at
+
+        if prop in LIQUID_PHASE_PROPERTIES and request.candidate.molecule is not None:
+            wrong_phase = not_liquid_at(request.candidate.molecule.smiles, temperature)
+            if wrong_phase:
+                return Prediction.unsupported(prop, self.id, wrong_phase)
+
         fn, unit = self._correlation(prop, temperature)
         try:
             value, propagated = propagate(fn, inputs)
