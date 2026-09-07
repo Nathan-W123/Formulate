@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from formulate.core.candidate import MaterialClass
 from formulate.core.conditions import Conditions
+from formulate.core.hashing import canonical_json
 from formulate.core.properties import get_property, validate_unit_for
 from formulate.core.quantity import Quantity
 from formulate.core.units import convert
@@ -176,7 +177,7 @@ class Requirement(BaseModel):
                     f"Requirement on {self.property!r} omits anchors and no candidate pool "
                     "was supplied to derive them from."
                 )
-            plo, phi = pool_anchors(list(pool_values), self.direction)
+            plo, phi = pool_anchors(list(pool_values))
             lo = lo if lo is not None else plo
             hi = hi if hi is not None else phi
             return Desirability(
@@ -275,8 +276,14 @@ class TargetSpec(BaseModel):
             raise ValueError("A TargetSpec needs at least one requirement.")
         seen: set[tuple[str, str]] = set()
         for req in self.requirements:
-            cond = (req.conditions or self.conditions).describe()
-            key = (req.property, cond)
+            # The canonical identity, not describe(): that renders conditions
+            # for a human and omits the processing history, so two requirements
+            # on one property at different cure schedules were rejected with a
+            # message asserting their conditions were identical. It also
+            # rendered units as written, which made the same condition spelled
+            # two ways look like two conditions.
+            conditions = req.conditions or self.conditions
+            key = (req.property, canonical_json(conditions.identity_payload()))
             if key in seen:
                 raise ValueError(
                     f"Duplicate requirement on {req.property!r} at identical conditions; "

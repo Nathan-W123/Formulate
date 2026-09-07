@@ -165,12 +165,20 @@ class Desirability:
         return f"{d.value}: 1.0 at {ideal:.6g}{suffix}, 0.0 at {zero:.6g}{suffix}{note}"
 
 
-def pool_anchors(values: list[float], direction: Direction, *, pad: float = 0.05) -> tuple[float, float]:
-    """Derive MINIMIZE/MAXIMIZE anchors from the observed candidate pool.
+def pool_anchors(values: list[float], *, pad: float = 0.05) -> tuple[float, float]:
+    """Derive anchors from the observed candidate pool: its padded range.
 
     Used only when the request states no absolute anchors.  The resulting
     desirabilities are comparable *within* one run and not between runs, which
     is why :attr:`Desirability.pool_relative` records the fact.
+
+    The direction is deliberately not a parameter. What comes back is the
+    range the pool occupies, and :class:`Desirability` already maps ``lower``
+    and ``upper`` onto ideal and zero according to the direction - doing it
+    twice would cancel out. This function used to take a direction and end in
+    ``return (lo, hi) if direction is MINIMIZE else (lo, hi)``, which is the
+    same tuple either way: the argument was never read, and the conditional
+    implied an orientation the caller then applied itself.
     """
     finite = [v for v in values if not math.isnan(v) and not math.isinf(v)]
     if not finite:
@@ -183,4 +191,4 @@ def pool_anchors(values: list[float], direction: Direction, *, pad: float = 0.05
     else:
         span = (hi - lo) * pad
         lo, hi = lo - span, hi + span
-    return (lo, hi) if direction is Direction.MINIMIZE else (lo, hi)
+    return lo, hi

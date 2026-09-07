@@ -3,10 +3,16 @@
 Specification section 11: "content-address candidates + method + conditions so
 identical calculations are never repeated."
 
-The key covers the candidate, the expert and its version, and the conditions.
-Bumping an expert's ``version`` therefore invalidates exactly its own entries
-and nothing else, which is what makes it safe to change a correlation without
-hand-clearing a cache.
+The key covers the candidate, the expert and its version, the conditions, and
+the properties the expert was asked for. Bumping an expert's ``version``
+therefore invalidates exactly its own entries and nothing else, which is what
+makes it safe to change a correlation without hand-clearing a cache.
+
+The property set belongs in the key because the value stored under it is what
+the expert returned *for that ask*: an expert answers the intersection of its
+coverage with the request, and sees only the upstream predictions that request
+produced. Without it, a cache persisted from one target specification would
+serve a later one a partial result.
 """
 
 from __future__ import annotations
@@ -38,12 +44,19 @@ class PredictionCache:
             self._load()
 
     @staticmethod
-    def key(candidate_id: str, expert_id: str, expert_version: str, conditions: Conditions) -> str:
+    def key(
+        candidate_id: str,
+        expert_id: str,
+        expert_version: str,
+        conditions: Conditions,
+        properties: Iterable[str] = (),
+    ) -> str:
         return cache_key(
             candidate_hash=candidate_id,
             method=expert_id,
             method_version=expert_version,
-            conditions=conditions.model_dump(mode="json"),
+            conditions=conditions.identity_payload(),
+            properties=properties,
         )
 
     def get(self, key: str) -> list[Prediction] | None:

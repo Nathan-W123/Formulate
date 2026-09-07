@@ -358,3 +358,64 @@ def test_an_out_of_domain_prediction_never_wins_on_a_tighter_spread():
     honest_and_inside = _density(1100.0, "kg/m^3", 80.0, "inside")
     for order in ([confident_but_outside, honest_and_inside], [honest_and_inside, confident_but_outside]):
         assert best_prediction(order, "amorphous_density").expert_id == "inside"
+
+
+def test_a_cache_entry_is_not_reused_for_a_different_question():
+    """The ask is part of the key, because the answer depends on it.
+
+    An expert returns the intersection of its coverage with the request, and
+    sees only the upstream predictions that request produced. A cache persisted
+    from one target specification was serving a later one the earlier ask's
+    filtered result.
+    """
+    from formulate.store.cache import PredictionCache
+
+    conditions = Conditions.standard()
+    one = PredictionCache.key("cand", "joback", "1", conditions, ["normal_boiling_point"])
+    two = PredictionCache.key(
+        "cand", "joback", "1", conditions, ["normal_boiling_point", "melting_point"]
+    )
+    assert one != two
+
+    # The set is what matters, not the order it arrived in.
+    reordered = PredictionCache.key(
+        "cand", "joback", "1", conditions, ["melting_point", "normal_boiling_point"]
+    )
+    assert reordered == two
+
+
+@requires_rdkit
+def test_two_specifications_share_an_entry_for_an_expert_neither_ask_reaches():
+    """Keying on the whole request would miss on a property the expert ignores."""
+    from formulate.experts import default_registry
+    from formulate.store.cache import PredictionCache
+
+    cache = PredictionCache()
+    engine = EvaluationEngine(default_registry(), EvaluationConfig(), cache)
+    candidate = molecule_candidate("CCO")
+
+    def spec_with(extra):
+        return TargetSpec.from_dict(
+            {
+                "conditions": {"temperature": "25 degC", "pressure": "1 atm"},
+                "requirements": [
+                    {
+                        "property": "normal_boiling_point",
+                        "direction": "in_range",
+                        "lower": "60 degC",
+                        "upper": "160 degC",
+                    }
+                ]
+                + extra,
+            }
+        )
+
+    engine.predict([candidate], spec_with([]))
+    hits_before = cache.hits
+    # logp is answered by crippen, which the thermal experts never see, so
+    # their entries must still hit.
+    engine.predict(
+        [candidate],
+        spec_with([{"property": "logp", "direction": "in_range", "lower": -1.0, "upper": 5.0}]),
+    )
+    assert cache.hits > hits_before

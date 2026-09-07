@@ -90,6 +90,27 @@ self-diffusion and work of separation are **refused**, each with the system
 size and sampling time the observable needs and an estimate of what an
 adequate run would cost. Run `formulate physics` to see the capability report.
 
+That paragraph was true of the dynamics module and false of the path that
+reached it. Protocol selection in the validation stage was an if-else ending in
+a default, so every property except the radius of gyration ran the
+cohesive-energy workflow and came back in joules per mole; stamping that as a
+density raised an uncaught dimensionality error that killed the whole design
+run. Five of the ten properties the stage advertised did this. Selection is now
+a mapping — `DYNAMICS_PROTOCOLS` — every dynamics property in `VALIDATABLE`
+must appear in it, and a test asserts the two agree. `shear_viscosity` left the
+table entirely (a Green-Kubo integral or non-equilibrium shear exists nowhere
+here) and so did `cohesive_energy_density` (the cluster workflow measures an
+energy per mole, and converting it to an energy per unit volume needs the bulk
+molar volume and the surface correction that are the whole difficulty).
+
+The molecular-dynamics engine had the same shape of defect one layer down: its
+protocol dispatch also ended in a default, so a forced run of an unimplemented
+protocol executed a single-molecule trajectory under the wrong name. It is a
+mapping too. And `Ensemble.NPT` fell through to the Langevin thermostat with no
+barostat and no diagnostic, while `pressure_pa` was never read at all — a
+constant-volume run wearing a constant-pressure label, when the volume is the
+observable such a run exists to produce. Both are now refused with a reason.
+
 **Not done.**
 
 - **The section 8 multi-fidelity layer**: ML interatomic potential with

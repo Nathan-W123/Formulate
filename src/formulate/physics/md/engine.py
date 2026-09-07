@@ -47,6 +47,17 @@ _COMMON_LIMITATIONS = (
 )
 
 
+
+#: Which method on this engine runs which protocol. A mapping rather than an
+#: if-else with a default: the else branch silently ran a single-molecule
+#: trajectory for every protocol that had no implementation, so a request for a
+#: bulk density came back as a conformational ensemble wearing the wrong label.
+#: A protocol absent here has requirements defined and no workflow, and says so.
+PROTOCOL_METHODS: dict[MDProtocol, str] = {
+    MDProtocol.CONFORMATIONAL_ENSEMBLE: "_conformational_ensemble",
+    MDProtocol.COHESIVE_ENERGY: "_cohesive_energy",
+}
+
 class MDEngine:
     """Runs section 6's property protocols, or explains why it will not."""
 
@@ -61,6 +72,31 @@ class MDEngine:
     def assess(self, request: MDRequest) -> FeasibilityVerdict:
         """Decide whether this protocol can produce a meaningful number here."""
         requirement = REQUIREMENTS[request.protocol]
+
+        # No barostat is implemented. Running the Langevin thermostat and
+        # calling the result NPT would be a silent substitution of one ensemble
+        # for another, which section 11 forbids for exactly this reason: the
+        # volume is the observable an NPT run exists to produce, and holding it
+        # fixed does not fail loudly, it just answers a different question.
+        if request.ensemble is Ensemble.NPT:
+            return FeasibilityVerdict(
+                feasible=False,
+                reason=(
+                    "the constant-pressure ensemble needs a barostat, and none is "
+                    "implemented here. Only NVE and NVT are available, and neither "
+                    "lets the volume respond to a pressure"
+                ),
+            )
+        if request.pressure_pa is not None:
+            return FeasibilityVerdict(
+                feasible=False,
+                reason=(
+                    f"a pressure of {request.pressure_pa:.0f} Pa was requested, but no "
+                    "ensemble here couples the system to a pressure; the value would be "
+                    "recorded and ignored"
+                ),
+            )
+
         choice = self._calculator_for(request, periodic=requirement.needs_periodic)
 
         if choice is None:
@@ -96,6 +132,18 @@ class MDEngine:
                 affordable_description=(
                     "what is affordable here is a single-molecule or small-cluster run, "
                     "which answers a different question"
+                ),
+            )
+
+        # Only now the implementation gap. When a protocol is impossible here
+        # for a physical reason, that reason is the useful answer; "no workflow
+        # is implemented" would be true and beside the point.
+        if PROTOCOL_METHODS.get(request.protocol) is None:
+            return FeasibilityVerdict(
+                feasible=False,
+                reason=(
+                    f"{request.protocol.value} has requirements defined but no workflow "
+                    f"implemented in this module. {requirement.rationale}"
                 ),
             )
 
@@ -167,12 +215,25 @@ class MDEngine:
                 provenance=self._provenance(request, "no-calculator"),
             )
 
+        method = PROTOCOL_METHODS.get(request.protocol)
+        if method is None:
+            # Reachable only with force_run set, which is what it is for: an
+            # if-else ending in a default would have run a single-molecule
+            # trajectory and labelled it a bulk density.
+            return MDResult(
+                protocol=request.protocol,
+                calculator=choice.label,
+                feasible=False,
+                feasibility_reason=(
+                    f"{request.protocol.value} has no workflow implemented in this module"
+                ),
+                limitations=_COMMON_LIMITATIONS,
+                provenance=self._provenance(request, "unimplemented"),
+            )
+
         started = time.perf_counter()
         try:
-            if request.protocol is MDProtocol.COHESIVE_ENERGY:
-                result = self._cohesive_energy(request, choice, rdkit_mol)
-            else:
-                result = self._conformational_ensemble(request, choice, rdkit_mol)
+            result = getattr(self, method)(request, choice, rdkit_mol)
         except Exception as exc:
             return MDResult(
                 protocol=request.protocol,

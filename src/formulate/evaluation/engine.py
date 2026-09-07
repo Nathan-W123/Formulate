@@ -161,7 +161,13 @@ class EvaluationEngine:
 
         for expert in ordered:
             conditions = self._conditions_for(expert, spec)
-            key = PredictionCache.key(candidate.candidate_id, expert.id, expert.version, conditions)
+            # Keyed on what this expert will actually answer, not the whole
+            # request: two specifications that differ only in a property this
+            # expert does not cover should still share its entry.
+            answered = expert.applicable_properties(properties, candidate.material_class)
+            key = PredictionCache.key(
+                candidate.candidate_id, expert.id, expert.version, conditions, answered
+            )
             cached = self.cache.get(key)
             if cached is None:
                 request = PredictionRequest(

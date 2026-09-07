@@ -74,7 +74,7 @@ def test_desirability_validates_its_own_shape():
 
 
 def test_pool_anchors_handle_a_degenerate_pool():
-    low, high = pool_anchors([5.0, 5.0], Direction.MAXIMIZE)
+    low, high = pool_anchors([5.0, 5.0])
     assert low < high
 
 
@@ -194,3 +194,64 @@ def test_spec_roundtrips_through_json():
         }
     )
     assert TargetSpec.model_validate_json(spec.to_json()).properties == spec.properties
+
+
+def test_pool_anchors_do_not_depend_on_a_direction():
+    """The pool's range is the pool's range; Desirability orients it."""
+    import inspect
+
+    assert "direction" not in inspect.signature(pool_anchors).parameters
+    assert pool_anchors([1.0, 2.0, 3.0]) == pool_anchors([3.0, 1.0, 2.0])
+
+
+def test_two_cure_schedules_are_not_one_duplicate_requirement():
+    """describe() renders conditions for a person and drops the processing history."""
+    spec = TargetSpec.from_dict(
+        {
+            "name": "cured coating",
+            "conditions": {"temperature": "25 degC"},
+            "requirements": [
+                {
+                    "property": "youngs_modulus",
+                    "direction": "maximize",
+                    "lower": "1 GPa",
+                    "upper": "5 GPa",
+                    "conditions": {"temperature": "25 degC", "processing": ["cure 120C 30min"]},
+                },
+                {
+                    "property": "youngs_modulus",
+                    "direction": "maximize",
+                    "lower": "1 GPa",
+                    "upper": "5 GPa",
+                    "conditions": {"temperature": "25 degC", "processing": ["cure 150C 10min"]},
+                },
+            ],
+        }
+    )
+    assert len(spec.requirements) == 2
+
+
+def test_the_same_condition_spelled_two_ways_is_still_a_duplicate():
+    with pytest.raises(ValueError, match="Duplicate requirement"):
+        TargetSpec.from_dict(
+            {
+                "name": "two spellings",
+                "conditions": {"temperature": "25 degC"},
+                "requirements": [
+                    {
+                        "property": "normal_boiling_point",
+                        "direction": "in_range",
+                        "lower": "60 degC",
+                        "upper": "160 degC",
+                        "conditions": {"temperature": "25 degC"},
+                    },
+                    {
+                        "property": "normal_boiling_point",
+                        "direction": "in_range",
+                        "lower": "60 degC",
+                        "upper": "160 degC",
+                        "conditions": {"temperature": "298.15 K"},
+                    },
+                ],
+            }
+        )

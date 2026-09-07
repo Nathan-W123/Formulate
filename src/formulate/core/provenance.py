@@ -71,11 +71,25 @@ class ProvenanceRecord(BaseModel):
 
     @property
     def record_id(self) -> str:
-        """Content hash over the reproducibility-relevant fields.
+        """Content hash over the fields that determine the result.
 
-        ``created_at`` and ``software.platform`` are excluded: re-running the
-        same computation tomorrow on another machine should produce the same
-        record id, otherwise the cache never hits.
+        The line drawn here is between what computed the number and what merely
+        described the host that ran it.
+
+        Included: the producer and its version, the inputs, the parameters, the
+        version of this package, and the versions of the backends named in the
+        record. A backend version is not decoration - RDKit's conformer
+        generation and PySCF's defaults both change between releases, so a
+        value computed against a different one is a different value, and giving
+        the two the same provenance id says they are interchangeable when they
+        are not. The docstring here used to claim only ``software.platform``
+        was excluded while the code excluded the whole ``software`` field.
+
+        Excluded: ``created_at``, ``software.platform`` and
+        ``software.python_version``. Re-running the same computation tomorrow
+        on another machine should produce the same record id; the operating
+        system and the interpreter patch level are properties of that machine
+        rather than of the method.
         """
         return content_hash(
             {
@@ -84,6 +98,8 @@ class ProvenanceRecord(BaseModel):
                 "producer_version": self.producer_version,
                 "input_ids": list(self.input_ids),
                 "parameters": self.parameters,
+                "formulate_version": self.software.formulate_version,
+                "backends": dict(sorted(self.software.backends.items())),
             },
             prefix="prov",
         )

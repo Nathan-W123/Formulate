@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from typing import Any
+from typing import Any, Iterable
 
 #: Significant digits retained when hashing floats.  Enough to distinguish
 #: genuinely different compositions, coarse enough that last-bit drift between
@@ -64,14 +64,31 @@ def content_hash(obj: Any, *, prefix: str = "") -> str:
     return f"{prefix}-{digest}" if prefix else digest
 
 
-def cache_key(*, candidate_hash: str, method: str, method_version: str, conditions: Any) -> str:
-    """Key for a computed result: candidate + method + version + conditions."""
+def cache_key(
+    *,
+    candidate_hash: str,
+    method: str,
+    method_version: str,
+    conditions: Any,
+    properties: Iterable[str] = (),
+) -> str:
+    """Key for a computed result: candidate + method + version + conditions + ask.
+
+    ``properties`` is part of the key because what a method returns depends on
+    what it was asked for. An expert answers the intersection of its coverage
+    with the request, and it sees only the upstream predictions that request
+    produced, so the same expert on the same candidate at the same conditions
+    returns a different list for a different ask. Leaving it out let a cache
+    persisted from one target specification serve a later one a result computed
+    for a question nobody asked this time.
+    """
     return content_hash(
         {
             "candidate": candidate_hash,
             "method": method,
             "method_version": method_version,
             "conditions": conditions,
+            "properties": sorted(properties),
         },
         prefix="calc",
     )

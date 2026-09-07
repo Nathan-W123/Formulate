@@ -90,6 +90,36 @@ class Conditions(BaseModel):
             surfaces=other.surfaces or self.surfaces,
         )
 
+    def identity_payload(self) -> dict:
+        """Canonical form for content addressing.
+
+        Every other quantity in the identity chain is canonicalised before it
+        is hashed: a molecule through its canonical SMILES, a polymer's molar
+        mass through g/mol. Conditions were hashed as written, so a candidate
+        at "25 degC, 1 atm" and the same candidate at "298.15 K, 101325 Pa"
+        were two different candidates with two separate cache entries, and
+        nothing in the system could notice they were the same request.
+
+        ``processing`` keeps its order because a cure schedule is a sequence;
+        ``surfaces`` is a set of what is present, so it is sorted.
+        """
+        def _value(quantity, unit):
+            if quantity is None:
+                return None
+            # Twelve significant figures: far finer than any condition is
+            # known to, and coarse enough that two spellings of the same
+            # condition cannot differ in the last bit of a conversion.
+            return float(f"{quantity.to(unit).value:.12g}")
+
+        return {
+            "temperature_k": _value(self.temperature, "kelvin"),
+            "pressure_pa": _value(self.pressure, "pascal"),
+            "environment": self.environment,
+            "phase": None if self.phase is None else self.phase.value,
+            "processing": list(self.processing),
+            "surfaces": sorted(self.surfaces),
+        }
+
     def describe(self) -> str:
         bits = []
         if self.temperature is not None:

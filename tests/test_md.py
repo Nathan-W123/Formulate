@@ -240,3 +240,78 @@ def test_a_short_run_says_that_it_is_short():
     assert result.usable
     assert any("ps of production sampling against" in d for d in result.diagnostics)
     assert any("finite-size" in limitation for limitation in result.limitations)
+
+
+# -- the ensemble is not silently substituted ------------------------------
+
+
+def _request(**kw):
+    from formulate.physics.md import MDProtocol, MDRequest
+
+    geometry = kw.pop("geometry", None)
+    return MDRequest(
+        geometry=geometry,
+        protocol=kw.pop("protocol", MDProtocol.CONFORMATIONAL_ENSEMBLE),
+        calculator="GFN-FF",
+        temperature_k=298.15,
+        equilibration_steps=10,
+        production_steps=20,
+        sample_interval=5,
+        **kw,
+    )
+
+
+def test_a_constant_pressure_run_is_refused_rather_than_run_at_constant_volume():
+    """No barostat exists here, and NVT wearing an NPT label is not a near miss.
+
+    The volume is the observable a constant-pressure run exists to produce.
+    Holding it fixed does not fail loudly; it answers a different question and
+    returns a number that looks fine.
+    """
+    from formulate.physics.geometry import geometry_from_smiles
+    from formulate.physics.md.base import Ensemble
+    from formulate.physics.md.engine import MDEngine
+
+    geometry = geometry_from_smiles("CCO", n_conformers=2)
+    engine = MDEngine()
+
+    assert engine.assess(_request(geometry=geometry)).feasible
+
+    npt = engine.assess(_request(geometry=geometry, ensemble=Ensemble.NPT))
+    assert not npt.feasible
+    assert "barostat" in npt.reason
+
+
+def test_a_requested_pressure_is_refused_rather_than_recorded_and_ignored():
+    from formulate.physics.geometry import geometry_from_smiles
+    from formulate.physics.md.engine import MDEngine
+
+    geometry = geometry_from_smiles("CCO", n_conformers=2)
+    verdict = MDEngine().assess(_request(geometry=geometry, pressure_pa=101325.0))
+    assert not verdict.feasible
+    assert "pressure" in verdict.reason
+
+
+def test_every_runnable_protocol_names_its_own_workflow():
+    """Protocol dispatch is a mapping, so an unimplemented one cannot borrow another."""
+    from formulate.physics.md.base import REQUIREMENTS, MDProtocol
+    from formulate.physics.md.engine import MDEngine, PROTOCOL_METHODS
+
+    assert set(PROTOCOL_METHODS) <= set(MDProtocol)
+    for protocol, method in PROTOCOL_METHODS.items():
+        assert callable(getattr(MDEngine, method)), protocol
+    # Every protocol still declares what it would need, implemented or not.
+    assert set(REQUIREMENTS) == set(MDProtocol)
+
+
+def test_forcing_an_unimplemented_protocol_does_not_run_a_different_one():
+    from formulate.physics.geometry import geometry_from_smiles
+    from formulate.physics.md import MDProtocol
+    from formulate.physics.md.engine import MDEngine
+
+    geometry = geometry_from_smiles("CCO", n_conformers=2)
+    result = MDEngine().run(
+        _request(geometry=geometry, protocol=MDProtocol.DENSITY, force_run=True)
+    )
+    assert not result.usable
+    assert result.value is None

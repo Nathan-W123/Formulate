@@ -67,11 +67,30 @@ VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
     "interaction_energy": frozenset({ValidationMethod.QUANTUM}),
     "atomization_energy": frozenset({ValidationMethod.QUANTUM}),
     "radius_of_gyration": frozenset({ValidationMethod.DYNAMICS}),
-    "cohesive_energy_density": frozenset({ValidationMethod.DYNAMICS}),
     "self_diffusion_coefficient": frozenset({ValidationMethod.DYNAMICS}),
-    "shear_viscosity": frozenset({ValidationMethod.DYNAMICS}),
     "liquid_density": frozenset({ValidationMethod.DYNAMICS}),
     "work_of_separation": frozenset({ValidationMethod.DYNAMICS}),
+}
+
+#: Which molecular-dynamics workflow produces which property.
+#:
+#: Every entry of VALIDATABLE marked DYNAMICS must appear here. Selecting a
+#: protocol with an if-else that ends in a default is what made this necessary:
+#: every property except the radius of gyration fell through to the
+#: cohesive-energy workflow, whose result is an energy per mole, and stamping
+#: that as a density raised an uncaught dimensionality error that killed the
+#: run. A property with no protocol is refused before any of that, the way the
+#: quantum path already refuses a property with no observable.
+#:
+#: Three of these four workflows will decline on this installation for want of
+#: a periodic condensed phase. That refusal, with the system size and sampling
+#: time it would need, is the useful answer - and it is the answer the dynamics
+#: module was written to give.
+DYNAMICS_PROTOCOLS: dict[str, str] = {
+    "radius_of_gyration": "conformational_ensemble",
+    "liquid_density": "density",
+    "self_diffusion_coefficient": "self_diffusion",
+    "work_of_separation": "work_of_separation",
 }
 
 #: Why a property that looks physical is nevertheless not validatable here.
@@ -104,6 +123,18 @@ NOT_VALIDATABLE_REASONS: dict[str, str] = {
     "synthetic_accessibility": (
         "synthesisability is a statement about available routes and reagents, not a "
         "physical observable; section 13 places it outside what QM or MD can establish"
+    ),
+    "shear_viscosity": (
+        "a viscosity comes from a Green-Kubo integral of the stress autocorrelation "
+        "or from non-equilibrium shear, and neither exists in this system; there is "
+        "no dynamics workflow that produces it, adequate sampling or not"
+    ),
+    "cohesive_energy_density": (
+        "the cohesive-energy workflow here measures a finite cluster and reports an "
+        "energy per mole, not an energy per unit volume. Converting one to the other "
+        "needs a bulk molar volume and a correction for the cluster surface, which is "
+        "the systematic error the cluster estimate already carries; section 13 forbids "
+        "presenting that as a validated bulk property"
     ),
     "surface_tension": (
         "surface tension requires a converged liquid-vapour interface, which needs a "
@@ -652,11 +683,10 @@ class PhysicsValidator:
         from formulate.physics.md import MDProtocol, MDRequest
 
         engine = self.dynamics()
-        protocol = (
-            MDProtocol.CONFORMATIONAL_ENSEMBLE
-            if target.property == "radius_of_gyration"
-            else MDProtocol.COHESIVE_ENERGY
-        )
+        name = DYNAMICS_PROTOCOLS.get(target.property)
+        if name is None:
+            return None, f"no dynamics protocol in this system produces {target.property}"
+        protocol = MDProtocol(name)
         request = MDRequest(
             geometry=geometry,
             protocol=protocol,

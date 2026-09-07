@@ -436,7 +436,7 @@ class Candidate(BaseModel):
         return {
             "class": self.material_class.value,
             "payload": self.payload.identity_payload(),
-            "conditions": self.conditions.model_dump(mode="json"),
+            "conditions": self.conditions.identity_payload(),
         }
 
     @property

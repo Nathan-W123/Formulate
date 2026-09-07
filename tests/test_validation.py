@@ -8,6 +8,7 @@ from conftest import requires_rdkit
 
 from formulate.coordination import DeterministicCoordinator, RunConfig
 from formulate.coordination.validation import (
+    DYNAMICS_PROTOCOLS,
     NOT_VALIDATABLE_REASONS,
     VALIDATABLE,
     Disagreement,
@@ -63,8 +64,11 @@ def test_properties_outside_reach_are_refused_with_a_physical_reason(prop):
 
 
 def test_quantum_is_never_offered_a_bulk_property():
-    for prop in ("liquid_density", "self_diffusion_coefficient", "shear_viscosity"):
+    for prop in ("liquid_density", "self_diffusion_coefficient", "work_of_separation"):
         assert ValidationMethod.QUANTUM not in VALIDATABLE[prop]
+    # And a bulk property with no workflow at all is offered to neither method.
+    assert "shear_viscosity" not in VALIDATABLE
+    assert "shear_viscosity" in NOT_VALIDATABLE_REASONS
 
 
 def test_dynamics_is_never_offered_an_electronic_property():
@@ -315,3 +319,88 @@ def test_a_condition_dependent_property_is_still_rejected_on_conditions():
         EvaluationConfig(),
     )
     assert outcome.status is OutcomeStatus.CONDITION_MISMATCH
+
+
+# -- every dynamics property must name its own protocol --------------------
+
+
+def test_every_dynamics_property_has_a_protocol():
+    """The invariant whose absence let a density be answered with an energy.
+
+    Protocol selection used to be an if-else ending in a default, so every
+    property but the radius of gyration ran the cohesive-energy workflow and
+    came back in joules per mole. The dimensionality check caught it, but as an
+    uncaught exception out of the middle of a design run rather than as a
+    refusal.
+    """
+    dynamics = {
+        prop for prop, methods in VALIDATABLE.items() if ValidationMethod.DYNAMICS in methods
+    }
+    assert dynamics
+    assert dynamics <= set(DYNAMICS_PROTOCOLS), sorted(dynamics - set(DYNAMICS_PROTOCOLS))
+    # And nothing is mapped that is not offered.
+    assert set(DYNAMICS_PROTOCOLS) <= dynamics
+
+
+def test_every_protocol_name_resolves_to_a_real_workflow():
+    from formulate.physics.md import MDProtocol
+
+    for prop, name in DYNAMICS_PROTOCOLS.items():
+        assert MDProtocol(name), prop
+
+
+def test_a_property_with_no_workflow_is_refused_with_a_physical_reason():
+    spec = TargetSpec.from_dict(
+        {
+            "name": "not obtainable here",
+            "conditions": {"temperature": "25 degC", "pressure": "1 atm"},
+            "requirements": [
+                {
+                    "property": "shear_viscosity",
+                    "direction": "minimize",
+                    "lower": "0 Pa*s",
+                    "upper": "0.01 Pa*s",
+                },
+                {
+                    "property": "cohesive_energy_density",
+                    "direction": "maximize",
+                    "lower": "0 Pa",
+                    "upper": "1e9 Pa",
+                },
+            ],
+        }
+    )
+    permitted, refused = validatable_properties(spec)
+    assert permitted == {}
+    assert "Green-Kubo" in refused["shear_viscosity"]
+    # Not a vague "unsupported": the cluster workflow produces the wrong
+    # dimension, and saying so is what stops someone wiring it up again.
+    assert "energy per mole" in refused["cohesive_energy_density"]
+
+
+@requires_rdkit
+@pytest.mark.parametrize(
+    "prop", ["liquid_density", "self_diffusion_coefficient", "work_of_separation"]
+)
+def test_a_bulk_property_declines_with_its_cost_rather_than_raising(prop):
+    """The dynamics module was written to refuse these. It must get the chance."""
+    from formulate.coordination.validation import (
+        PhysicsValidator,
+        ValidationTarget,
+    )
+    from formulate.core.candidate import molecule_candidate
+    from formulate.physics.md.base import REQUIREMENTS, MDProtocol
+
+    target = ValidationTarget(
+        candidate=molecule_candidate("CCO"),
+        property=prop,
+        method=ValidationMethod.DYNAMICS,
+        value_score=1.0,
+        rationale="test",
+    )
+    prediction, reason = PhysicsValidator(policy=ValidationPolicy())._run_target(target, _SPEC)
+
+    assert prediction is None
+    requirement = REQUIREMENTS[MDProtocol(DYNAMICS_PROTOCOLS[prop])]
+    assert str(requirement.min_molecules) in reason
+    assert "periodic" in reason
