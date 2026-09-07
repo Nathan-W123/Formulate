@@ -276,6 +276,27 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
         # cannot: two liquids can share a total cohesive energy density while
         # being immiscible because one holds it in hydrogen bonds and the other
         # in dispersion forces.
+        # --- Mixture phase behaviour (specification section 12, "validity of
+        # recipes, phase/compatibility failures"). A Hansen distance says how
+        # similar two liquids are; an activity coefficient says what the
+        # mixture actually does, including separating into two phases.
+        _p(
+            "excess_gibbs_energy",
+            "J/mol",
+            _C,
+            "Excess Gibbs energy of mixing, RT * sum(x_i ln gamma_i). Zero for an "
+            "ideal mixture, positive when the components prefer their own kind.",
+            condition_dependent=True,
+        ),
+        _p(
+            "mixing_stability",
+            "",
+            _C,
+            "Minimum curvature of the molar Gibbs energy of mixing over composition, "
+            "in units of RT. Negative means the mixture is unstable somewhere and "
+            "separates into two phases.",
+            condition_dependent=True,
+        ),
         _p(
             "hansen_dispersion",
             "Pa^0.5",

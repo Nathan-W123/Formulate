@@ -359,15 +359,28 @@ _VDW_ENERGY = (
 )
 
 
-def _nonbonded_forces(params: MMFFParameters, copies: int, *, exact: bool, cutoff_nm: float):
+def _nonbonded_forces(
+    params: MMFFParameters,
+    copies: int,
+    *,
+    exact: bool,
+    cutoff_nm: float,
+    dispersion_scale: float = 1.0,
+):
     import openmm as mm
 
     size = params.vdw_size
+    # One knob on the well depth, and only the well depth. Scaling epsilon
+    # strengthens attraction without touching the atomic sizes that set the
+    # repulsive wall and hence the local structure of the liquid; scaling R*
+    # instead would change both. Any value other than 1.0 is no longer MMFF94
+    # and every caller is told so.
+    epsilon_table = [e * dispersion_scale for e in params.vdw_epsilon]
     vdw = mm.CustomNonbondedForce(
         f"{KCAL}*{_VDW_ENERGY}; rs=Rstar(t1,t2); e=Eps(t1,t2); rr=10*r"
     )
     vdw.addTabulatedFunction("Rstar", mm.Discrete2DFunction(size, size, list(params.vdw_rstar)))
-    vdw.addTabulatedFunction("Eps", mm.Discrete2DFunction(size, size, list(params.vdw_epsilon)))
+    vdw.addTabulatedFunction("Eps", mm.Discrete2DFunction(size, size, epsilon_table))
     vdw.addPerParticleParameter("t")
 
     if exact:
@@ -418,7 +431,7 @@ def _nonbonded_forces(params: MMFFParameters, copies: int, *, exact: bool, cutof
                 electrostatic.addException(i + offset, j + offset, 0.0, 1.0, 0.0)
         # MMFF keeps 1-4 van der Waals in full and scales 1-4 electrostatics.
         for i, j, rstar, epsilon, charge_product in params.one_four:
-            vdw14.addBond(i + offset, j + offset, [rstar, epsilon])
+            vdw14.addBond(i + offset, j + offset, [rstar, epsilon * dispersion_scale])
             ele14.addBond(i + offset, j + offset, [charge_product])
 
     return vdw, electrostatic, vdw14, ele14
@@ -439,6 +452,7 @@ def build_system(
     exact: bool = False,
     box_nm: float | None = None,
     cutoff_nm: float = 1.0,
+    dispersion_scale: float = 1.0,
 ):
     """An OpenMM system for ``copies`` identical molecules under MMFF94.
 
@@ -468,8 +482,13 @@ def build_system(
         )
 
     bent, linear = _angle_forces(params, copies)
+    if exact and dispersion_scale != 1.0:
+        raise ValueError(
+            "the exact mode reproduces MMFF94, so it cannot carry a dispersion scale; "
+            "a scaled force field is no longer the one the oracle checks against"
+        )
     vdw, electrostatic, vdw14, ele14 = _nonbonded_forces(
-        params, copies, exact=exact, cutoff_nm=cutoff_nm
+        params, copies, exact=exact, cutoff_nm=cutoff_nm, dispersion_scale=dispersion_scale
     )
     for force in (
         _bond_force(params, copies),

@@ -252,6 +252,28 @@ over: poly(dimethylsiloxane) measures 0.97 g/cm³ where a carbon-backbone
 packing factor says 1.13, and the expert says out-of-domain rather than
 presenting the 16% error as an answer.
 
+**Mixture phase behaviour.** A Hansen distance says two liquids are alike.
+Alike is not the question — two liquids can sit close in Hansen space and still
+separate. Modified UNIFAC (Dortmund) answers the real one, and `thermo` already
+ships it along with the DDBST group assignments, which are curated per compound
+rather than fragmented by SMARTS. Structures reach them through an InChIKey,
+the same route the Hansen expert uses. Two properties: `excess_gibbs_energy`,
+and `mixing_stability` — the minimum curvature of the Gibbs energy of mixing
+over composition, whose sign is the spinodal condition. Water/ethanol, water/
+1-butanol, water/toluene, hexane/heptane and toluene/hexane all come out on the
+right side of it. Cost is under a millisecond.
+
+The reason the module is shaped around a coverage check: when a pair of UNIFAC
+main groups has no tabulated interaction parameter, the implementation does not
+raise — it reads the interaction as zero, which is the value for two groups
+that mix perfectly. Trichloroethylene and water share no parameter, so asking
+returns an infinite-dilution activity coefficient of 3.2 for a pair that is
+about four orders of magnitude worse. A missing parameter produces a confident
+prediction of miscibility for liquids that separate on sight, so every pair is
+checked against the table before a number is returned. No cloud point or UCST
+is derived: UNIFAC's temperature dependence is fitted to vapour-liquid data and
+a demixing temperature taken from it is wrong by tens to hundreds of kelvin.
+
 **Still not done — polymer Hansen parameters** and the mechanical properties.
 The registry reports `youngs_modulus` as uncovered rather than inventing it.
 

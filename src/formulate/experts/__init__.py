@@ -7,6 +7,7 @@ candidates; they only predict.
 
 from __future__ import annotations
 
+from .activity import UNIFACActivityExpert
 from .base import Expert, PredictionRequest
 from .feasibility import SynthesisFeasibilityExpert
 from .hansen import HansenSolubilityExpert
@@ -41,7 +42,12 @@ PHASE1_EXPERTS = (
 #: separate to make that dependency explicit rather than circular. The polymer
 #: experts delegate to nothing: a repeat unit is not a molecule, and section 13
 #: forbids answering for the bulk polymer with the monomer's properties.
-PHASE4_EXPERTS = (MixtureExpert, PolymerGlassTransitionExpert, PolymerDensityExpert)
+PHASE4_EXPERTS = (
+    MixtureExpert,
+    UNIFACActivityExpert,
+    PolymerGlassTransitionExpert,
+    PolymerDensityExpert,
+)
 
 
 def molecular_registry() -> ExpertRegistry:
@@ -56,7 +62,7 @@ def default_registry() -> ExpertRegistry:
 
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
-    "PolymerDensityExpert", "PolymerGlassTransitionExpert",
+    "PolymerDensityExpert", "PolymerGlassTransitionExpert", "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",
     "PredictionRequest", "StructuralDescriptorExpert", "SynthesisFeasibilityExpert",
