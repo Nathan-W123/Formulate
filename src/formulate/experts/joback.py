@@ -92,6 +92,45 @@ _UNCERTAINTY: dict[str, tuple[float, str]] = {
 #: Conditions each property is defined at, beyond the request's own.
 _AT_BOILING_POINT = frozenset({"enthalpy_vaporization"})
 
+#: Measured one-sigma errors over the fifty reference compounds, replacing the
+#: published figures where those proved optimistic, in each canonical unit.
+#:
+#: Joback and Reid quote average absolute errors on their own fitting set, and
+#: for three properties those do not survive contact with this compound mix:
+#: a stated 4.76 K on the critical temperature caught 17 per cent of the
+#: reference compounds inside one sigma where a correct estimate catches about
+#: 68. The values below are 1.253 times the measured mean absolute error, which
+#: is the conversion for a normal distribution.
+#:
+#: The split is by hydrogen-bond donor count, following the interfacial
+#: expert, because that is where the failures concentrate and the effect is
+#: large: on the enthalpy of vaporisation the associating compounds err by 4.0
+#: kJ/mol against 1.7 for the rest, and acetic acid - which dimerises in the
+#: vapour, so no monomeric group method can be right about it - is out by 13.3.
+#: Critical volume, enthalpy of fusion and gas heat capacity show no such
+#: pattern and take a single figure; inventing a factor for them would be
+#: decoration.
+#:
+#: These spreads are calibrated on the reference set, so coverage measured over
+#: that same set is not independent evidence that they are right. They replace
+#: figures fitted to somebody else's set, which had the same problem and was
+#: additionally about the wrong chemistry.
+_MEASURED_SPREAD: dict[str, tuple[float, float]] = {
+    # property: (no hydrogen-bond donor, one or more)
+    "critical_temperature": (29.0, 54.0),
+    "critical_pressure": (2.28e5, 9.12e5),
+    "enthalpy_vaporization": (2170.0, 4960.0),
+    "critical_volume": (1.05e-5, 1.05e-5),
+    "enthalpy_fusion": (2620.0, 2620.0),
+    "heat_capacity_gas": (2.45, 2.45),
+}
+
+_MEASURED_BASIS = (
+    "1.253 times the mean absolute error measured over the fifty reference compounds, "
+    "split by hydrogen-bond donor count; replaces the figure Joback and Reid report for "
+    "their own fitting set, which is optimistic for this chemistry"
+)
+
 
 @functools.lru_cache(maxsize=4096)
 def _joback_for(smiles: str) -> Any:
@@ -212,6 +251,13 @@ class JobackThermalExpert(Expert):
             return Prediction.failed(prop, self.id, f"Joback produced no value for {prop}")
 
         std, basis = _UNCERTAINTY[prop]
+        measured = _MEASURED_SPREAD.get(prop)
+        if measured is not None:
+            from formulate import chem
+
+            associating = int(chem.descriptors(smiles).get("hbd", 0.0)) > 0
+            std = measured[1 if associating else 0]
+            basis = _MEASURED_BASIS
         return self._make(
             prop,
             value,

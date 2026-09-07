@@ -152,3 +152,105 @@ def test_the_associating_compounds_are_no_longer_the_worst_cases(panel_results):
 
 def test_description_states_that_this_is_not_a_benchmark(panel_results):
     assert "not a curated benchmark" in describe(panel_results)
+
+
+# --------------------------------------------------------------------------
+# The seven properties that had nothing to check them against
+# --------------------------------------------------------------------------
+
+_NEWLY_REFERENCED = [
+    ("critical_temperature", 40.0, "K"),
+    ("critical_pressure", 5.0e5, "Pa"),
+    ("critical_volume", 1.5e-5, "m^3/mol"),
+    ("enthalpy_vaporization", 3500.0, "J/mol"),
+    ("enthalpy_fusion", 3200.0, "J/mol"),
+    ("heat_capacity_gas", 3.5, "J/mol/K"),
+]
+
+
+@pytest.mark.parametrize(("prop", "bound", "unit"), _NEWLY_REFERENCED)
+def test_the_estimator_is_measured_rather_than_cited(results, prop, bound, unit):
+    """Each of these used to rest on the accuracy its authors reported.
+
+    A citation is not a measurement. Joback and Reid quote average absolute
+    errors on their own fitting set; over this compound mix the critical
+    temperature is out by 28 K against a quoted 4.8, because the set includes
+    associating compounds their method was not built for.
+    """
+    assert prop in results
+    assert results[prop].count >= 40
+    assert results[prop].mean_absolute_error < bound
+
+
+def test_logp_is_measured_too(panel_results):
+    assert panel_results["logp"].count >= 40
+    assert panel_results["logp"].mean_absolute_error < 1.0
+
+
+@pytest.mark.parametrize("prop", [p for p, _, _ in _NEWLY_REFERENCED])
+def test_the_newly_measured_properties_are_not_overconfident(results, prop):
+    """The point of adding the data. Two of these failed when it arrived.
+
+    Critical temperature caught 17 per cent of compounds inside its own one
+    sigma and the enthalpy of vaporisation caught 7, where a correct estimate
+    catches about 68. Both were invisible while the properties had no reference
+    values at all.
+    """
+    coverage = results[prop].within_one_sigma
+    assert coverage is not None
+    assert coverage >= 0.5, f"{prop} claims a tighter error bar than it earns"
+
+
+def test_the_vaporisation_reference_is_at_the_boiling_point_not_at_298(results):
+    """Getting this wrong tripled the apparent error and hid a real one.
+
+    Joback's enthalpy of vaporisation is defined at the normal boiling point.
+    Compared against a reference tabulated at 298 K it showed a mean error of
+    7.3 kJ/mol and a one-sigma coverage of 7 per cent, which looks exactly like
+    an overconfident expert and was nothing of the kind.
+    """
+    from formulate.evaluation.calibration import REFERENCE_PROPERTIES
+
+    entry = REFERENCE_PROPERTIES["enthalpy_vaporization_tb_j_mol"]
+    assert entry[0] == "enthalpy_vaporization"
+    assert entry[2] == "boiling_point_c"
+    assert results["enthalpy_vaporization"].mean_absolute_error < 3500.0
+
+
+def test_a_prediction_at_the_wrong_temperature_is_not_compared():
+    """The guard that would have caught it, rather than a note not to repeat it."""
+    from formulate.core.conditions import Conditions
+    from formulate.core.quantity import Quantity
+    from formulate.evaluation.calibration import _condition_mismatch
+    from formulate.core.prediction import Prediction
+
+    at_boiling = Prediction(
+        property="enthalpy_vaporization",
+        expert_id="test",
+        expert_version="1",
+        method="test",
+        quantity=Quantity(value=1.0, unit="J/mol"),
+        conditions=Conditions.standard().model_copy(
+            update={"temperature": Quantity(value=351.6, unit="K")}
+        ),
+    )
+    assert "351.6" in _condition_mismatch(at_boiling, 298.15)
+    assert _condition_mismatch(at_boiling, 351.6) == ""
+
+
+def test_associating_compounds_get_a_wider_bar_where_the_data_shows_they_need_one():
+    """And do not get one where it does not.
+
+    Over the reference set the enthalpy of vaporisation errs by 4.0 kJ/mol for
+    hydrogen-bond donors against 1.7 for the rest. Critical volume, enthalpy of
+    fusion and gas heat capacity show no such split, and inventing a factor for
+    them would be decoration rather than calibration.
+    """
+    from formulate.experts.joback import _MEASURED_SPREAD
+
+    for prop in ("critical_temperature", "critical_pressure", "enthalpy_vaporization"):
+        plain, associating = _MEASURED_SPREAD[prop]
+        assert associating > plain * 1.5, prop
+    for prop in ("critical_volume", "enthalpy_fusion", "heat_capacity_gas"):
+        plain, associating = _MEASURED_SPREAD[prop]
+        assert plain == associating, prop
