@@ -71,6 +71,51 @@ VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
     "liquid_density": frozenset({ValidationMethod.DYNAMICS}),
     "cohesive_energy_density": frozenset({ValidationMethod.DYNAMICS}),
     "work_of_separation": frozenset({ValidationMethod.DYNAMICS}),
+    # The three below cost nothing extra. Each is arithmetic on a run that was
+    # already being made and whose other output was already being kept: a
+    # molar volume is the density run's box divided by what is in it, an
+    # enthalpy of vaporisation is the cohesive run's energy difference plus RT,
+    # and a Hildebrand parameter is the square root of its energy density.
+    # Leaving them out was not a judgement about physics, it was three
+    # properties being computed and discarded.
+    #
+    # A fourth looked equally free and is not. Every quantum calculation
+    # produces a total electronic energy, and _QM_OBSERVABLES has always known
+    # how to read it, but an absolute electronic energy is monotone in electron
+    # count - minus seventy-five hartree for water, minus two hundred and
+    # twenty-eight for benzene - so ranking candidates on it sorts them by size.
+    # It stays out, as NOT_VALIDATABLE_REASONS has said all along.
+    "molar_volume_liquid": frozenset({ValidationMethod.DYNAMICS}),
+    "enthalpy_vaporization": frozenset({ValidationMethod.DYNAMICS}),
+    "hildebrand_solubility_parameter": frozenset({ValidationMethod.DYNAMICS}),
+}
+
+#: Ideal-gas constant in kJ/(mol K), for the RT that separates a potential
+#: energy of vaporisation from an enthalpy of vaporisation.
+_GAS_CONSTANT_KJ = 0.00831446261815324
+
+#: Properties a physics route could reach but this system cannot, and why.
+#:
+#: Kept as a table rather than as silence so that the gap is a stated one. Gas
+#: heat capacity is the case worth naming: it is standard thermochemistry from
+#: vibrational frequencies under the rigid-rotor harmonic-oscillator model, and
+#: it is unreachable here for one missing capability rather than for any deep
+#: reason. No backend in this installation computes a Hessian.
+PHYSICS_OUT_OF_REACH: dict[str, str] = {
+    "heat_capacity_gas": (
+        "needs vibrational frequencies, so it needs a Hessian, and no quantum backend "
+        "here computes one; the partition function it would be assembled from is "
+        "otherwise standard"
+    ),
+    "glass_transition_temperature": (
+        "a molecular-dynamics glass transition depends on the cooling rate chosen, which "
+        "is a dozen orders of magnitude faster than any experiment, and comes out tens of "
+        "kelvin high; reporting one without that caveat would be worse than refusing"
+    ),
+    "melting_point": (
+        "needs two-phase coexistence or free-energy integration between the solid and the "
+        "liquid, neither of which is implemented, and a naive heating run superheats"
+    ),
 }
 
 #: Properties computed from a periodic condensed phase rather than from a
@@ -83,7 +128,10 @@ VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
 #: they would need rather than silently skipping.
 CONDENSED_PROTOCOLS: dict[str, str] = {
     "liquid_density": "density",
+    "molar_volume_liquid": "density",
     "cohesive_energy_density": "cohesive_energy_density",
+    "enthalpy_vaporization": "cohesive_energy_density",
+    "hildebrand_solubility_parameter": "cohesive_energy_density",
     "self_diffusion_coefficient": "self_diffusion",
 }
 
@@ -97,7 +145,7 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
 }
 
 #: Measured systematic error of each force field in the condensed phase, as a
-#: fraction of the value, per protocol.
+#: fraction of the value, keyed by property.
 #:
 #: This exists because the sampling error these protocols report is not the
 #: error. A block average over a hundred picoseconds puts a few parts in a
@@ -105,20 +153,40 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
 #: number. Quoting only the first tells the ranker a wrong value is a certain
 #: one, and the calibration suite exists to catch exactly that.
 #:
-#: Both rows are measured against experiment at 298 K, not assumed. OPLS-AA:
-#: five liquids (ethanol, acetone, toluene, cyclohexane, hexane), mean absolute
-#: error 1.2 per cent on density and 3.7 per cent on the energy of
-#: vaporisation. MMFF94: one density (ethanol, 26 per cent low) and three
+#: Two rows, both measured against experiment at 298 K rather than assumed.
+#: OPLS-AA over five liquids (ethanol, acetone, toluene, cyclohexane, hexane):
+#: mean absolute error 1.2 per cent on density and 3.7 on the energy of
+#: vaporisation. MMFF94 over one density (ethanol, 26 per cent low) and three
 #: vaporisation energies (toluene 11, ethanol 15, hexane 3 per cent low), so
-#: its density entry rests on a single point and is the weaker number of the
-#: two - it is kept deliberately large rather than refined on no evidence.
+#: its density figure rests on a single point and is kept deliberately large
+#: rather than refined on no evidence.
+#:
+#: Keyed by property and not by protocol, because one protocol yields several
+#: numbers whose errors differ. A molar volume is a density inverted, so it
+#: carries the same relative error. A cohesive energy density is an energy over
+#: a volume, so it carries both in quadrature. A Hildebrand parameter is the
+#: square root of that, so it carries half of it - a square root halves a
+#: relative error, and quoting the energy density's figure on it would overstate
+#: the uncertainty by a factor of two.
 #:
 #: Self-diffusion is absent from both rows because neither was measured for it,
 #: and a coefficient that spans orders of magnitude is not a place to
 #: interpolate a systematic error from a density. Runs of it say so instead.
 CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
-    "opls-aa": {"density": 0.012, "cohesive_energy_density": 0.037},
-    "mmff94": {"density": 0.26, "cohesive_energy_density": 0.15},
+    "opls-aa": {
+        "liquid_density": 0.012,
+        "molar_volume_liquid": 0.012,
+        "enthalpy_vaporization": 0.037,
+        "cohesive_energy_density": 0.039,
+        "hildebrand_solubility_parameter": 0.020,
+    },
+    "mmff94": {
+        "liquid_density": 0.26,
+        "molar_volume_liquid": 0.26,
+        "enthalpy_vaporization": 0.15,
+        "cohesive_energy_density": 0.30,
+        "hildebrand_solubility_parameter": 0.15,
+    },
 }
 
 
@@ -1012,11 +1080,28 @@ class PhysicsValidator:
                     mol, molecules, temperature, force_field=force_field
                 )
                 if protocol == "density":
-                    value = Quantity(value=liquid.density_g_cm3, unit="g/cm^3")
+                    sampling = (
+                        f"block-averaged over {liquid.production_ps:.0f} ps at constant "
+                        "pressure"
+                    )
+                    if target.property == "liquid_density":
+                        value = Quantity(value=liquid.density_g_cm3, unit="g/cm^3")
+                        std = liquid.density_error
+                    else:
+                        # The same box, read the other way round. A molar volume
+                        # is what one mole of the stuff occupies, so it is the
+                        # molar mass over the density, and its relative error is
+                        # the density's - the molar mass is exact.
+                        value = Quantity(
+                            value=liquid.molar_volume_cm3 * 1e-6, unit="m^3/mol"
+                        )
+                        std = (
+                            value.value * liquid.density_error / liquid.density_g_cm3
+                            if liquid.density_g_cm3
+                            else None
+                        )
                     uncertainty = Uncertainty(
-                        std=liquid.density_error,
-                        kind=UncertaintyKind.SAMPLING,
-                        basis=f"block-averaged over {liquid.production_ps:.0f} ps at constant pressure",
+                        std=std, kind=UncertaintyKind.SAMPLING, basis=sampling
                     )
                     diagnostics = liquid.diagnostics
                     in_domain = not liquid.diagnostics
@@ -1025,22 +1110,49 @@ class PhysicsValidator:
                         mol, temperature, force_field=force_field
                     )
                     cohesive = condensed.cohesive_energy_density(liquid, gas, gas_error)
-                    value = Quantity(value=cohesive.cohesive_energy_density_pa, unit="Pa")
+                    sampling = (
+                        f"propagated from a vaporisation energy of "
+                        f"{cohesive.vaporisation_energy:.1f} kJ/mol and a molar volume of "
+                        f"{cohesive.molar_volume_cm3:.1f} cm^3/mol"
+                    )
+                    relative = (
+                        abs(cohesive.error_pa / cohesive.cohesive_energy_density_pa)
+                        if cohesive.cohesive_energy_density_pa
+                        else 0.0
+                    )
+                    if target.property == "cohesive_energy_density":
+                        value = Quantity(value=cohesive.cohesive_energy_density_pa, unit="Pa")
+                        std = cohesive.error_pa
+                    elif target.property == "enthalpy_vaporization":
+                        # The run measures the potential energy of vaporisation.
+                        # The enthalpy is that plus the work of expanding into
+                        # the vapour, which for an ideal gas is RT and for the
+                        # liquid it left behind is negligible.
+                        joules = (
+                            cohesive.vaporisation_energy + _GAS_CONSTANT_KJ * temperature
+                        ) * 1000.0
+                        value = Quantity(value=joules, unit="J/mol")
+                        std = (
+                            math.hypot(liquid.energy_error, gas_error) * 1000.0
+                            if gas_error is not None
+                            else None
+                        )
+                    else:
+                        # Hildebrand's parameter is the square root of the
+                        # cohesive energy density, and a square root halves a
+                        # relative error rather than preserving it.
+                        density_pa = max(cohesive.cohesive_energy_density_pa, 0.0)
+                        value = Quantity(value=math.sqrt(density_pa), unit="Pa^0.5")
+                        std = 0.5 * relative * value.value
                     uncertainty = Uncertainty(
-                        std=cohesive.error_pa,
-                        kind=UncertaintyKind.SAMPLING,
-                        basis=(
-                            f"propagated from a vaporisation energy of "
-                            f"{cohesive.vaporisation_energy:.1f} kJ/mol and a molar volume of "
-                            f"{cohesive.molar_volume_cm3:.1f} cm^3/mol"
-                        ),
+                        std=std, kind=UncertaintyKind.SAMPLING, basis=sampling
                     )
                     diagnostics = cohesive.diagnostics
                     in_domain = not cohesive.diagnostics
         except Exception as exc:  # a failed simulation is a skip, not a crash
             return None, f"the condensed-phase run failed ({type(exc).__name__}: {exc})"
 
-        uncertainty = _widen_for_force_field(uncertainty, value, force_field, protocol)
+        uncertainty = _widen_for_force_field(uncertainty, value, force_field, target.property)
         notes = _CONDENSED_NOTES[force_field]
         if fallback_reason:
             notes = notes + (
@@ -1108,7 +1220,7 @@ class PhysicsValidator:
 
 
 def _widen_for_force_field(
-    uncertainty: Uncertainty, value: Quantity, force_field: str, protocol: str
+    uncertainty: Uncertainty, value: Quantity, force_field: str, prop: str
 ) -> Uncertainty:
     """Add the force field's measured systematic error to the sampling error.
 
@@ -1119,7 +1231,7 @@ def _widen_for_force_field(
     quadrature, and the basis string names both so the number can be argued
     with rather than taken on trust.
     """
-    systematic_fraction = CONDENSED_SYSTEMATIC.get(force_field, {}).get(protocol)
+    systematic_fraction = CONDENSED_SYSTEMATIC.get(force_field, {}).get(prop)
     if systematic_fraction is None:
         return uncertainty
 

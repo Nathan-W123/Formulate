@@ -566,16 +566,19 @@ def test_falling_back_to_mmff94_carries_the_reason_it_fell_back():
 
 
 @pytest.mark.parametrize(
-    ("force_field", "protocol", "fraction"),
+    ("force_field", "prop", "fraction"),
     [
-        ("opls-aa", "density", 0.012),
-        ("mmff94", "density", 0.26),
-        ("opls-aa", "cohesive_energy_density", 0.037),
-        ("mmff94", "cohesive_energy_density", 0.15),
+        ("opls-aa", "liquid_density", 0.012),
+        ("mmff94", "liquid_density", 0.26),
+        ("opls-aa", "cohesive_energy_density", 0.039),
+        ("mmff94", "cohesive_energy_density", 0.30),
+        ("opls-aa", "enthalpy_vaporization", 0.037),
+        ("opls-aa", "molar_volume_liquid", 0.012),
+        ("opls-aa", "hildebrand_solubility_parameter", 0.020),
     ],
 )
 def test_the_force_fields_measured_error_dominates_the_sampling_error(
-    force_field, protocol, fraction
+    force_field, prop, fraction
 ):
     """A block average says a wrong density is a certain one unless this runs."""
     from formulate.coordination.validation import _widen_for_force_field
@@ -583,7 +586,7 @@ def test_the_force_fields_measured_error_dominates_the_sampling_error(
     value = Quantity(value=0.8, unit="g/cm^3")
     sampling = Uncertainty(std=0.002, kind=UncertaintyKind.SAMPLING, basis="block average")
 
-    widened = _widen_for_force_field(sampling, value, force_field, protocol)
+    widened = _widen_for_force_field(sampling, value, force_field, prop)
     assert widened.std == pytest.approx((0.002**2 + (0.8 * fraction) ** 2) ** 0.5)
     assert widened.std > sampling.std
     assert widened.kind is UncertaintyKind.EPISTEMIC
@@ -616,11 +619,55 @@ def test_the_liquid_fitted_force_field_claims_a_tighter_error_than_the_gas_fitte
     """The whole point of the switch, asserted rather than assumed."""
     from formulate.coordination.validation import CONDENSED_SYSTEMATIC
 
-    for protocol in ("density", "cohesive_energy_density"):
+    for prop in CONDENSED_SYSTEMATIC["opls-aa"]:
         assert (
-            CONDENSED_SYSTEMATIC["opls-aa"][protocol]
-            < CONDENSED_SYSTEMATIC["mmff94"][protocol]
+            CONDENSED_SYSTEMATIC["opls-aa"][prop] < CONDENSED_SYSTEMATIC["mmff94"][prop]
+        ), prop
+
+
+def test_every_condensed_property_that_runs_has_a_stated_systematic_error():
+    """Except self-diffusion, which was never measured and says so."""
+    from formulate.coordination.validation import CONDENSED_PROTOCOLS, CONDENSED_SYSTEMATIC
+
+    for field in CONDENSED_SYSTEMATIC.values():
+        assert set(field) == set(CONDENSED_PROTOCOLS) - {"self_diffusion_coefficient"}
+
+
+def test_a_square_root_halves_the_relative_error_it_inherits():
+    """Hildebrand is the square root of the cohesive energy density.
+
+    Quoting the energy density's own fraction on it would overstate the
+    uncertainty by a factor of two, which is the kind of conservatism that
+    looks harmless and stops a good candidate being distinguished from a bad
+    one.
+    """
+    from formulate.coordination.validation import CONDENSED_SYSTEMATIC
+
+    for field in CONDENSED_SYSTEMATIC.values():
+        assert field["hildebrand_solubility_parameter"] == pytest.approx(
+            0.5 * field["cohesive_energy_density"], rel=0.05
         )
+
+
+def test_a_molar_volume_carries_the_density_error_it_is_derived_from():
+    """The molar mass is exact, so inverting a density preserves its error."""
+    from formulate.coordination.validation import CONDENSED_SYSTEMATIC
+
+    for field in CONDENSED_SYSTEMATIC.values():
+        assert field["molar_volume_liquid"] == field["liquid_density"]
+
+
+def test_an_absolute_electronic_energy_stays_out_even_though_it_is_free():
+    """Every quantum run produces one and the reader for it already exists.
+
+    It is still not a validation target: an absolute electronic energy is
+    monotone in electron count, so ranking candidates on it sorts them by size.
+    Cheap to compute is not the same as meaningful to compare.
+    """
+    from formulate.coordination.validation import _QM_OBSERVABLES
+
+    assert "electronic_energy" in _QM_OBSERVABLES
+    assert "electronic_energy" not in VALIDATABLE
 
 
 # --------------------------------------------------------------------------
