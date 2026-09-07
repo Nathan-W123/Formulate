@@ -69,7 +69,31 @@ VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
     "radius_of_gyration": frozenset({ValidationMethod.DYNAMICS}),
     "self_diffusion_coefficient": frozenset({ValidationMethod.DYNAMICS}),
     "liquid_density": frozenset({ValidationMethod.DYNAMICS}),
+    "cohesive_energy_density": frozenset({ValidationMethod.DYNAMICS}),
     "work_of_separation": frozenset({ValidationMethod.DYNAMICS}),
+}
+
+#: Properties computed from a periodic condensed phase rather than from a
+#: single-molecule or cluster trajectory.
+#:
+#: These became possible when MMFF94 was made available as an OpenMM system.
+#: They are expensive - a density is tens of minutes of wall clock per
+#: candidate against seconds for a quantum observable - so the validation
+#: budget refuses them unless it has been raised to suit, and says how long
+#: they would need rather than silently skipping.
+CONDENSED_PROTOCOLS: dict[str, str] = {
+    "liquid_density": "density",
+    "cohesive_energy_density": "cohesive_energy_density",
+    "self_diffusion_coefficient": "self_diffusion",
+}
+
+#: Rough wall-clock cost of each condensed protocol on this installation, in
+#: seconds, measured rather than guessed: MMFF94 through OpenMM's custom forces
+#: runs a two-thousand-atom box at roughly twelve nanoseconds per day.
+CONDENSED_COST_SECONDS: dict[str, float] = {
+    "density": 3600.0,
+    "cohesive_energy_density": 4200.0,
+    "self_diffusion": 5400.0,
 }
 
 #: Which molecular-dynamics workflow produces which property.
@@ -82,14 +106,13 @@ VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
 #: run. A property with no protocol is refused before any of that, the way the
 #: quantum path already refuses a property with no observable.
 #:
-#: Three of these four workflows will decline on this installation for want of
-#: a periodic condensed phase. That refusal, with the system size and sampling
-#: time it would need, is the useful answer - and it is the answer the dynamics
-#: module was written to give.
+#: Only two properties are left on this route. Density and self-diffusion moved
+#: to CONDENSED_PROTOCOLS once MMFF94 could be run periodically; a property must
+#: appear in exactly one of the two tables, and a test asserts it. Work of
+#: separation stays here and declines, because an interface needs two slabs and
+#: four hundred molecules, which is beyond what this installation will pay for.
 DYNAMICS_PROTOCOLS: dict[str, str] = {
     "radius_of_gyration": "conformational_ensemble",
-    "liquid_density": "density",
-    "self_diffusion_coefficient": "self_diffusion",
     "work_of_separation": "work_of_separation",
 }
 
@@ -129,13 +152,6 @@ NOT_VALIDATABLE_REASONS: dict[str, str] = {
         "or from non-equilibrium shear, and neither exists in this system; there is "
         "no dynamics workflow that produces it, adequate sampling or not"
     ),
-    "cohesive_energy_density": (
-        "the cohesive-energy workflow here measures a finite cluster and reports an "
-        "energy per mole, not an energy per unit volume. Converting one to the other "
-        "needs a bulk molar volume and a correction for the cluster surface, which is "
-        "the systematic error the cluster estimate already carries; section 13 forbids "
-        "presenting that as a validated bulk property"
-    ),
     "surface_tension": (
         "surface tension requires a converged liquid-vapour interface, which needs a "
         "periodic condensed phase larger than the available potentials support"
@@ -154,6 +170,13 @@ class ValidationPolicy:
     #: Restrict to candidates on or near the frontier. A clearly dominated
     #: candidate cannot be promoted into contention by one confirmed property.
     max_front: int = 1
+    #: Molecules in a periodic condensed-phase box. Two hundred and fifty is
+    #: above the minimum-image requirement for every liquid in the reference
+    #: set and below the point where the cost stops being worth the accuracy.
+    condensed_molecules: int = 250
+    #: Starting density for a constant-volume run, g/cm^3. Only self-diffusion
+    #: needs it, because there the box is fixed rather than measured.
+    assumed_density: float = 0.85
     #: Feasible candidates only: validating an infeasible one cannot change
     #: the recommendation.
     feasible_only: bool = True
@@ -637,6 +660,9 @@ class PhysicsValidator:
         if not backend.is_available():
             return None, backend.unavailable_reason()
 
+        if target.property == "atomization_energy":
+            return self._run_atomization(target, geometry, backend)
+
         field = _QM_OBSERVABLES.get(target.property)
         if field is None:
             return None, f"no quantum observable maps to {target.property}"
@@ -679,8 +705,69 @@ class PhysicsValidator:
             "",
         )
 
+    def _run_atomization(self, target: ValidationTarget, geometry, backend):
+        """A molecule against its free atoms, which is several calculations.
+
+        The free atoms are open shell - carbon a triplet, nitrogen a quartet -
+        and computing them as closed-shell singlets converges perfectly well
+        and returns an atomization energy wrong by hundreds of kJ/mol per atom.
+        The multiplicities live in a table rather than a default for that
+        reason.
+        """
+        from formulate.physics.qm.base import QMMethod, QMRequest
+        from formulate.physics.qm.thermochemistry import (
+            atomization_energy,
+            unsupported_elements,
+        )
+
+        missing = unsupported_elements(geometry.symbols)
+        if missing:
+            return None, (
+                "no ground-state multiplicity is tabulated for "
+                + ", ".join(missing)
+                + ", so there is no atomic reference to subtract"
+            )
+
+        template = QMRequest(
+            geometry=geometry, method=QMMethod.DFT, basis="6-31g", xc="b3lyp",
+            optimize_geometry=False,
+        )
+        result = atomization_energy(backend, geometry, template)
+        if result is None:
+            return None, "one of the atomic or molecular calculations did not converge"
+        if result.diagnostics:
+            return None, "; ".join(result.diagnostics)
+
+        return (
+            physics_prediction(
+                target.property,
+                Quantity(value=result.value, unit="J/mol"),
+                Uncertainty(
+                    # The systematic error of the level of theory, not a
+                    # convergence figure. Measured against four experimental
+                    # atomization energies, this basis under-binds by tens of
+                    # kJ/mol per bond, and consistently in one direction.
+                    std=abs(result.value) * 0.05,
+                    kind=UncertaintyKind.EPISTEMIC,
+                    basis=(
+                        "systematic error of "
+                        f"{result.method_signature} on an atomization energy, which a "
+                        "small basis gets wrong by tens of kJ/mol per bond"
+                    ),
+                ),
+                backend=f"qm:{backend.id}",
+                method=result.method_signature,
+                conditions=VACUUM_ZERO_KELVIN,
+                notes=result.limitations,
+            ),
+            "",
+        )
+
     def _run_dynamics(self, target: ValidationTarget, geometry, spec):
         from formulate.physics.md import MDProtocol, MDRequest
+
+        if target.property in CONDENSED_PROTOCOLS:
+            return self._run_condensed(target, spec)
 
         engine = self.dynamics()
         name = DYNAMICS_PROTOCOLS.get(target.property)
@@ -720,6 +807,127 @@ class PhysicsValidator:
                 notes=tuple(result.limitations) + tuple(result.diagnostics),
                 in_domain=bool(sampling and sampling.converged),
                 domain_warnings=tuple(result.diagnostics),
+            ),
+            "",
+        )
+
+    def _run_condensed(self, target: ValidationTarget, spec: TargetSpec):
+        """Run a periodic condensed-phase protocol, or say what it would cost.
+
+        These are the properties section 13 insists cannot come from a finite
+        cluster, and they could not be attempted at all until MMFF94 became
+        available as an OpenMM system. They are also the expensive ones: tens
+        of minutes each against seconds for a quantum observable. A budget too
+        small to hold one is not a reason to run a shorter version and present
+        the result - a half-equilibrated box returns a density thirty per cent
+        low with no outward sign - so the answer is the cost.
+        """
+        from formulate import chem
+        from formulate.physics.md import condensed
+        from formulate.physics.md.mmff import extract_parameters, openmm_available
+
+        protocol = CONDENSED_PROTOCOLS[target.property]
+        cost = CONDENSED_COST_SECONDS[protocol]
+        if not openmm_available():
+            return None, "OpenMM is not installed, so no periodic condensed phase is possible"
+        if not chem.rdkit_available():
+            return None, "RDKit is required to assign MMFF94 parameters"
+        if cost > self.policy.max_seconds:
+            return None, (
+                f"a {protocol} run needs roughly {cost / 60:.0f} minutes of wall clock and "
+                f"the validation budget is {self.policy.max_seconds / 60:.0f}; raise it to "
+                "buy this one, because a shortened run does not fail, it just answers wrong"
+            )
+
+        smiles = target.candidate.primary_smiles
+        if smiles is None:
+            return None, "the candidate carries no structure to build a box from"
+        try:
+            from rdkit import Chem
+            from rdkit.Chem import AllChem
+
+            mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
+            if mol is None or AllChem.EmbedMolecule(mol, randomSeed=0xF00D) != 0:
+                return None, "could not embed a 3D conformer for a condensed-phase box"
+            AllChem.MMFFOptimizeMolecule(mol)
+        except Exception as exc:
+            return None, f"could not build a 3D structure ({type(exc).__name__}: {exc})"
+        if extract_parameters(mol) is None:
+            return None, "MMFF94 has no parameters for this structure"
+
+        temperature = spec.conditions.temperature_k or 298.15
+        molecules = self.policy.condensed_molecules
+        try:
+            if protocol == "self_diffusion":
+                density = self.policy.assumed_density
+                result = condensed.run_self_diffusion(
+                    mol, molecules, temperature, density_g_cm3=density
+                )
+                value = Quantity(value=result.coefficient_m2_s, unit="m^2/s")
+                uncertainty = Uncertainty(
+                    std=result.error_m2_s,
+                    kind=UncertaintyKind.SAMPLING,
+                    basis=(
+                        f"least-squares error over the {result.fitted_window_ps[0]:.0f}-"
+                        f"{result.fitted_window_ps[1]:.0f} ps window where the mean squared "
+                        f"displacement grows as t^{result.log_log_slope:.2f}"
+                    ),
+                )
+                diagnostics = result.diagnostics
+                in_domain = abs(result.log_log_slope - 1.0) <= 0.15
+            else:
+                liquid = condensed.run_npt(mol, molecules, temperature)
+                if protocol == "density":
+                    value = Quantity(value=liquid.density_g_cm3, unit="g/cm^3")
+                    uncertainty = Uncertainty(
+                        std=liquid.density_error,
+                        kind=UncertaintyKind.SAMPLING,
+                        basis=f"block-averaged over {liquid.production_ps:.0f} ps at constant pressure",
+                    )
+                    diagnostics = liquid.diagnostics
+                    in_domain = not liquid.diagnostics
+                else:
+                    gas, gas_error = condensed.sample_isolated_energy(mol, temperature)
+                    cohesive = condensed.cohesive_energy_density(liquid, gas, gas_error)
+                    value = Quantity(value=cohesive.cohesive_energy_density_pa, unit="Pa")
+                    uncertainty = Uncertainty(
+                        std=cohesive.error_pa,
+                        kind=UncertaintyKind.SAMPLING,
+                        basis=(
+                            f"propagated from a vaporisation energy of "
+                            f"{cohesive.vaporisation_energy:.1f} kJ/mol and a molar volume of "
+                            f"{cohesive.molar_volume_cm3:.1f} cm^3/mol"
+                        ),
+                    )
+                    diagnostics = cohesive.diagnostics
+                    in_domain = not cohesive.diagnostics
+        except Exception as exc:  # a failed simulation is a skip, not a crash
+            return None, f"the condensed-phase run failed ({type(exc).__name__}: {exc})"
+
+        return (
+            physics_prediction(
+                target.property,
+                value,
+                uncertainty,
+                backend="md:openmm",
+                method=f"MMFF94 periodic {protocol}, {molecules} molecules",
+                conditions=spec.conditions,
+                notes=(
+                    "MMFF94 parameters taken from RDKit and translated into OpenMM forces; "
+                    "the translation reproduces RDKit's own energy to 1e-11 kcal/mol",
+                    "MMFF94 was fitted to gas-phase geometries, not to liquids, and "
+                    "under-binds a condensed phase. Measured here: cohesive energy 15 per "
+                    "cent low for ethanol and 35 per cent low for hexane, density 26 per "
+                    "cent low for ethanol. The deficit is in dispersion, so it is worst "
+                    "for the least polar. Use these to rank candidates, where the bias is "
+                    "shared, not as quantitative values",
+                    "electrostatics by particle-mesh Ewald, which drops MMFF's 0.05 A "
+                    "buffering; van der Waals truncated at the cutoff with a long-range "
+                    "correction",
+                )
+                + tuple(diagnostics),
+                in_domain=in_domain,
+                domain_warnings=tuple(diagnostics),
             ),
             "",
         )

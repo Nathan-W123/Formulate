@@ -111,6 +111,48 @@ barostat and no diagnostic, while `pressure_pa` was never read at all — a
 constant-volume run wearing a constant-pressure label, when the volume is the
 observable such a run exists to produce. Both are now refused with a reason.
 
+**A periodic condensed phase, and what it is worth.** The claim above that no
+periodic phase was possible was true of the route that had been tried and false
+of the machine. OpenMM was already installed; what was missing was a way to
+parameterise an arbitrary small molecule, which normally means openff-toolkit
+or AmberTools, both conda-only. RDKit already had the parameters: MMFF94 is
+implemented in it and every term is exposed. `physics/md/mmff.py` translates
+them into OpenMM forces, and `physics/md/condensed.py` builds the box and runs
+the protocols. No new dependency.
+
+The translation is exact, and testable that way, because RDKit will evaluate
+any single MMFF term on its own: bond, angle, stretch-bend, out-of-plane,
+torsion, van der Waals and electrostatics each reproduce RDKit to about
+1e-11 kcal/mol, and so does the total over fifteen molecules including
+aromatics, amides and sulfones. Throughput is roughly 12 ns/day for a
+2250-atom box on this CPU, so a density costs about an hour per candidate.
+`liquid_density`, `cohesive_energy_density` and `self_diffusion_coefficient`
+are validatable through it; the validation budget refuses them unless raised,
+and says how long they need, because a shortened run does not fail — it returns
+a density a quarter low with an error bar that does not cover the gap.
+
+**MMFF94 is the accuracy ceiling, and it is a low one.** It was fitted to
+gas-phase geometries and conformational energies, not to liquids, and it
+under-binds a condensed phase: ethanol's potential energy of vaporisation comes
+out at 33.9 kJ/mol against an experimental 39.8, and its constant-pressure
+density at 0.58 g/cm³ against 0.789. Hexane locates the fault — held together
+by dispersion alone, it is 34.6 per cent under-bound against ethanol's 14.8, so
+the deficit is in the van der Waals term rather than the hydrogen bonding. The
+engine is right and the force field is not. These values rank candidates, where
+the bias is shared; they are not quantitative, and every prediction built on
+them carries that sentence. The fix is OPLS or GAFF, which needs a package
+manager this environment does not have.
+
+**Energies defined as a difference.** `atomization_energy` is now computed as
+the molecule against its free atoms, each in its own ground state — carbon a
+triplet, nitrogen a quartet — because computing them as closed-shell singlets
+converges perfectly well and is wrong by hundreds of kJ/mol per atom. Against
+four experimental atomization energies at B3LYP/6-31G it under-binds by 11 to
+140 kJ/mol, consistently in one direction, and orders the four correctly.
+`interaction_energy` is implemented for an assembly and its fragments, with
+both errors it does not remove — basis-set superposition and the fact that a
+complex is relaxed rather than searched — stated on every value.
+
 **Not done.**
 
 - **The section 8 multi-fidelity layer**: ML interatomic potential with

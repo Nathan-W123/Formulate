@@ -184,6 +184,6 @@ uncovered for the material classes they would apply to.
 ## Development
 
 ```bash
-python -m pytest          # 416 tests
+python -m pytest          # 442 tests
 python -m pytest --cov=formulate
 ```

@@ -333,13 +333,19 @@ def test_every_dynamics_property_has_a_protocol():
     uncaught exception out of the middle of a design run rather than as a
     refusal.
     """
+    from formulate.coordination.validation import CONDENSED_PROTOCOLS
+
     dynamics = {
         prop for prop, methods in VALIDATABLE.items() if ValidationMethod.DYNAMICS in methods
     }
     assert dynamics
-    assert dynamics <= set(DYNAMICS_PROTOCOLS), sorted(dynamics - set(DYNAMICS_PROTOCOLS))
-    # And nothing is mapped that is not offered.
-    assert set(DYNAMICS_PROTOCOLS) <= dynamics
+    # Two routes now: a single-molecule or cluster trajectory, and a periodic
+    # condensed phase. Every offered property must be on exactly one of them,
+    # and nothing may be mapped that is not offered.
+    routed = set(DYNAMICS_PROTOCOLS) | set(CONDENSED_PROTOCOLS)
+    assert dynamics <= routed, sorted(dynamics - routed)
+    assert routed <= dynamics
+    assert not (set(DYNAMICS_PROTOCOLS) & set(CONDENSED_PROTOCOLS))
 
 
 def test_every_protocol_name_resolves_to_a_real_workflow():
@@ -361,29 +367,27 @@ def test_a_property_with_no_workflow_is_refused_with_a_physical_reason():
                     "lower": "0 Pa*s",
                     "upper": "0.01 Pa*s",
                 },
-                {
-                    "property": "cohesive_energy_density",
-                    "direction": "maximize",
-                    "lower": "0 Pa",
-                    "upper": "1e9 Pa",
-                },
             ],
         }
     )
     permitted, refused = validatable_properties(spec)
     assert permitted == {}
+    # Not a vague "unsupported": no dynamics workflow produces a viscosity at
+    # all, and saying which one would be needed is what stops someone wiring
+    # up whichever protocol happens to be nearest.
     assert "Green-Kubo" in refused["shear_viscosity"]
-    # Not a vague "unsupported": the cluster workflow produces the wrong
-    # dimension, and saying so is what stops someone wiring it up again.
-    assert "energy per mole" in refused["cohesive_energy_density"]
 
 
 @requires_rdkit
-@pytest.mark.parametrize(
-    "prop", ["liquid_density", "self_diffusion_coefficient", "work_of_separation"]
-)
+@pytest.mark.parametrize("prop", ["work_of_separation"])
 def test_a_bulk_property_declines_with_its_cost_rather_than_raising(prop):
-    """The dynamics module was written to refuse these. It must get the chance."""
+    """The dynamics module was written to refuse these. It must get the chance.
+
+    Only work of separation is left on this path: density and self-diffusion
+    now have a periodic route through MMFF94 and OpenMM, and refuse on the
+    validation budget instead. An interface needs two slabs and is still beyond
+    what this installation will pay for.
+    """
     from formulate.coordination.validation import (
         PhysicsValidator,
         ValidationTarget,
@@ -404,3 +408,113 @@ def test_a_bulk_property_declines_with_its_cost_rather_than_raising(prop):
     requirement = REQUIREMENTS[MDProtocol(DYNAMICS_PROTOCOLS[prop])]
     assert str(requirement.min_molecules) in reason
     assert "periodic" in reason
+
+
+# -- the periodic condensed phase -----------------------------------------
+
+
+def test_every_condensed_property_has_a_protocol_and_a_stated_cost():
+    from formulate.coordination.validation import (
+        CONDENSED_COST_SECONDS,
+        CONDENSED_PROTOCOLS,
+    )
+
+    assert set(CONDENSED_PROTOCOLS) <= set(VALIDATABLE)
+    assert set(CONDENSED_PROTOCOLS.values()) <= set(CONDENSED_COST_SECONDS)
+    for prop, methods in VALIDATABLE.items():
+        if prop in CONDENSED_PROTOCOLS:
+            assert ValidationMethod.DYNAMICS in methods
+
+
+@requires_rdkit
+@pytest.mark.parametrize(
+    "prop", ["liquid_density", "cohesive_energy_density", "self_diffusion_coefficient"]
+)
+def test_a_condensed_run_the_budget_cannot_afford_says_so_and_costs_nothing(prop):
+    """A shortened condensed run does not fail, it answers wrong.
+
+    A box that has not equilibrated returns a density thirty per cent low with
+    an error bar that does not cover the gap, so the budget check has to refuse
+    rather than trim the run.
+    """
+    import time
+
+    from formulate.coordination.validation import PhysicsValidator, ValidationTarget
+    from formulate.core.candidate import molecule_candidate
+
+    target = ValidationTarget(
+        candidate=molecule_candidate("CCO"),
+        property=prop,
+        method=ValidationMethod.DYNAMICS,
+        value_score=1.0,
+        rationale="test",
+    )
+    started = time.perf_counter()
+    prediction, reason = PhysicsValidator(
+        policy=ValidationPolicy(max_seconds=600.0)
+    )._run_target(target, _SPEC)
+    assert prediction is None
+    assert "minutes" in reason and "budget" in reason
+    assert time.perf_counter() - started < 60.0
+
+
+def test_cohesive_energy_density_is_validatable_again_now_a_bulk_route_exists():
+    """It was refused while the only route was a finite cluster in the wrong unit."""
+    assert "cohesive_energy_density" in VALIDATABLE
+    assert "cohesive_energy_density" not in NOT_VALIDATABLE_REASONS
+    # Shear viscosity still has no route at all and stays refused.
+    assert "shear_viscosity" not in VALIDATABLE
+
+
+# -- energies defined as a difference -------------------------------------
+
+
+def test_free_atom_multiplicities_are_tabulated_not_defaulted():
+    """A carbon atom computed as a closed-shell singlet converges and is wrong.
+
+    That is the failure mode this table exists to prevent: the calculation does
+    not complain, and the atomization energy comes out hundreds of kJ/mol off
+    with nothing to show for it.
+    """
+    from formulate.physics.qm.thermochemistry import ATOMIC_MULTIPLICITY
+
+    assert ATOMIC_MULTIPLICITY["C"] == 3   # triplet ground state
+    assert ATOMIC_MULTIPLICITY["N"] == 4   # quartet
+    assert ATOMIC_MULTIPLICITY["O"] == 3   # triplet
+    assert ATOMIC_MULTIPLICITY["H"] == 2   # doublet
+    assert ATOMIC_MULTIPLICITY["He"] == 1  # closed shell
+
+
+def test_an_element_with_no_atomic_reference_is_refused():
+    from formulate.physics.qm.thermochemistry import unsupported_elements
+
+    assert unsupported_elements(("C", "H", "O")) == ()
+    assert unsupported_elements(("C", "Fe")) == ("Fe",)
+
+
+@requires_rdkit
+def test_atomization_declines_an_element_it_has_no_reference_for():
+    from formulate.coordination.validation import PhysicsValidator, ValidationTarget
+    from formulate.core.candidate import molecule_candidate
+
+    target = ValidationTarget(
+        candidate=molecule_candidate("[Fe](Cl)(Cl)Cl"),
+        property="atomization_energy",
+        method=ValidationMethod.QUANTUM,
+        value_score=1.0,
+        rationale="test",
+    )
+    prediction, reason = PhysicsValidator(policy=ValidationPolicy())._run_target(target, _SPEC)
+    assert prediction is None
+    assert "Fe" in reason or "geometry" in reason
+
+
+def test_interaction_energy_states_the_two_errors_it_does_not_remove():
+    """Both are one-sided, so a caller that forgets them is biased, not noisy."""
+    import inspect
+
+    from formulate.physics.qm import thermochemistry
+
+    source = inspect.getsource(thermochemistry.interaction_energy)
+    assert "superposition" in source
+    assert "minim" in source  # the geometry is relaxed, not searched
