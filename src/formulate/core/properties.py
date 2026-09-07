@@ -257,6 +257,35 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "bulk_modulus", "Pa", _M, "Isothermal bulk modulus.",
             condition_dependent=True, bounds=(0.0, None),
         ),
+        _p(
+            "shear_modulus", "Pa", _M, "Elastic shear modulus.",
+            condition_dependent=True, bounds=(0.0, None),
+        ),
+        # A chain property, not a bulk one, and the thing that actually decides
+        # whether a polymer is brittle or tough: below roughly two entanglement
+        # lengths a chain cannot form a load-bearing network and the material
+        # is brittle whatever its modulus says.
+        _p(
+            "entanglement_molar_mass",
+            "g/mol",
+            _M,
+            "Molar mass between entanglements, from the chain's packing length.",
+            bounds=(0.0, None),
+        ),
+        # Deliberately NOT called tensile_strength. A real strength is set by
+        # the largest flaw in the specimen, which is a property of how it was
+        # made; this is the flaw-free limit and exceeds any measured strength
+        # by one to three orders of magnitude. Naming it apart is what stops
+        # the two being compared.
+        _p(
+            "theoretical_strength",
+            "Pa",
+            _M,
+            "Flaw-free upper bound on strength. Not a tensile strength: a real "
+            "specimen fails at its largest defect, far below this.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
         # Deliberately not "liquid_density": a glassy polymer is not a
         # saturated liquid, and a semicrystalline sample is denser than its
         # amorphous phase by an amount that depends on how it was processed

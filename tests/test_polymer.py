@@ -28,6 +28,7 @@ from formulate.core.candidate import (
 )
 from formulate.core.conditions import Conditions
 from formulate.core.prediction import PredictionStatus
+from formulate.core.properties import PROPERTY_REGISTRY
 from formulate.core.quantity import Quantity, UncertaintyKind
 from formulate.experts.base import PredictionRequest
 from formulate.experts.polymer import (
@@ -405,8 +406,15 @@ def test_registry_now_covers_polymers(registry):
     )
     assert coverage["glass_transition_temperature"] == ["polymer_tg"]
     assert coverage["amorphous_density"] == ["polymer_density"]
-    # And still leaves the mechanical properties honestly uncovered.
-    assert registry.uncovered(["youngs_modulus"], MaterialClass.POLYMER) == ["youngs_modulus"]
+    # Young's modulus is covered now too, by the mechanical expert, which reads
+    # the transition this expert predicts to decide whether the polymer is a
+    # glass or a rubber at the stated temperature.
+    assert registry.coverage(["youngs_modulus"], MaterialClass.POLYMER)["youngs_modulus"] == [
+        "polymer_mechanical"
+    ]
+    # What stays uncovered is what cannot be predicted from a structure: a
+    # tensile strength is set by the largest flaw in the specimen.
+    assert "tensile_strength" not in PROPERTY_REGISTRY
 
 
 def test_cached_volume_matches_a_live_computation():

@@ -329,6 +329,49 @@ the thermodynamic work by one to three orders of magnitude, because nearly all
 the energy in peeling a real joint goes into deforming the adherends, and the
 two are not related by a constant.
 
+**Mechanical properties, and the one that stays refused.** Three questions get
+asked together and only two have answers.
+
+*Tensile and shear strength do not.* Griffith puts the fracture stress at
+√(2Eγ/πa) where `a` is the largest flaw, and the flaw is a property of how the
+specimen was made — two bars of identical polymer differ two- or three-fold on
+processing alone. That is not a modelling gap; it is what the quantity is.
+`tensile_strength` and `shear_strength` are absent from the registry and a test
+keeps them absent.
+
+*Elastic moduli do*, and the dominant term is a switch rather than a
+correlation. Across nine measured amorphous polymers a glass sits at 2.9 ± 0.5
+GPa; four rubbers sit at 1.3 MPa. That factor of **two thousand** is decided by
+which side of Tg the temperature falls on, so the mechanical expert depends on
+the glass-transition expert and refuses outright when it cannot get one —
+guessing the branch is worse than any error inside a branch. Above the
+transition the modulus is the rubber-elastic `3ρRT/M_e`, which reproduced four
+measured rubbers to within a factor of two. Polystyrene comes out at 2.86 GPa
+against a measured 3.2; cis-polyisoprene at 1.5 MPa against a measured 1.5.
+
+*Entanglement molar mass does*, from the chain packing length `p = M/(ρN_A⟨R²⟩)`.
+The computed packing lengths reproduce the published 1.69 Å for polyethylene
+and 3.92 Å for polystyrene exactly, and one fitted constant reproduces
+entanglement mass on **three withheld polymers to a factor of 1.60**, against a
+sixteen-fold range across the set. That resolution is enough for what M_e is
+actually wanted for: a chain shorter than about two entanglement lengths cannot
+form a load-bearing network and the material is brittle whatever its modulus
+says — which is usually the real question behind "how strong is it".
+
+*Theoretical strength* is produced as a bound only, under its own name, never
+as a tensile strength, at a tenth of the modulus. It exceeds a real specimen by
+one to three orders of magnitude, and that gap is the useful part: it says how
+much of the possible a material is delivering, and why a drawn fibre approaches
+it and a moulded bar never will.
+
+Two honest limits carried on every value. The chain dimension `⟨R²⟩/M` is a
+measured quantity, from scattering or a rotational-isomeric-state calculation,
+so a repeat unit outside the table is refused. And the modulus is that of the
+**amorphous phase**: polyethylene is above its transition, so the rubbery
+branch fires and returns about 8 MPa where a real bar is nearer 800, because
+most of it is crystalline — and crystallinity is a processing outcome nothing
+here predicts.
+
 **Still not done — polymer Hansen parameters** and the mechanical properties.
 The registry reports `youngs_modulus` as uncovered rather than inventing it.
 

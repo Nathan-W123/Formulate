@@ -16,6 +16,7 @@ from .interfacial import InterfacialCorrelationExpert
 from .joback import JobackThermalExpert
 from .lipophilicity import CrippenLipophilicityExpert
 from .measured import MeasuredPropertyExpert
+from .mechanical import PolymerMechanicalExpert
 from .mixture import MixtureExpert
 from .polymer import PolymerDensityExpert, PolymerGlassTransitionExpert
 from .registry import ExpertRegistry
@@ -49,6 +50,7 @@ PHASE4_EXPERTS = (
     UNIFACActivityExpert,
     PolymerGlassTransitionExpert,
     PolymerDensityExpert,
+    PolymerMechanicalExpert,
 )
 
 
@@ -65,6 +67,7 @@ def default_registry() -> ExpertRegistry:
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
     "AdhesionExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
+    "PolymerMechanicalExpert",
     "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",
