@@ -108,7 +108,7 @@ class DeterministicCoordinator:
 
         proposed = dedupe(proposed)
 
-        filter_report = CandidateFilter(spec.structural).apply(proposed)
+        filter_report = CandidateFilter(spec.structural, spec.conditions).apply(proposed)
         pool = list(filter_report.kept)
 
         if not pool:

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from formulate.core.candidate import Candidate, MaterialClass
+from formulate.core.conditions import Conditions, Phase
 from formulate.targets.spec import StructuralConstraints
 
 
@@ -59,8 +60,15 @@ class FilterReport:
 class CandidateFilter:
     """Applies structural constraints before any expert is called."""
 
-    def __init__(self, constraints: StructuralConstraints | None = None) -> None:
+    def __init__(
+        self,
+        constraints: StructuralConstraints | None = None,
+        conditions: Conditions | None = None,
+    ) -> None:
         self.constraints = constraints or StructuralConstraints()
+        #: The conditions the target asks for. A stated phase is a requirement
+        #: on the candidate, not merely a label on the answer.
+        self.conditions = conditions
 
     def check(self, candidate: Candidate) -> FilterResult:
         from formulate import chem
@@ -80,7 +88,34 @@ class CandidateFilter:
             reasons.extend(self._chemistry_checks(candidate, smiles_list))
 
         reasons.extend(self._composition_checks(candidate))
+        reasons.extend(self._phase_checks(smiles_list))
         return FilterResult.accepted() if not reasons else FilterResult(False, tuple(reasons))
+
+    def _phase_checks(self, smiles_list: Sequence[str]) -> list[str]:
+        """A target that asks for a liquid should not be offered a solid.
+
+        ``Conditions.phase`` has always been able to say ``liquid`` and nothing
+        ever enforced it. The cost showed up in a ranking: asked for a solvent
+        for polystyrene, the engine returned naphthalene, which is a solid at
+        room temperature and an excellent solvent for polystyrene once molten.
+        Refusing a liquid *property* for a solid was not enough to stop that,
+        because Hansen parameters and boiling points stay defined either way.
+        The phase has to be checked on the candidate itself.
+        """
+        conditions = self.conditions
+        if conditions is None or conditions.phase is not Phase.LIQUID:
+            return []
+        temperature = conditions.temperature_k
+        if temperature is None:
+            return []
+
+        from formulate.experts.measured import not_liquid_at
+
+        for smiles in smiles_list:
+            wrong_phase = not_liquid_at(smiles, temperature)
+            if wrong_phase:
+                return [f"the target asks for a liquid and this one is not: {wrong_phase}"]
+        return []
 
     def _chemistry_checks(self, candidate: Candidate, smiles_list: Sequence[str]) -> list[str]:
         from formulate import chem

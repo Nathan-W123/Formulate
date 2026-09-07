@@ -48,6 +48,11 @@ class Conditions(BaseModel):
     processing: tuple[str, ...] = ()
     #: Surfaces or interfaces present, e.g. ("aluminium-oxide",).
     surfaces: tuple[str, ...] = ()
+    #: Materials that have to be dissolved, e.g. ("polystyrene",). Named
+    #: rather than given as parameters, so that a target states the behaviour
+    #: it wants and the engine supplies what that implies. Mirrors
+    #: ``surfaces``, which the adhesion expert already reads the same way.
+    solutes: tuple[str, ...] = ()
 
     @field_validator("temperature")
     @classmethod
@@ -88,6 +93,7 @@ class Conditions(BaseModel):
             phase=other.phase or self.phase,
             processing=other.processing or self.processing,
             surfaces=other.surfaces or self.surfaces,
+            solutes=other.solutes or self.solutes,
         )
 
     def identity_payload(self) -> dict:
@@ -118,6 +124,7 @@ class Conditions(BaseModel):
             "phase": None if self.phase is None else self.phase.value,
             "processing": list(self.processing),
             "surfaces": sorted(self.surfaces),
+            "solutes": sorted(self.solutes),
         }
 
     def describe(self) -> str:
@@ -132,6 +139,8 @@ class Conditions(BaseModel):
             bits.append(f"phase={self.phase.value}")
         if self.surfaces:
             bits.append(f"surfaces={'+'.join(self.surfaces)}")
+        if self.solutes:
+            bits.append(f"solutes={'+'.join(self.solutes)}")
         return ", ".join(bits) or "unspecified"
 
 
@@ -203,6 +212,10 @@ def match_conditions(
     for surface in required.surfaces:
         if surface not in available.surfaces:
             unstated.append(f"prediction does not model surface {surface!r}")
+
+    for solute in required.solutes:
+        if solute not in available.solutes:
+            unstated.append(f"prediction does not model solute {solute!r}")
 
     return ConditionMatch(
         compatible=not issues, issues=tuple(issues), unstated=tuple(unstated)

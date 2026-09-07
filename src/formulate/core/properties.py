@@ -318,6 +318,16 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             condition_dependent=True,
         ),
         _p(
+            "solubility_red",
+            "",
+            _C,
+            "Hansen relative energy difference between a solvent and a named solute: the "
+            "distance to the solute's solubility sphere centre divided by its radius. "
+            "Below one dissolves, near one swells, above one does not.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
             "mixing_stability",
             "",
             _C,
