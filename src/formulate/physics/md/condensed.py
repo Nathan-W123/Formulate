@@ -70,13 +70,23 @@ energy, and largest for the associating liquids rather than the dispersive ones
 is larger than the energy error because a density sits where attraction
 balances repulsion and responds more than proportionally.
 
-The fix is a force field fitted to liquids - OPLS or GAFF - which needs
-openff-toolkit or AmberTools. Both are conda-only and neither installs here,
-which is why MMFF94 was the available route at all. A single fitted scale on
-the well depth is the obvious stopgap and is not yet established: the harness
-that would fit it is only now correct. Until then these values are useful for
-ranking candidates against each other, where the bias is shared, and are not
-quantitative: every prediction built on them says so.
+The fix is a force field fitted to liquids, and half of what this paragraph
+used to say about that was wrong. GAFF and the OpenFF line do need
+openff-toolkit or AmberTools, both conda-only and neither installable here,
+because they assign partial charges per molecule with AM1-BCC. OPLS-AA does
+not: its charges come out of the atom-type table, so it needs a SMARTS typing
+engine and nothing else. :mod:`opls` supplies one. Pass ``force_field`` to any
+protocol here to run under it instead, and read that module first - OPLS-AA
+covers thirty-seven of the fifty reference compounds and one of the ways it
+fails is silent.
+
+MMFF94 remains the default because it types anything RDKit can parse, and its
+bias is at least shared across candidates, which is what a ranking needs. A
+single fitted scale on the MMFF94 well depth was the obvious stopgap and was
+abandoned: hexane returned 18.9, 20.7 and 27.9 kJ/mol from three runs of the
+same protocol, so there was nothing stable to fit to. Values from MMFF94 are
+useful for ranking candidates against each other and are not quantitative;
+every prediction built on them says so.
 """
 
 from __future__ import annotations
@@ -90,6 +100,88 @@ import numpy as np
 _AVOGADRO = 6.02214076e23
 #: Ideal-gas Boltzmann constant in kJ/(mol K).
 _R_KJ = 0.00831446261815324
+
+
+# --------------------------------------------------------------------------
+# Which force field a protocol runs under
+# --------------------------------------------------------------------------
+
+#: The force fields these protocols can run under.
+FORCE_FIELDS = ("mmff94", "opls-aa")
+
+
+@dataclass(frozen=True, slots=True)
+class _Prepared:
+    """One molecule's parameters and the two systems a protocol needs from them.
+
+    The seam exists because the two force fields are reached differently and
+    both have to end up at the same place: an OpenMM system whose particles run
+    molecule by molecule in input order, with bonds to hydrogen constrained.
+    MMFF94 comes out of RDKit and its constraints are added here from the bond
+    list; OPLS-AA comes out of foyer as a ParmEd structure that builds its own
+    system and applies ``HBonds`` itself. Everything downstream - the barostat,
+    the equilibration test, the sampling - is identical, which is the point.
+    """
+
+    name: str
+    n_atoms: int
+    masses: tuple[float, ...]
+    _make: object
+
+    def system(self, copies: int, *, box_nm: float | None, cutoff_nm: float = 1.0):
+        return self._make(copies, box_nm, cutoff_nm)
+
+
+def _prepare(mol, force_field: str, *, dispersion_scale: float = 1.0) -> _Prepared:
+    if force_field == "mmff94":
+        from .mmff import build_system, extract_parameters
+
+        params = extract_parameters(mol)
+        if params is None:
+            raise ValueError("MMFF94 has no parameters for this molecule")
+
+        hydrogen = {i for i, mass in enumerate(params.masses) if mass < 2.0}
+
+        def make(copies, box_nm, cutoff_nm):
+            system = build_system(
+                params,
+                copies,
+                exact=box_nm is None,
+                box_nm=box_nm,
+                cutoff_nm=cutoff_nm,
+                dispersion_scale=dispersion_scale,
+            )
+            # Bonds to hydrogen have a period under ten femtoseconds, so
+            # without this the timestep is set by a motion no bulk property
+            # depends on.
+            for offset in range(0, copies * params.n_atoms, params.n_atoms):
+                for i, j, _, r0 in params.bonds:
+                    if i in hydrogen or j in hydrogen:
+                        system.addConstraint(i + offset, j + offset, r0 * 0.1)
+            return system
+
+        return _Prepared("mmff94", params.n_atoms, tuple(params.masses), make)
+
+    if force_field == "opls-aa":
+        if dispersion_scale != 1.0:
+            raise ValueError(
+                "dispersion_scale is an MMFF94 stopgap for a force field that was "
+                "not fitted to liquids; OPLS-AA was, so scaling its well depths "
+                "would move it away from its own parameterisation"
+            )
+        from . import opls
+
+        params = opls.extract_parameters(mol)
+
+        def make(copies, box_nm, cutoff_nm):
+            system, _ = opls.build_system(
+                params, copies, box_nm=box_nm, cutoff_nm=cutoff_nm
+            )
+            return system
+
+        return _Prepared("opls-aa", params.n_atoms, params.masses, make)
+
+    raise ValueError(f"unknown force field {force_field!r}; expected one of {FORCE_FIELDS}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +347,7 @@ def run_npt(
     seed: int = 0,
     sample_interval_ps: float = 1.0,
     platform: str = "CPU",
+    force_field: str = "mmff94",
 ) -> CondensedResult:
     """Equilibrate a periodic box at constant pressure and sample its volume.
 
@@ -268,11 +361,7 @@ def run_npt(
     import openmm as mm
     import openmm.unit as u
 
-    from .mmff import build_system, extract_parameters
-
-    params = extract_parameters(mol)
-    if params is None:
-        raise ValueError("MMFF94 has no parameters for this molecule")
+    prepared = _prepare(mol, force_field)
 
     from rdkit.Chem import Descriptors
 
@@ -289,17 +378,7 @@ def run_npt(
         )
 
     box = pack_box(mol, n_molecules, initial_density, seed=seed)
-    system = build_system(
-        params, n_molecules, exact=False, box_nm=box.edge_nm, cutoff_nm=cutoff_nm
-    )
-
-    # Constrain bonds to hydrogen: their period is under ten femtoseconds, so
-    # without this the timestep is set by a motion no bulk property depends on.
-    hydrogen = [i for i, mass in enumerate(params.masses) if mass < 2.0]
-    for offset in range(0, n_molecules * params.n_atoms, params.n_atoms):
-        for i, j, _, r0 in params.bonds:
-            if i in hydrogen or j in hydrogen:
-                system.addConstraint(i + offset, j + offset, r0 * 0.1)
+    system = prepared.system(n_molecules, box_nm=box.edge_nm, cutoff_nm=cutoff_nm)
 
     system.addForce(
         mm.MonteCarloBarostat(pressure_bar * u.bar, temperature_k * u.kelvin, 25)
@@ -406,6 +485,7 @@ def sample_isolated_energy(
     seed: int = 0,
     platform: str = "CPU",
     dispersion_scale: float = 1.0,
+    force_field: str = "mmff94",
 ) -> tuple[float, float]:
     """Mean potential energy of one molecule in vacuum at ``temperature_k``.
 
@@ -426,17 +506,8 @@ def sample_isolated_energy(
     import openmm as mm
     import openmm.unit as u
 
-    from .mmff import build_system, extract_parameters
-
-    params = extract_parameters(mol)
-    if params is None:
-        raise ValueError("MMFF94 has no parameters for this molecule")
-
-    system = build_system(params, 1, exact=True, dispersion_scale=dispersion_scale)
-    hydrogen = [i for i, mass in enumerate(params.masses) if mass < 2.0]
-    for i, j, _, r0 in params.bonds:
-        if i in hydrogen or j in hydrogen:
-            system.addConstraint(i, j, r0 * 0.1)
+    prepared = _prepare(mol, force_field, dispersion_scale=dispersion_scale)
+    system = prepared.system(1, box_nm=None)
 
     integrator = mm.LangevinMiddleIntegrator(
         temperature_k * u.kelvin, 1.0 / u.picosecond, timestep_fs * u.femtosecond
@@ -538,6 +609,7 @@ def run_self_diffusion(
     sample_interval_ps: float = 1.0,
     seed: int = 0,
     platform: str = "CPU",
+    force_field: str = "mmff94",
 ) -> DiffusionResult:
     """Self-diffusion from the Einstein relation, fitted only where it applies.
 
@@ -554,25 +626,14 @@ def run_self_diffusion(
     import openmm as mm
     import openmm.unit as u
 
-    from .mmff import build_system, extract_parameters
+    prepared = _prepare(mol, force_field)
 
-    params = extract_parameters(mol)
-    if params is None:
-        raise ValueError("MMFF94 has no parameters for this molecule")
-
-    needed = minimum_molecules(sum(params.masses), density_g_cm3, cutoff_nm)
+    needed = minimum_molecules(sum(prepared.masses), density_g_cm3, cutoff_nm)
     if n_molecules < needed:
         raise ValueError(f"at least {needed} molecules are needed for a {cutoff_nm} nm cutoff")
 
     box = pack_box(mol, n_molecules, density_g_cm3, seed=seed, expansion=1.0)
-    system = build_system(
-        params, n_molecules, exact=False, box_nm=box.edge_nm, cutoff_nm=cutoff_nm
-    )
-    hydrogen = [i for i, mass in enumerate(params.masses) if mass < 2.0]
-    for offset in range(0, n_molecules * params.n_atoms, params.n_atoms):
-        for i, j, _, r0 in params.bonds:
-            if i in hydrogen or j in hydrogen:
-                system.addConstraint(i + offset, j + offset, r0 * 0.1)
+    system = prepared.system(n_molecules, box_nm=box.edge_nm, cutoff_nm=cutoff_nm)
 
     # Constant volume, not constant pressure: a fluctuating box makes an
     # unwrapped displacement ambiguous, and the density is an input here rather
@@ -590,7 +651,7 @@ def run_self_diffusion(
     steps_per_ps = int(round(1000.0 / timestep_fs))
     integrator.step(int(equilibration_ps * steps_per_ps))
 
-    masses = np.array(params.masses)
+    masses = np.array(prepared.masses)
     weights = masses / masses.sum()
     edge = box.edge_nm
 
@@ -598,7 +659,7 @@ def run_self_diffusion(
         positions = context.getState(positions=True).getPositions(asNumpy=True).value_in_unit(
             u.nanometer
         )
-        grouped = positions.reshape(n_molecules, params.n_atoms, 3)
+        grouped = positions.reshape(n_molecules, prepared.n_atoms, 3)
         return np.einsum("mai,a->mi", grouped, weights)
 
     sample_steps = max(1, int(sample_interval_ps * steps_per_ps))

@@ -29,6 +29,20 @@ chem = ["rdkit>=2023.9", "thermo>=0.2", "pyyaml>=6.0"]
 # want - periodic support in particular varies between methods of one package.
 physics = ["pyscf>=2.3", "ase>=3.22", "xtb>=22.1"]
 
+# OPLS-AA, a force field fitted to liquids rather than to gas-phase geometries.
+# See `formulate.physics.md.opls` for what it buys and where it refuses.
+#
+# foyer's newest release is from 2021 and its setup.py predates the removal of
+# the distutils install_layout option, so pip has to be told to build it with
+# the standard-library distutils and without build isolation:
+#
+#     SETUPTOOLS_USE_DISTUTILS=stdlib pip install --no-build-isolation \
+#         'formulate[opls]'
+#
+# The two OpenMM 8 incompatibilities that remain are shimmed at import time in
+# `opls.py`; nothing in the installed package is edited.
+opls = ["foyer==0.7.6", "parmed>=4.0", "lark", "networkx", "lxml"]
+
 dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4"]
 
 [project.scripts]
