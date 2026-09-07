@@ -131,17 +131,38 @@ are validatable through it; the validation budget refuses them unless raised,
 and says how long they need, because a shortened run does not fail — it returns
 a density a quarter low with an error bar that does not cover the gap.
 
-**MMFF94 is the accuracy ceiling, and it is a low one.** It was fitted to
-gas-phase geometries and conformational energies, not to liquids, and it
-under-binds a condensed phase: ethanol's potential energy of vaporisation comes
-out at 33.9 kJ/mol against an experimental 39.8, and its constant-pressure
-density at 0.58 g/cm³ against 0.789. Hexane locates the fault — held together
-by dispersion alone, it is 34.6 per cent under-bound against ethanol's 14.8, so
-the deficit is in the van der Waals term rather than the hydrogen bonding. The
-engine is right and the force field is not. These values rank candidates, where
-the bias is shared; they are not quantitative, and every prediction built on
-them carries that sentence. The fix is OPLS or GAFF, which needs a package
-manager this environment does not have.
+**MMFF94 is the accuracy ceiling.** It was fitted to gas-phase geometries and
+conformational energies, not to liquids, and it under-binds a condensed phase.
+Potential energy of vaporisation against experiment: toluene −11%, ethanol
+−15%, hexane −3%; ethanol's constant-pressure density comes out 26% low,
+because a density sits where attraction balances repulsion and responds more
+than proportionally. The engine is right and the force field is not. These
+values rank candidates, where the bias is shared; they are not quantitative,
+and every prediction built on them carries that sentence.
+
+**Two earlier figures here were wrong and are retracted.** An earlier revision
+put hexane at −34.6% and concluded the deficit was in dispersion. It does not
+reproduce: that run minimised for 2000 iterations, which leaves a lattice of
+rigid molecules in a state tens of picoseconds of dynamics cannot relax, so the
+liquid energy was set by the starting configuration. Five thousand iterations,
+or a melt-and-cool, moves toluene from an apparent −29% to a stable −11% (three
+separate protocols agreeing to 0.7 kJ/mol). The deficit is largest for the
+associating liquids, not the dispersive ones — the opposite of what the
+retracted figure suggested.
+
+The second error broke a monotonicity physics guarantees: scaling the van der
+Waals well depth up by 30% *lowered* the computed vaporisation energy. A
+stronger attraction cannot make a liquid easier to evaporate. The cause was the
+reference state — `sample_isolated_energy` built its isolated molecule at the
+unscaled force field while the liquid ran scaled, charging the difference in
+*intramolecular* van der Waals energy to cohesion. A rigid ring has enough
+internal contact area for that to swamp the effect being measured. Fixed; the
+scale is now an explicit argument on both sides.
+
+**A fitted dispersion scale is therefore not established.** The knob exists and
+is guarded, and the harness that would fit it is only now correct. The proper
+fix remains OPLS or GAFF, which needs a package manager this environment does
+not have.
 
 **Energies defined as a difference.** `atomization_energy` is now computed as
 the molecule against its free atoms, each in its own ground state — carbon a

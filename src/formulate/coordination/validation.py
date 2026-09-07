@@ -916,11 +916,11 @@ class PhysicsValidator:
                     "MMFF94 parameters taken from RDKit and translated into OpenMM forces; "
                     "the translation reproduces RDKit's own energy to 1e-11 kcal/mol",
                     "MMFF94 was fitted to gas-phase geometries, not to liquids, and "
-                    "under-binds a condensed phase. Measured here: cohesive energy 15 per "
-                    "cent low for ethanol and 35 per cent low for hexane, density 26 per "
-                    "cent low for ethanol. The deficit is in dispersion, so it is worst "
-                    "for the least polar. Use these to rank candidates, where the bias is "
-                    "shared, not as quantitative values",
+                    "under-binds a condensed phase. Measured here: potential energy of "
+                    "vaporisation 11 per cent low for toluene, 15 per cent for ethanol, "
+                    "3 per cent for hexane, and a density 26 per cent low for ethanol. "
+                    "Use these to rank candidates, where the bias is shared, not as "
+                    "quantitative values",
                     "electrostatics by particle-mesh Ewald, which drops MMFF's 0.05 A "
                     "buffering; van der Waals truncated at the cutoff with a long-range "
                     "correction",

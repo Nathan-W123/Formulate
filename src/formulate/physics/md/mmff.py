@@ -482,11 +482,10 @@ def build_system(
         )
 
     bent, linear = _angle_forces(params, copies)
-    if exact and dispersion_scale != 1.0:
-        raise ValueError(
-            "the exact mode reproduces MMFF94, so it cannot carry a dispersion scale; "
-            "a scaled force field is no longer the one the oracle checks against"
-        )
+    # A scaled vacuum system is legitimate and necessary - the isolated-molecule
+    # reference in a cohesive energy has to carry the same force field as the
+    # liquid it is subtracted from - but it is no longer the system the oracle
+    # checks against, so the tests that compare with RDKit pass no scale.
     vdw, electrostatic, vdw14, ele14 = _nonbonded_forces(
         params, copies, exact=exact, cutoff_nm=cutoff_nm, dispersion_scale=dispersion_scale
     )

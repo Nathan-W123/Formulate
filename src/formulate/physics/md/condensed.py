@@ -31,26 +31,52 @@ What this is worth, measured rather than assumed. The engine is exact: the
 force field it evaluates reproduces RDKit's MMFF94 to 1e-11 kcal/mol, term by
 term. The force field is not. MMFF94 was parameterised against gas-phase
 geometries and conformational energies, not against liquids, and it under-binds
-a condensed phase accordingly. Measured here for ethanol at 298 K: a potential
-energy of vaporisation of 33.9 kJ/mol against an experimental 39.8, fifteen per
-cent low; and a constant-pressure density of 0.58 g/cm^3 against an
-experimental 0.789, twenty-six per cent low, because the density sits where
-attraction balances repulsion and responds to a weakened attraction far more
-than proportionally.
+a condensed phase.
 
-Hexane places the blame precisely. It is held together by dispersion alone and
-comes out 34.6 per cent under-bound, against ethanol's 14.8, so the deficit is
-in the van der Waals term rather than in the hydrogen bonding: MMFF's buffered
-14-7 parameters were fitted to gas-phase dimers, where a pair interaction is
-all there is, and they do not recover the bulk cohesion of a dense phase.
+The size of that under-binding took three attempts to measure, and the first
+two answers were wrong. Recorded here because each failed in a way that
+returned a plausible number rather than an error.
 
-That is a limitation of the force field, not of this code, and the fix is a
-force field fitted to liquids - OPLS or GAFF - which needs openff-toolkit or
-AmberTools. Both are conda-only and neither installs here, which is why MMFF94
-was the available route at all. Until then these values are useful for ranking
-candidates against each other, where the bias is shared and largest for the
-most dispersion-dominated, and are not quantitative: every prediction built on
-them says so.
+Potential energy of vaporisation at 298 K, against experiment:
+
+    toluene   -11 per cent   (31.2, 31.5 and 31.9 kJ/mol from three separate
+                              equilibration protocols against 35.5; they agree
+                              to 0.7, so this one is converged)
+    ethanol   -15 per cent   (33.9 against 39.8)
+    hexane     -3 per cent   (27.9 against 28.9)
+
+An earlier note in this file put hexane at -34.6 per cent and blamed the
+dispersion term on that basis. It does not reproduce: that run minimised for
+2000 iterations, which leaves a lattice of rigid molecules in a state tens of
+picoseconds of dynamics cannot relax, and the liquid energy it reported was set
+by the starting configuration rather than by the force field. Five thousand
+iterations, or a melt-and-cool, moves toluene from an apparent -29 per cent to
+a stable -11.
+
+The second wrong answer was worse, because it broke a monotonicity that physics
+guarantees. Scaling the van der Waals well depth up by 30 per cent *lowered*
+the computed vaporisation energy, from 31.2 to 22.9 kJ/mol for toluene, which
+cannot happen: a stronger attraction cannot make a liquid easier to evaporate.
+The cause was the reference state. A molecule has van der Waals interactions
+with itself, and :func:`sample_isolated_energy` was building its reference at
+the unscaled force field while the liquid ran at the scaled one, so the
+difference in intramolecular energy was being charged to cohesion. A rigid ring
+has enough internal contact area for that artefact to swamp the effect. It now
+takes the same scale, and the argument is documented rather than defaulted.
+
+So the deficit is real but modest, around ten to fifteen per cent in cohesive
+energy, and largest for the associating liquids rather than the dispersive ones
+- the opposite of what the retracted hexane figure suggested. The density error
+is larger than the energy error because a density sits where attraction
+balances repulsion and responds more than proportionally.
+
+The fix is a force field fitted to liquids - OPLS or GAFF - which needs
+openff-toolkit or AmberTools. Both are conda-only and neither installs here,
+which is why MMFF94 was the available route at all. A single fitted scale on
+the well depth is the obvious stopgap and is not yet established: the harness
+that would fit it is only now correct. Until then these values are useful for
+ranking candidates against each other, where the bias is shared, and are not
+quantitative: every prediction built on them says so.
 """
 
 from __future__ import annotations
@@ -379,6 +405,7 @@ def sample_isolated_energy(
     timestep_fs: float = 1.0,
     seed: int = 0,
     platform: str = "CPU",
+    dispersion_scale: float = 1.0,
 ) -> tuple[float, float]:
     """Mean potential energy of one molecule in vacuum at ``temperature_k``.
 
@@ -386,6 +413,15 @@ def sample_isolated_energy(
     excited; subtracting a relaxed single-molecule energy from it charges the
     molecule's own vibrational and torsional energy to cohesion, which is large
     enough to reverse the sign of a cohesive energy.
+
+    ``dispersion_scale`` must match whatever the liquid was run with, and this
+    argument exists because getting it wrong is silent. A molecule has van der
+    Waals interactions with itself, and scaling them in the liquid but not in
+    the reference charges that difference to cohesion. Measured on toluene: at
+    a scale of 1.3 against an unscaled reference the vaporisation energy came
+    out at 22.9 kJ/mol, *below* the 31.2 at a scale of 1.0, so strengthening
+    the attraction appeared to weaken the liquid. A rigid ring has enough
+    internal contact area for the artefact to swamp the effect being measured.
     """
     import openmm as mm
     import openmm.unit as u
@@ -396,7 +432,7 @@ def sample_isolated_energy(
     if params is None:
         raise ValueError("MMFF94 has no parameters for this molecule")
 
-    system = build_system(params, 1, exact=True)
+    system = build_system(params, 1, exact=True, dispersion_scale=dispersion_scale)
     hydrogen = [i for i, mass in enumerate(params.masses) if mass < 2.0]
     for i, j, _, r0 in params.bonds:
         if i in hydrogen or j in hydrogen:
