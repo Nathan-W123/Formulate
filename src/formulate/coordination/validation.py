@@ -328,14 +328,47 @@ class ValidationReport:
             return None
         return sum(1 for d in comparable if d.is_significant()) / len(comparable)
 
+    @property
+    def priced_out(self) -> dict[str, str]:
+        """Properties declined for cost alone, not for any physical reason."""
+        return {
+            prop: reason
+            for prop, reason in self.skipped.items()
+            if "wall clock" in reason and "budget is" in reason
+        }
+
     def describe(self) -> str:
         if not self.targets and not self.skipped:
             return "No candidate was selected for physics validation."
 
-        lines = [
+        lines = []
+        # Say it first and say it plainly. A run that validated nothing used to
+        # report that as a list of per-property skip messages, each of them
+        # accurate and none of them saying the thing that matters: no physics
+        # ran, and the ranking in front of you rests entirely on correlations.
+        # The default budget is six hundred seconds and the cheapest periodic
+        # protocol needs several thousand, so that is what a default run does.
+        priced_out = self.priced_out
+        if not self.calls_made:
+            if priced_out:
+                lines.append(
+                    "NO PHYSICS RAN. Every protocol was priced out of the validation "
+                    "budget, so nothing here has been checked against a simulation and "
+                    "the ranking rests on the expert panel alone. Physics is opt-in: "
+                    "raise ValidationPolicy.max_seconds past the cost quoted below to "
+                    "buy it, and expect to wait that long."
+                )
+            else:
+                lines.append(
+                    "No physics ran. The reasons below are physical rather than "
+                    "budgetary, so raising the budget would not change them."
+                )
+            lines.append("")
+
+        lines.append(
             f"Validated {self.calls_made} calculation(s) on {len(self.targets)} target(s) "
             f"in {self.seconds_spent:.1f} s; {self.calls_avoided} avoided by selection."
-        ]
+        )
         for target in self.targets:
             name = target.candidate.label or target.candidate.primary_smiles
             lines.append(

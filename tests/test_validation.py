@@ -621,3 +621,59 @@ def test_the_liquid_fitted_force_field_claims_a_tighter_error_than_the_gas_fitte
             CONDENSED_SYSTEMATIC["opls-aa"][protocol]
             < CONDENSED_SYSTEMATIC["mmff94"][protocol]
         )
+
+
+# --------------------------------------------------------------------------
+# A run that validated nothing has to say so
+# --------------------------------------------------------------------------
+
+
+def test_a_run_that_bought_no_physics_says_so_before_anything_else():
+    """The default budget cannot afford the cheapest protocol.
+
+    Six hundred seconds against three thousand six hundred, so a default run
+    validates nothing. It used to report that as a list of per-property skip
+    messages: each accurate, none of them saying the thing that matters, which
+    is that the ranking in front of the reader rests on correlations alone.
+    """
+    from formulate.coordination.validation import ValidationReport
+
+    report = ValidationReport(
+        skipped={
+            "liquid_density": (
+                "a density run needs roughly 60 minutes of wall clock and the validation "
+                "budget is 10; raise it to buy this one"
+            )
+        }
+    )
+    described = report.describe()
+    assert described.startswith("NO PHYSICS RAN")
+    assert "opt-in" in described
+    assert report.priced_out == report.skipped
+
+
+def test_a_physical_refusal_is_not_dressed_up_as_a_budget_problem():
+    """Raising the budget would not buy a protocol that does not exist."""
+    from formulate.coordination.validation import ValidationReport
+
+    report = ValidationReport(
+        skipped={"logp": "no dynamics protocol in this system produces logp"}
+    )
+    described = report.describe()
+    assert "NO PHYSICS RAN" not in described
+    assert "physical rather than budgetary" in described
+    assert report.priced_out == {}
+
+
+def test_the_notice_disappears_once_physics_actually_ran():
+    from formulate.coordination.validation import ValidationReport
+
+    report = ValidationReport(calls_made=1, seconds_spent=3601.0)
+    assert "NO PHYSICS RAN" not in report.describe()
+
+
+def test_the_default_budget_cannot_afford_the_cheapest_protocol():
+    """The fact the notice exists for. If this ever changes, the wording must."""
+    from formulate.coordination.validation import CONDENSED_COST_SECONDS, ValidationPolicy
+
+    assert min(CONDENSED_COST_SECONDS.values()) > ValidationPolicy().max_seconds
