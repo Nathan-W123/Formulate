@@ -163,6 +163,11 @@ where they exist:
 | `lorentz_lorenz` | electrical | molecule | refractive index from a density and a molar refraction |
 | `learned_refractive_index` | electrical | molecule | fitted refractive index, for when no density is available |
 | `dissolution` | interfacial | molecule | solubility of a named solute, from Hansen distance |
+| `viscosity_measured` | interfacial | molecule | tabulated liquid viscosity, DIPPR and VDI data methods only |
+| `viscosity_joback` | interfacial | molecule | liquid viscosity by group contribution |
+| `viscosity_corresponding_states` | interfacial | molecule | liquid viscosity from critical constants, for structures no group table covers |
+| `melt_wlf` | interfacial | polymer | melt viscosity by WLF from the polymer's own glass transition |
+| `trouton` | interfacial | molecule | extensional viscosity, exact for a Newtonian liquid and refused for a polymer |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation
@@ -227,3 +232,10 @@ python -m pytest --cov=formulate
 `bench/` holds the scripts behind every number in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md); each one is runnable on its own and
 prints what it measured.
+
+`formulate.processing` is separate from the experts and from the physics, and
+deliberately so. A jet's fate depends on the nozzle and the velocity as much as
+on the liquid, so nothing in it is a property: it does not enter the registry,
+does not reach the ranking, and answers questions about what happens to a
+material when it is made into something. It currently covers jet break-up,
+drying, and setting by reaction — including the exotherm that comes with it.
