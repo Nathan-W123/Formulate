@@ -147,11 +147,41 @@ def canonical_std(prediction: Prediction) -> float | None:
     return prediction.uncertainty.converted(prediction.quantity.unit, unit).std
 
 
+def comparable_spread(prediction: Prediction) -> float | None:
+    """The spread of a prediction, on the scale its property's error lives on.
+
+    Absolute for most properties, relative for the ones the registry marks as
+    carrying multiplicative error. Converting a unit is not enough to make two
+    spreads comparable: a property that runs over orders of magnitude also
+    needs the right *kind* of spread, or the comparison silently rewards
+    whichever expert predicted the smallest number, since a small prediction
+    carries a small absolute error whether or not it is any good.
+
+    See ``PropertyDef.multiplicative_error`` for the case that found this - a
+    viscosity that was a factor of twenty-four low and 85 per cent uncertain
+    beating one that was 31 per cent uncertain, on absolute spread.
+    """
+    std = canonical_std(prediction)
+    if std is None:
+        return None
+    if not get_property(prediction.property).multiplicative_error:
+        return std
+    unit = get_property(prediction.property).canonical_unit
+    value = abs(prediction.quantity.to(unit).value)
+    if value == 0.0:
+        # A zero prediction has no scale to be relative to, and dividing by it
+        # would make an unfalsifiable answer look infinitely certain.
+        return float("inf")
+    return std / value
+
+
 def prefer(candidate: Prediction, incumbent: Prediction) -> bool:
     """True when ``candidate`` should displace ``incumbent``.
 
     The single authority on which of two predictions for the same property is
-    better: in-domain first, then applicability, then the tighter spread.  It
+    better: in-domain first, then applicability, then the tighter spread - on
+    the scale that property's error lives on, which is relative rather than
+    absolute for the ones that run over orders of magnitude.  It
     lives beside :class:`Prediction` rather than in the evaluation layer
     because three places need it - dispatch, scoring and the results record -
     and the lowest of those is ``core``.  A second copy of the rule would let
@@ -168,8 +198,8 @@ def prefer(candidate: Prediction, incumbent: Prediction) -> bool:
         return candidate.applicability.in_domain
     if candidate.applicability.score != incumbent.applicability.score:
         return candidate.applicability.score > incumbent.applicability.score
-    a = canonical_std(candidate)
-    b = canonical_std(incumbent)
+    a = comparable_spread(candidate)
+    b = comparable_spread(incumbent)
     if a is not None and b is not None:
         return a < b
     # A stated spread beats an unstated one: an expert that admits how wrong it

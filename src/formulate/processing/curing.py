@@ -35,6 +35,12 @@ POLYMERISATION: dict[str, tuple[float, float]] = {
     "styrene": (69.9, 104.15),
     "methyl acrylate": (78.7, 86.09),
     "vinyl acetate": (88.0, 86.09),
+    # Crosslinkers, at their family's enthalpy per double bond times their
+    # functionality. A diacrylate releases twice what an acrylate does per
+    # molecule and weighs less than twice as much, so per kilogram it is the
+    # hotter resin - which is the price of the gel point that makes it fast.
+    "1,6-hexanediol diacrylate": (2 * 78.7, 226.27),
+    "trimethylolpropane triacrylate": (3 * 78.7, 296.32),
 }
 
 #: Specific heat of a typical acrylic or vinyl liquid, J/(kg K).

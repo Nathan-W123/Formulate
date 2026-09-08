@@ -43,6 +43,28 @@ class PropertyDef:
     condition_dependent: bool = False
     #: Physically admissible range in canonical units, used as a sanity gate.
     bounds: tuple[float | None, float | None] = (None, None)
+    #: True when this property's errors are multiplicative rather than
+    #: additive, so two predictions of it are compared on relative spread.
+    #:
+    #: The distinction decides which of two experts is believed. A boiling
+    #: point is additive: half a kelvin is better than five kelvin whatever
+    #: the value, and the absolute spread is the right comparison. A viscosity
+    #: is not. It runs from a tenth of a millipascal second to a megapascal
+    #: second, its error is naturally a factor rather than a difference - the
+    #: benchmarks in this repository already score it on log10 for that reason
+    #: - and comparing absolute spreads on it hands the decision to whichever
+    #: expert predicts the smallest number, because a small prediction carries
+    #: a small absolute error even when it is a wild guess.
+    #:
+    #: That is not hypothetical. Asked for the viscosity of hexanediol
+    #: diacrylate, the group method gave 4.25 mPa s and called itself 31 per
+    #: cent uncertain while corresponding states gave 0.175 and called itself
+    #: 85 per cent uncertain, and the absolute comparison chose the second: it
+    #: was a factor of twenty-four lower and admitted to being nearly three
+    #: times less sure, and won on 0.15 against 1.32 millipascal seconds of
+    #: spread. The selection rule preferred the answer that was more wrong for
+    #: being smaller.
+    multiplicative_error: bool = False
 
     @property
     def dimensionality(self) -> str:
@@ -57,6 +79,7 @@ def _p(
     *,
     condition_dependent: bool = False,
     bounds: tuple[float | None, float | None] = (None, None),
+    multiplicative_error: bool = False,
 ) -> PropertyDef:
     return PropertyDef(
         name=name,
@@ -65,6 +88,7 @@ def _p(
         description=description,
         condition_dependent=condition_dependent,
         bounds=bounds,
+        multiplicative_error=multiplicative_error,
     )
 
 
@@ -218,7 +242,7 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "Self-diffusion coefficient from the Einstein relation.",
             condition_dependent=True,
             bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         _p(
             "shear_viscosity",
             "Pa*s",
@@ -226,7 +250,7 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "Shear viscosity.",
             condition_dependent=True,
             bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         _p(
             "extensional_viscosity",
             "Pa*s",
@@ -236,7 +260,7 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "function of strain rate and strain history rather than a single number.",
             condition_dependent=True,
             bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         _p(
             "cohesive_energy_density",
             "J/m^3",
@@ -272,15 +296,15 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
         _p(
             "youngs_modulus", "Pa", _M, "Tensile elastic modulus.",
             condition_dependent=True, bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         _p(
             "bulk_modulus", "Pa", _M, "Isothermal bulk modulus.",
             condition_dependent=True, bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         _p(
             "shear_modulus", "Pa", _M, "Elastic shear modulus.",
             condition_dependent=True, bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         # A chain property, not a bulk one, and the thing that actually decides
         # whether a polymer is brittle or tough: below roughly two entanglement
         # lengths a chain cannot form a load-bearing network and the material
@@ -305,7 +329,7 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "specimen fails at its largest defect, far below this.",
             condition_dependent=True,
             bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         # Deliberately not "liquid_density": a glassy polymer is not a
         # saturated liquid, and a semicrystalline sample is denser than its
         # amorphous phase by an amount that depends on how it was processed
@@ -369,7 +393,7 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "How fast one radical adds one monomer.",
             condition_dependent=True,
             bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         _p(
             "cure_time",
             "s",
@@ -381,7 +405,7 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "vitrification rather than network formation.",
             condition_dependent=True,
             bounds=(0.0, None),
-        ),
+         multiplicative_error=True),
         _p(
             "hansen_dispersion",
             "Pa^0.5",

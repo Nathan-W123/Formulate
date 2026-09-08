@@ -419,3 +419,67 @@ def test_two_specifications_share_an_entry_for_an_expert_neither_ask_reaches():
         spec_with([{"property": "logp", "direction": "in_range", "lower": -1.0, "upper": 5.0}]),
     )
     assert cache.hits > hits_before
+
+
+def test_a_smaller_prediction_does_not_win_on_being_smaller():
+    """The selection rule compares spread on the scale the property lives on.
+
+    Absolute spread is the right comparison for a boiling point and the wrong
+    one for a viscosity. A property that runs over orders of magnitude rewards
+    whichever expert predicted the smallest number if the comparison is
+    absolute, because a small prediction carries a small absolute error
+    whether or not it is any good.
+
+    The numbers here are the real ones that found it: for hexanediol
+    diacrylate a group method gave 4.25 mPa s at 31 per cent and corresponding
+    states gave 0.175 mPa s at 85 per cent, and the absolute comparison
+    preferred the second.
+    """
+    from formulate.core.prediction import Prediction, PredictionStatus, prefer
+    from formulate.core.quantity import Quantity, Uncertainty, UncertaintyKind
+
+    def viscosity(value_mpa_s: float, relative: float, expert: str) -> Prediction:
+        return Prediction(
+            property="shear_viscosity",
+            quantity=Quantity(value=value_mpa_s * 1e-3, unit="Pa*s"),
+            uncertainty=Uncertainty(
+                std=value_mpa_s * 1e-3 * relative, kind=UncertaintyKind.EPISTEMIC
+            ),
+            status=PredictionStatus.OK,
+            expert_id=expert,
+        )
+
+    group = viscosity(4.250, 0.312, "viscosity_joback")
+    states = viscosity(0.175, 0.854, "viscosity_corresponding_states")
+
+    # The looser one must not displace the tighter one, in either order.
+    assert not prefer(states, group)
+    assert prefer(group, states)
+
+    # And the absolute spreads really do point the other way, so the test is
+    # not passing for some unrelated reason.
+    from formulate.core.prediction import canonical_std
+
+    assert canonical_std(states) < canonical_std(group)
+
+
+def test_absolute_spread_still_decides_an_additively_measured_property():
+    """Half a kelvin beats five kelvin whatever the boiling point is."""
+    from formulate.core.prediction import Prediction, PredictionStatus, prefer
+    from formulate.core.properties import get_property
+    from formulate.core.quantity import Quantity, Uncertainty, UncertaintyKind
+
+    assert not get_property("normal_boiling_point").multiplicative_error
+
+    def boiling(value_k: float, std_k: float, expert: str) -> Prediction:
+        return Prediction(
+            property="normal_boiling_point",
+            quantity=Quantity(value=value_k, unit="K"),
+            uncertainty=Uncertainty(std=std_k, kind=UncertaintyKind.EPISTEMIC),
+            status=PredictionStatus.OK,
+            expert_id=expert,
+        )
+
+    # The hotter compound is quoted more precisely and must win, even though
+    # its relative spread is the same as the cooler one's.
+    assert prefer(boiling(600.0, 0.5, "measured"), boiling(300.0, 5.0, "joback"))
