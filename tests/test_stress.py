@@ -276,3 +276,65 @@ def test_the_autocorrelation_recovers_a_known_correlation_time():
     # The integral is the correlation time, less the exponential tail beyond
     # the window and half a step at the origin from the trapezoidal rule.
     assert np.trapezoid(acf, lags) == pytest.approx(tau, rel=0.06)
+
+
+def test_ewald_responds_to_strain_the_way_a_coulomb_energy_must():
+    """The one part of the tensor no closed-form pair calculation reaches.
+
+    A neutral periodic lattice of point charges has an Ewald energy that is
+    exactly homogeneous of degree minus one in the box edge - every distance in
+    the sum scales together, and a Coulomb energy goes as one over distance -
+    so under an isotropic strain the three axial derivatives must sum to minus
+    the energy itself. That is an exact statement about particle-mesh Ewald and
+    about whether it notices a strained box at all, which the Lennard-Jones
+    tests cannot check because they carry no charge.
+
+    Each particle is its own molecule here, so the affine strain on centres of
+    mass is the affine strain on coordinates and the identity applies without
+    an intramolecular part to spoil it.
+    """
+    import openmm as mm
+    import openmm.unit as u
+
+    rng = np.random.default_rng(3)
+    edge, n_particles = 4.0, 64
+    charges = rng.normal(size=n_particles)
+    charges -= charges.mean()  # a periodic Ewald sum needs a neutral cell
+
+    system = mm.System()
+    system.setDefaultPeriodicBoxVectors(
+        mm.Vec3(edge, 0, 0), mm.Vec3(0, edge, 0), mm.Vec3(0, 0, edge)
+    )
+    force = mm.NonbondedForce()
+    force.setNonbondedMethod(mm.NonbondedForce.PME)
+    force.setCutoffDistance(1.0 * u.nanometer)
+    force.setEwaldErrorTolerance(1.0e-6)
+    for charge in charges:
+        system.addParticle(1.0)
+        force.addParticle(charge, 0.3, 0.0)  # zero epsilon leaves only Coulomb
+    system.addForce(force)
+
+    context = mm.Context(
+        system, mm.VerletIntegrator(1.0e-6), mm.Platform.getPlatformByName("Reference")
+    )
+    positions = rng.uniform(0.0, edge, size=(n_particles, 3))
+    box = np.diag([edge, edge, edge])
+    context.setPositions(positions)
+    energy = (
+        context.getState(energy=True).getPotentialEnergy().value_in_unit(u.kilojoule_per_mole)
+    )
+
+    volume = edge**3
+    pressures = configurational_stress(
+        context,
+        positions,
+        box,
+        positions.copy(),
+        np.arange(n_particles),
+        volume,
+        DIAGONAL,
+    )
+    # P_aa is -(1/V) dU/deps_a, so the sum of the derivatives is -V times the
+    # sum of the pressures, and it must come back as minus the energy.
+    derivative = -volume * pressures.sum()
+    assert derivative == pytest.approx(-energy, rel=1e-4)
