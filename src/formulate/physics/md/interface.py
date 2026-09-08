@@ -170,6 +170,19 @@ class SurfaceTensionResult:
     #: RMS dipole of the cell along the slab normal, in elementary charge
     #: nanometres. Three-dimensional Ewald on a slab is exact only at zero.
     dipole_z_rms: float
+    #: Mean number of molecules found in the vacuum region during production.
+    #:
+    #: A slab run is a liquid-vapour coexistence, so this is the one thing here
+    #: that a boiling point is made of: the saturated vapour density, and from
+    #: it the saturated vapour pressure. It is reported because it is also the
+    #: measurement that says whether that route is affordable. Two-butanone at
+    #: 298 K has a vapour pressure of 12.6 kPa, which in a gap of a few tens of
+    #: cubic nanometres is a quarter of one molecule.
+    vapour_molecules: float
+    #: Saturated vapour pressure implied by that count, treating the vapour as
+    #: ideal, in pascals. Meaningless below about ten molecules and reported
+    #: with the count so that it can be judged rather than used.
+    vapour_pressure_pa: float
     production_ps: float
     n_molecules: int
     box_nm: tuple[float, float, float]
@@ -268,7 +281,7 @@ def surface_tension(
     sample_steps = max(1, int(sample_interval_ps * steps_per_ps))
     n_samples = max(2, int(production_ps / sample_interval_ps))
 
-    tensions, pressures, kinetics, dipoles = [], [], [], []
+    tensions, pressures, kinetics, dipoles, vapour = [], [], [], [], []
     for _ in range(n_samples):
         integrator.step(sample_steps)
         state = context.getState(
@@ -300,6 +313,13 @@ def surface_tension(
         kinetics.append(kinetic * KJ_PER_MOL_NM3_IN_PA / 1e5)
         dipoles.append(float(charges @ (positions[:, 2] - positions[:, 2].mean())))
 
+        # Anything more than half a nanometre clear of the liquid's own faces
+        # is vapour. The half nanometre keeps the diffuse interface itself,
+        # which is two or three molecular diameters wide, out of the count.
+        offset = np.abs(centres[:, 2] - slab.box_nm[2] / 2.0)
+        offset = np.minimum(offset, slab.box_nm[2] - offset)
+        vapour.append(int(np.count_nonzero(offset > slab.liquid_nm / 2.0 + 0.5)))
+
     from .condensed import _block_error
 
     tensions = np.array(tensions)
@@ -318,6 +338,14 @@ def surface_tension(
             f"the sampling error is {error / abs(tensions.mean()) * 100:.0f} per cent "
             "of the mean, which is too large to separate a force field error from noise"
         )
+    vapour_mean = float(np.mean(vapour))
+    gap_nm3 = (slab.box_nm[2] - slab.liquid_nm) * lateral_nm * lateral_nm
+    vapour_pressure = vapour_mean * 1.380649e-23 * temperature_k / (gap_nm3 * 1e-27)
+    if vapour_mean > 0.03 * n_molecules:
+        diagnostics.append(
+            f"{vapour_mean:.0f} of {n_molecules} molecules are in the vapour, so the "
+            "slab is losing mass and its density is no longer the one it was packed at"
+        )
     if lateral_nm < 4.0:
         diagnostics.append(
             f"a {lateral_nm:.1f} nm lateral edge suppresses capillary waves longer "
@@ -333,6 +361,8 @@ def surface_tension(
         pressure_bar=tuple(float(v) for v in pressures.mean(axis=0)),
         kinetic_anisotropy_bar=anisotropy,
         dipole_z_rms=float(np.sqrt(np.mean(np.square(dipoles)))),
+        vapour_molecules=vapour_mean,
+        vapour_pressure_pa=vapour_pressure,
         production_ps=production_ps,
         n_molecules=n_molecules,
         box_nm=slab.box_nm,
