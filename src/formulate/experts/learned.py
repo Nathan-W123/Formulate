@@ -206,6 +206,27 @@ _RELATIVE_PERMITTIVITY_REJECTED = (
     "it answers well is what needed no model; not shipped"
 )
 
+#: A polymer glass transition was trained and is not shipped, and here the
+#: reason is the data rather than the method.
+#:
+#: The bundled reference set has 57 polymers, 47 of them in the fitting split.
+#: A forest over 217 descriptors fitted to 47 points reaches 36.2 K on the ten
+#: held-out polymers. It is not learning nothing - the training mean alone is
+#: 65.6 K - but the group-contribution expert already fitted to those same 47
+#: reaches 18.5 K on the same ten, half the error, because a handful of
+#: van Krevelen group parameters is the right amount of structure to impose
+#: when there are forty-seven examples.
+#:
+#: Nothing offline supplies more: no polymer property database is installed,
+#: and 57 handbook values are a regression guard rather than a corpus. This
+#: stays rejected until there is data to learn from, not because a model could
+#: not in principle beat group contribution here.
+_POLYMER_GLASS_TRANSITION_REJECTED = (
+    "trained on the 47 fitting-split polymers in the bundled reference set; held-out "
+    "MAE 36.2 K against the group-contribution expert's 18.5 K on the same ten "
+    "polymers, and there is no larger polymer corpus available offline; not shipped"
+)
+
 _DATA = _DATA_DIRECTORY / LEARNABLE["normal_boiling_point"].filename
 
 #: Trees in the forest. Three hundred is where held-out error stops improving

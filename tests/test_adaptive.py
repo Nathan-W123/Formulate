@@ -255,3 +255,94 @@ def test_the_report_shows_every_decision_and_its_outcome():
     assert "ADAPTIVE POLICY" in report
     assert "Decisions:" in report
     assert "WHAT THIS RUN DOES NOT ESTABLISH" in report
+
+
+# --------------------------------------------------------------------------
+# A lead bought with a bigger budget is not a lead
+# --------------------------------------------------------------------------
+
+
+def _pair(fixed_hv, adaptive_hv, fixed_evals=56, adaptive_evals=56):
+    from formulate.coordination.benchmark import ArmResult
+
+    def arm(name, hv, evals):
+        return ArmResult(
+            arm=name, seed=0, hypervolume=hv, feasible=10, evaluated=evals,
+            seconds=1.0, frontier=5, coverage=1.0,
+        )
+
+    return arm("fixed", fixed_hv, fixed_evals), arm("adaptive", adaptive_hv, adaptive_evals)
+
+
+def test_the_evaluation_ratio_is_reported():
+    from formulate.coordination.benchmark import BenchmarkResult
+
+    result = BenchmarkResult(target="t", pairs=[_pair(0.1, 0.2, 56, 156)])
+    assert result.evaluation_ratio == pytest.approx(156 / 56)
+    assert "times the fixed pipeline" in result.describe()
+
+
+def test_a_lead_bought_with_more_evaluations_does_not_adopt_adaptive():
+    """The specification asks for improvement at equal compute.
+
+    The benchmark reported adaptive ahead by 0.065 hypervolume while it had
+    made 156 expert evaluations against the fixed pipeline's 56, and said
+    nothing about the budget. Winning every pair on three times the compute is
+    a bigger budget, not a better policy.
+    """
+    from formulate.coordination.benchmark import BenchmarkResult
+
+    lopsided = BenchmarkResult(
+        target="t",
+        pairs=[_pair(0.1, 0.3, 56, 156) for _ in range(6)],
+    )
+    assert lopsided.sign_test_p() < 0.10  # it would otherwise be adopted
+    assert "KEEP THE FIXED PIPELINE" in lopsided.verdict
+    assert "bigger budget rather than a better policy" in lopsided.verdict
+
+
+def test_a_lead_at_equal_compute_does_adopt_adaptive():
+    """Otherwise the guard above would make adoption impossible."""
+    from formulate.coordination.benchmark import BenchmarkResult
+
+    fair = BenchmarkResult(
+        target="t", pairs=[_pair(0.1, 0.3, 56, 56) for _ in range(6)]
+    )
+    assert "ADOPT THE ADAPTIVE COORDINATOR" in fair.verdict
+
+
+def test_a_small_budget_difference_is_not_held_against_adaptive():
+    """Adaptive chooses how much to spend; a few per cent is not a confound."""
+    from formulate.coordination.benchmark import BenchmarkResult
+
+    close = BenchmarkResult(
+        target="t", pairs=[_pair(0.1, 0.3, 56, 58) for _ in range(6)]
+    )
+    assert "ADOPT" in close.verdict
+
+
+def test_the_measured_run_keeps_the_fixed_pipeline():
+    """The numbers actually measured, over five seeds: adaptive wins four,
+    loses one, sign test p = 0.375, on 2.31 times the evaluations.
+
+    2.31 rather than the 2.79 that 156-against-56 suggests: on seed 0, the one
+    it lost, adaptive stopped after 36 evaluations.
+    """
+    from formulate.coordination.benchmark import BenchmarkResult
+
+    measured = BenchmarkResult(
+        target="coating solvent",
+        pairs=[
+            _pair(0.1741, 0.0967, 56, 36),
+            _pair(0.0657, 0.3547, 56, 156),
+            _pair(0.2970, 0.3527, 56, 144),
+            _pair(0.3245, 0.3564, 56, 156),
+            _pair(0.3294, 0.3539, 56, 156),
+        ],
+    )
+    assert measured.wins == 4 and measured.losses == 1
+    assert measured.sign_test_p() == pytest.approx(0.375, abs=0.001)
+    assert measured.mean_difference == pytest.approx(0.0647, abs=0.001)
+    assert measured.evaluation_ratio == pytest.approx(2.31, abs=0.02)
+    assert "KEEP THE FIXED PIPELINE" in measured.verdict
+    assert "not a lead at equal compute" in measured.verdict

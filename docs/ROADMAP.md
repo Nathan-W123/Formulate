@@ -183,6 +183,14 @@ complex is relaxed rather than searched — stated on every value.
   polarizable-embedding driver. `EmbeddingMode.POLARIZABLE` exists and refuses,
   naming both halves.
 
+**Coordination** stays deterministic and stays fixed by default. The adaptive
+coordinator won five of five paired seeds at p = 0.06, which the old verdict
+rule would have adopted, while making 2.7 times as many expert evaluations to
+do it. The verdict now weighs the budget each arm spent, and keeps the fixed
+pipeline. There is no language model anywhere in the codebase; an AST pass over
+every module keeps it that way, and a second one asserts that nothing draws
+from an unseeded global generator.
+
 **Electrical property coverage** reaches refractive index by two routes.
 `experts/optical.py` implements Lorentz-Lorenz with a Crippen molar refraction,
 and `LearnedRefractiveIndexExpert` fits 4411 handbook values. Measured on the

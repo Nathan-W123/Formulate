@@ -114,33 +114,67 @@ class BenchmarkResult:
         return min(1.0, 2.0 * tail / (2**decisive))
 
     @property
+    def evaluation_ratio(self) -> float | None:
+        """Adaptive's expert evaluations divided by the fixed pipeline's.
+
+        A comparison that ignores what each arm spent cannot answer whether the
+        policy is better, only whether it did more. This benchmark reported
+        adaptive ahead by 0.065 hypervolume while it had made 156 evaluations
+        against the fixed pipeline's 56 - nearly three times the budget - and
+        said nothing about it.
+        """
+        fixed = sum(f.evaluated for f, _ in self.pairs)
+        adaptive = sum(a.evaluated for _, a in self.pairs)
+        return adaptive / fixed if fixed else None
+
+    @property
     def verdict(self) -> str:
         """The adoption decision, stated as a rule rather than an impression.
 
-        Adaptive is adopted only if it wins on the mean paired difference AND
-        the sign test does not leave that mean indistinguishable from chance.
-        Anything else leaves the fixed pipeline in place, which section 10
-        treats as the expected outcome rather than a failure.
+        Adaptive is adopted only if it wins on the mean paired difference, the
+        sign test does not leave that mean indistinguishable from chance, AND
+        it did not simply spend more to get there. Anything else leaves the
+        fixed pipeline in place, which section 10 treats as the expected
+        outcome rather than a failure.
         """
         if not self.pairs:
             return "no paired runs were completed, so nothing is decided"
         p = self.sign_test_p()
+        ratio = self.evaluation_ratio
+        spent_more = ratio is not None and ratio > 1.1
+        budget = (
+            f" It also made {ratio:.1f} times as many expert evaluations, so any lead "
+            "here is not a lead at equal compute."
+            if spent_more
+            else ""
+        )
         if self.mean_difference <= 0:
             return (
                 f"KEEP THE FIXED PIPELINE: adaptive was worse on average "
-                f"({self.mean_difference:+.4f} hypervolume over {len(self.pairs)} paired runs)"
+                f"({self.mean_difference:+.4f} hypervolume over {len(self.pairs)} paired runs)."
+                + budget
             )
         if p is None or p > 0.10:
             return (
                 f"KEEP THE FIXED PIPELINE: adaptive led by {self.mean_difference:+.4f} "
                 f"hypervolume but won only {self.wins} of {len(self.pairs)} pairs"
                 + (f", sign test p = {p:.2f}" if p is not None else "")
-                + ", which is not distinguishable from chance at this sample size"
+                + ", which is not distinguishable from chance at this sample size."
+                + budget
+            )
+        if spent_more:
+            return (
+                f"KEEP THE FIXED PIPELINE: adaptive led by {self.mean_difference:+.4f} "
+                f"hypervolume ({self.wins} of {len(self.pairs)} pairs, sign test "
+                f"p = {p:.2f}), but it made {ratio:.1f} times as many expert "
+                "evaluations to do it. That is a bigger budget rather than a better "
+                "policy, and the comparison the specification asks for is at equal "
+                "compute"
             )
         return (
             f"ADOPT THE ADAPTIVE COORDINATOR: it led by {self.mean_difference:+.4f} "
             f"hypervolume, winning {self.wins} of {len(self.pairs)} pairs "
-            f"(sign test p = {p:.2f})"
+            f"(sign test p = {p:.2f}) on {ratio:.2f} times the evaluations"
         )
 
     def describe(self) -> str:
@@ -157,6 +191,12 @@ class BenchmarkResult:
             f"loses {self.losses}, ties {self.ties}"
         )
         lines.append(f"Mean paired difference: {self.mean_difference:+.4f} hypervolume")
+        ratio = self.evaluation_ratio
+        if ratio is not None:
+            lines.append(
+                f"Expert evaluations: adaptive spent {ratio:.2f} times the fixed "
+                "pipeline's, which is the budget the difference above was bought with"
+            )
         p = self.sign_test_p()
         if p is not None:
             lines.append(f"Exact two-sided sign test: p = {p:.3f}")

@@ -452,3 +452,86 @@ Unlike the melting point there is no group-contribution alternative, so this
 leaves the property uncovered — which is the honest state rather than a bad
 answer wearing a tight error bar. Recorded in `learned.py` so the experiment is
 not repeated.
+
+### Polymer glass transition: trained, and not shipped either
+
+The brief's other named gap for the learned layer was higher-value polymer
+properties. Measured rather than assumed, on the bundled reference set's ten
+held-out polymers:
+
+| route | held-out MAE | RMSE |
+|---|---|---|
+| group contribution (the shipped expert) | **18.5 K** | 22.1 K |
+| random forest over 217 descriptors | 36.2 K | 41.8 K |
+| predicting the training mean | 65.6 K | 72.9 K |
+
+The forest is learning something — it halves the trivial baseline — and is
+still twice as wrong as the expert already fitted to the same data. With 47
+fitting polymers, a handful of van Krevelen group parameters is the right
+amount of structure to impose and 217 free descriptors is not.
+
+The limit here is the corpus, not the method: 57 handbook polymers is a
+regression guard, and no polymer property database is installed offline. This
+stays rejected until there is data to learn from.
+
+---
+
+## Adaptive against fixed coordination
+
+`python bench/adaptive_vs_fixed.py` — five seeds, paired, 90 s budget each.
+
+Section 10 and the brief both require the same thing: keep the adaptive path
+only if it improves on the fixed one **at equal compute**. The benchmark was
+measuring only the first half.
+
+Two runs of the same script, on the same target:
+
+| run | adaptive wins | mean Δ hypervolume | sign test | adaptive's evaluations |
+|---|---|---|---|---|
+| first | 4 of 5 | +0.0647 | p = 0.375 | 2.31× the fixed pipeline's |
+| second | 5 of 5 | +0.1181 | p = 0.062 | 2.70× |
+
+Both keep the fixed pipeline, but only the second one is interesting. At
+p = 0.062 with a positive mean the old verdict rule said **ADOPT THE ADAPTIVE
+COORDINATOR** — and adaptive had made 2.7 times as many expert evaluations to
+get there. That is a bigger budget, not a better policy, and the benchmark
+reported none of it.
+
+`BenchmarkResult` now carries `evaluation_ratio` and the verdict refuses to
+adopt on a lead bought with more than 10% extra compute. The rule still adopts
+a genuine win at equal compute, which a test checks, so the guard cannot make
+adoption impossible.
+
+The gap between the two runs is itself a result: five paired seeds move a sign
+test from p = 0.375 to p = 0.062 on the same code and the same target. Neither
+number should be read as an estimate of anything. The decision here rests on
+the compute ratio, which is stable across both runs, rather than on the p-value,
+which is not.
+
+**Verdict: the fixed pipeline stays the default.** The adaptive coordinator
+remains available and is not deleted — it may well be better at equal compute,
+and nothing here has shown that either way.
+
+---
+
+## Determinism and the language-model boundary
+
+`python -m pytest tests/test_determinism.py`
+
+Two claims the brief makes that stay true only while something checks them.
+
+**Reproducibility.** The same seed gives the same ranking, the same scalar
+scores and the same hypervolume, for a single-shot run and for an iterative
+one; a different seed is allowed to differ, so the check is not vacuous. A
+static pass over every module asserts that nothing calls `random.random()`,
+`np.random.rand()` or their siblings on the global generator — every explorer
+takes a seed and builds its own.
+
+**No language model produces a number.** There is no LLM in the codebase at
+all, which is the strongest form of the brief's restriction, and an AST pass
+over every module keeps it that way by refusing imports of `openai`,
+`anthropic`, `litellm` and `langchain`. SAFE-GPT is deliberately not caught: it
+is a generative model over molecular fragments that proposes *structures* for
+the expert panel to evaluate, and it never produces a value that reaches a
+prediction. Every prediction in a completed run is asserted to name a method
+and an expert.
