@@ -1,0 +1,61 @@
+name: web fluid v2 - carrier chosen against the drying limit
+notes: >
+  The first run chose a carrier on solvent quality and volatility and produced a
+  filament that lands wet. The drying calculation showed why: evaporation is
+  never the limit, diffusion out of the vitrifying core is, and a rapidly
+  evaporating solvent makes that worse by cooling the filament and driving the
+  skin through its glass transition sooner. So this run adds the enthalpy of
+  vaporisation as an objective to be minimised - less latent heat drawn per
+  gram removed, less evaporative cooling, a skin that stays permeable longer -
+  and keeps everything the first run established.
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  solutes: ["polystyrene"]
+requirements:
+  # Established in run 1: it has to dissolve the fibre-former.
+  - property: solubility_red
+    direction: minimize
+    lower: 0.0
+    upper: 1.0
+    hard: true
+    weight: 3.0
+    rationale: no solution, no dope
+  # Established in run 1: sets in flight, does not boil in the cartridge.
+  - property: normal_boiling_point
+    direction: in_range
+    lower: 40 degC
+    upper: 110 degC
+    hard: true
+    rationale: sets in flight without boiling on the wrist
+  # New, from the drying calculation. Every gram of solvent that leaves takes
+  # its latent heat out of the filament; a lower value means less cooling and a
+  # skin that vitrifies later.
+  - property: enthalpy_vaporization
+    direction: minimize
+    lower: 25 kJ/mol
+    upper: 45 kJ/mol
+    weight: 3.0
+    shape: 2.0
+    rationale: evaporative cooling is what vitrifies the skin early
+  # Established in run 1: a coherent jet rather than a spray.
+  - property: surface_tension
+    direction: minimize
+    lower: 15 mN/m
+    upper: 40 mN/m
+    weight: 2.0
+    rationale: a jet rather than a spray
+  # Established in run 1: mass carried on the wrist.
+  - property: liquid_density
+    direction: minimize
+    lower: 0.6 g/cm^3
+    upper: 1.6 g/cm^3
+    weight: 1.0
+    rationale: cartridge mass
+  # New: the dope is pushed through a fine nozzle by a wrist-sized actuator.
+  - property: shear_viscosity
+    direction: minimize
+    lower: 0.2 mPa*s
+    upper: 1.5 mPa*s
+    weight: 2.0
+    rationale: the carrier sets the floor on what the actuator has to push
