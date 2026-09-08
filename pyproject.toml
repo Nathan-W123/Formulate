@@ -54,6 +54,13 @@ learned = ["scikit-learn>=1.3", "joblib>=1.3"]
 # one nowhere. Either is enough for the explorer to run; neither is required.
 generative = ["selfies>=2.1", "safe-mol>=0.2", "torch>=2.0"]
 
+# The section 8 multi-fidelity rung. MACE-OFF23 is an equivariant network
+# fitted to wB97M-D3(BJ)/def2-TZVPPD; on atomization energy it is measurably
+# more accurate than the B3LYP/6-31G calculation it was meant to approximate
+# (13.0 against 78.7 kJ/mol, docs/BENCHMARKS.md). Single-point use only: a
+# force evaluation costs 535 ms for 576 atoms, which prices out any MD.
+potentials = ["mace-torch>=0.3", "torch>=2.0", "ase>=3.22"]
+
 dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4"]
 
 [project.scripts]

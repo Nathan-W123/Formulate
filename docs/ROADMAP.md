@@ -168,20 +168,40 @@ not have.
 the molecule against its free atoms, each in its own ground state — carbon a
 triplet, nitrogen a quartet — because computing them as closed-shell singlets
 converges perfectly well and is wrong by hundreds of kJ/mol per atom. Against
-four experimental atomization energies at B3LYP/6-31G it under-binds by 11 to
-140 kJ/mol, consistently in one direction, and orders the four correctly.
+seven experimental atomization energies at B3LYP/6-31G it under-binds every one
+by 11 to 140 kJ/mol — mean absolute error 78.7 kJ/mol, mean relative error 5.1
+per cent — and orders them correctly.
 `interaction_energy` is implemented for an assembly and its fragments, with
 both errors it does not remove — basis-set superposition and the fact that a
 complex is relaxed rather than searched — stated on every value.
 
 **Not done.**
 
-- **The section 8 multi-fidelity layer**: ML interatomic potential with
-  active-learning escalation to QM, and QM/MM embedding. torch is unavailable,
-  and a committee-of-cheap-regressors stand-in would be an uncertainty signal
-  rather than a usable potential; building it as though it were the real thing
-  would misrepresent what it is.
+- **QM/MM embedding** (section 8). Not started.
 - **The optional minimal Hartree-Fock teaching backend** of section 7.
+
+**The section 8 multi-fidelity layer** is done, and measuring it inverted it.
+`physics/potentials.py` wraps MACE-OFF23 behind a model-agnostic interface that
+declares its element domain from the loaded weights and refuses anything
+outside it; `PotentialCache` content-addresses single points on geometry plus
+model identity, so an escalation ladder that revisits a geometry three times
+pays for it once. `EscalationPolicy` names four triggers — out of domain, wide
+stated uncertainty, cross-method disagreement beyond the combined error, and a
+rank horizon that declines to buy a calculation which cannot change the
+recommendation — and `PhysicsValidator._cheap_pass` applies them.
+
+What the measurement changed: on conformer energy differences the potential
+sits 11.8 meV from B3LYP/6-31G against a 66.9 meV signal, 30× faster. On
+atomization energy it is not an approximation to the quantum rung at all — it
+is 13.0 kJ/mol from experiment where B3LYP/6-31G is 78.7, under-binding every
+one of seven molecules. So `_POTENTIAL_IS_THE_BETTER_RUNG` names the properties
+where escalation would make the answer worse, and for those the only trigger
+left is the element domain, where an extrapolating network is worse than an
+under-binding basis. Full tables in [BENCHMARKS.md](BENCHMARKS.md).
+
+It is a single-point engine and nothing more. MACE-OFF costs 535 ms per force
+evaluation on a 576-atom box here, which puts 100 ps of MD at fifteen hours; it
+does not replace the force fields in `physics/md`.
 
 ## Phase 4 — polymers and formulations ✅
 

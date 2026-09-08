@@ -14,6 +14,7 @@ from formulate.coordination.validation import (
     Disagreement,
     ValidationMethod,
     ValidationPolicy,
+    ValidationReport,
     merge_prediction,
     physics_prediction,
     select_targets,
@@ -402,7 +403,7 @@ def test_a_bulk_property_declines_with_its_cost_rather_than_raising(prop):
         value_score=1.0,
         rationale="test",
     )
-    prediction, reason = PhysicsValidator(policy=ValidationPolicy())._run_target(target, _SPEC)
+    prediction, reason = PhysicsValidator(policy=ValidationPolicy())._run_target(target, _SPEC, ValidationReport())
 
     assert prediction is None
     requirement = REQUIREMENTS[MDProtocol(DYNAMICS_PROTOCOLS[prop])]
@@ -452,7 +453,7 @@ def test_a_condensed_run_the_budget_cannot_afford_says_so_and_costs_nothing(prop
     started = time.perf_counter()
     prediction, reason = PhysicsValidator(
         policy=ValidationPolicy(max_seconds=600.0)
-    )._run_target(target, _SPEC)
+    )._run_target(target, _SPEC, ValidationReport())
     assert prediction is None
     assert "minutes" in reason and "budget" in reason
     assert time.perf_counter() - started < 60.0
@@ -504,7 +505,7 @@ def test_atomization_declines_an_element_it_has_no_reference_for():
         value_score=1.0,
         rationale="test",
     )
-    prediction, reason = PhysicsValidator(policy=ValidationPolicy())._run_target(target, _SPEC)
+    prediction, reason = PhysicsValidator(policy=ValidationPolicy())._run_target(target, _SPEC, ValidationReport())
     assert prediction is None
     assert "Fe" in reason or "geometry" in reason
 
@@ -724,3 +725,140 @@ def test_the_default_budget_cannot_afford_the_cheapest_protocol():
     from formulate.coordination.validation import CONDENSED_COST_SECONDS, ValidationPolicy
 
     assert min(CONDENSED_COST_SECONDS.values()) > ValidationPolicy().max_seconds
+
+
+# --------------------------------------------------------------------------
+# The multi-fidelity rung (specification section 8)
+# --------------------------------------------------------------------------
+
+
+def _atomization_target(smiles: str):
+    from formulate.coordination.validation import ValidationTarget
+    from formulate.core.candidate import molecule_candidate
+
+    return ValidationTarget(
+        candidate=molecule_candidate(smiles),
+        property="atomization_energy",
+        method=ValidationMethod.QUANTUM,
+        value_score=1.0,
+        rationale="test",
+    )
+
+
+@requires_rdkit
+def test_a_gap_is_never_answered_by_a_potential_that_only_knows_energies():
+    """The escalation must be unconditional, not merely likely."""
+    from formulate.coordination.validation import PhysicsValidator, ValidationTarget
+    from formulate.core.candidate import molecule_candidate
+    from formulate.physics.geometry import geometry_from_smiles
+
+    target = ValidationTarget(
+        candidate=molecule_candidate("CCO"),
+        property="homo_lumo_gap",
+        method=ValidationMethod.QUANTUM,
+        value_score=1.0,
+        rationale="test",
+    )
+    report = ValidationReport()
+    validator = PhysicsValidator(policy=ValidationPolicy())
+    settled, _ = validator._cheap_pass(
+        target, geometry_from_smiles("CCO", n_conformers=1), report
+    )
+    assert settled is None
+    assert report.cheap_calls == 0
+    assert report.escalations and "escalate to QM" in report.escalations[0][1]
+
+
+@requires_rdkit
+def test_an_element_the_table_does_not_know_declines_instead_of_raising():
+    """A KeyError from the stage whose job is to decline gracefully.
+
+    Iron has no atomic number in the symbol table the potential is addressed
+    through, and looking it up crashed the whole validation stage rather than
+    recording a refusal.
+    """
+    from formulate.coordination.validation import PhysicsValidator
+    from formulate.physics.geometry import geometry_from_smiles
+
+    report = ValidationReport()
+    settled, decision = PhysicsValidator(policy=ValidationPolicy())._cheap_pass(
+        _atomization_target("[Fe](Cl)(Cl)Cl"),
+        geometry_from_smiles("[Fe](Cl)(Cl)Cl", n_conformers=1, optimize=False),
+        report,
+    )
+    assert settled is None
+    assert decision is not None and decision.escalate
+    assert "Fe" in decision.describe()
+
+
+@requires_rdkit
+def test_turning_the_ladder_off_sends_everything_to_the_solver():
+    from formulate.coordination.validation import PhysicsValidator
+    from formulate.physics.geometry import geometry_from_smiles
+
+    report = ValidationReport()
+    validator = PhysicsValidator(policy=ValidationPolicy(multi_fidelity=False))
+    validator._run_quantum(
+        _atomization_target("CCO"),
+        geometry_from_smiles("CCO", n_conformers=1),
+        _SPEC,
+        report,
+    )
+    assert report.escalations == []
+    assert report.cheap_calls == 0
+
+
+@requires_rdkit
+@pytest.mark.slow
+def test_the_potential_answers_an_atomization_energy_and_the_solver_is_not_bought():
+    """Section 8's whole point, and the measurement that inverted it.
+
+    MACE-OFF23-small sits 13.0 kJ/mol from seven experimental atomization
+    energies; the B3LYP/6-31G calculation this would otherwise escalate to sits
+    78.7 kJ/mol from the same seven, under-binding every one. So the cheap rung
+    is kept not because it is good enough but because it is the better answer,
+    and the expensive call is avoided rather than deferred.
+    """
+    from formulate.coordination.validation import PhysicsValidator
+    from formulate.physics.geometry import geometry_from_smiles
+    from formulate.physics.potentials import MacePotential
+
+    if not MacePotential().is_available():
+        pytest.skip("MACE is not installed")
+
+    report = ValidationReport()
+    prediction, reason = PhysicsValidator(policy=ValidationPolicy())._run_quantum(
+        _atomization_target("CO"),
+        geometry_from_smiles("CO", n_conformers=3),
+        _SPEC,
+        report,
+    )
+    assert prediction is not None, reason
+    assert report.cheap_calls == 1
+    assert report.calls_avoided == 1
+    assert prediction.expert_id.startswith("potential:")
+    # Methanol's electronic atomization energy is about 2172 kJ/mol.
+    assert prediction.quantity.to("J/mol").value / 1000.0 == pytest.approx(2172.0, abs=60.0)
+    assert any("zero-point" in note for note in prediction.notes)
+
+
+@requires_rdkit
+@pytest.mark.slow
+def test_silicon_escalates_because_an_extrapolating_network_is_worse():
+    from formulate.coordination.validation import PhysicsValidator
+    from formulate.physics.geometry import geometry_from_smiles
+    from formulate.physics.potentials import MacePotential
+
+    if not MacePotential().is_available():
+        pytest.skip("MACE is not installed")
+
+    report = ValidationReport()
+    settled, decision = PhysicsValidator(policy=ValidationPolicy())._cheap_pass(
+        _atomization_target("C[SiH3]"),
+        geometry_from_smiles("C[SiH3]", n_conformers=1),
+        report,
+    )
+    assert settled is None
+    assert decision.escalate
+    assert "14" in decision.describe()
+    assert report.cheap_calls == 0

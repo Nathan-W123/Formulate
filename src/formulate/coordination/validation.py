@@ -311,6 +311,13 @@ class ValidationPolicy:
     feasible_only: bool = True
     #: Standard deviations of disagreement that count as significant.
     disagreement_sigma: float = 2.0
+    #: Try a fast interatomic potential before spending a quantum calculation
+    #: (section 8). Off means every quantum target goes straight to the solver.
+    multi_fidelity: bool = True
+    #: Relative uncertainty above which the cheap answer is not accepted as it
+    #: stands. Ten per cent of an atomization energy is tens of kJ/mol, which
+    #: is the scale at which a ranking on that property changes.
+    escalate_above_relative_uncertainty: float = 0.10
 
 
 @dataclass(frozen=True, slots=True)
@@ -385,6 +392,11 @@ class ValidationReport:
     seconds_spent: float = 0.0
     calls_made: int = 0
     calls_avoided: int = 0
+    #: Calls to a fast potential, which are not quantum calls and are counted
+    #: separately so a cheap run cannot be mistaken for an expensive one.
+    cheap_calls: int = 0
+    #: (target description, decision) for every multi-fidelity choice made.
+    escalations: list[tuple[str, str]] = field(default_factory=list)
     #: Candidate id -> (rank before, rank after).
     rank_changes: dict[str, tuple[int, int]] = field(default_factory=dict)
 
@@ -442,6 +454,14 @@ class ValidationReport:
             lines.append(
                 f"  {name} / {target.property} via {target.method.value}: {target.rationale}"
             )
+
+        if self.escalations:
+            lines.append("")
+            lines.append(
+                f"Multi-fidelity: {self.cheap_calls} fast-potential call(s), each one "
+                "deciding whether the quantum calculation was worth buying."
+            )
+            lines.extend(f"  {what}: {why}" for what, why in self.escalations)
 
         if self.disagreements:
             lines.append("")
@@ -699,6 +719,73 @@ def physics_prediction(
 # ---------------------------------------------------------------------------
 
 
+#: Joules per mole in one electronvolt.
+_J_PER_MOL_PER_EV = 96485.33212331001
+
+#: Symbols to atomic numbers, for handing a geometry to a potential that speaks
+#: atomic numbers rather than element symbols.
+_ATOMIC_NUMBER_BY_SYMBOL = {
+    "H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7, "O": 8, "F": 9, "Ne": 10,
+    "Na": 11, "Mg": 12, "Al": 13, "Si": 14, "P": 15, "S": 16, "Cl": 17, "Ar": 18,
+    "K": 19, "Ca": 20, "Br": 35, "I": 53,
+}
+
+#: What a potential that returns energies and forces can actually answer. A
+#: HOMO-LUMO gap or a dipole moment is not derivable from an energy surface, so
+#: those targets escalate unconditionally rather than being approximated here.
+_POTENTIAL_OBSERVABLES = frozenset({"atomization_energy"})
+
+#: Properties where escalating to the quantum rung makes the answer worse, with
+#: the measurement that established it.
+#:
+#: Section 8 describes a ladder and assumes the expensive rung is the accurate
+#: one. For atomization energy at the basis this pipeline runs, it is not, and
+#: that was worth checking rather than assuming. Against seven experimental
+#: electronic well depths (D_0 plus zero-point energy, both handbook values):
+#:
+#:     MACE-OFF23-small   mean absolute error 13.0 kJ/mol, bias -11.5
+#:     B3LYP/6-31G        mean absolute error 78.7 kJ/mol, bias -78.7
+#:
+#: The small basis under-binds every one of the seven, which is the textbook
+#: failure of 6-31G on bond energies; the network was fitted to
+#: wB97M-D3(BJ)/def2-TZVPPD, a far better level than this pipeline can afford
+#: to run. So for this property the potential is not the cheap approximation to
+#: the quantum answer - it is the better answer, six times over, and buying the
+#: quantum calculation would spend six times the wall clock to get further from
+#: the truth.
+#:
+#: Escalation for these properties therefore fires on one trigger only: the
+#: molecule falling outside the network's element domain, where an
+#: extrapolating neural network is worse than an under-binding basis. See
+#: ``docs/BENCHMARKS.md``.
+_POTENTIAL_IS_THE_BETTER_RUNG = frozenset({"atomization_energy"})
+
+#: One sigma on the potential's atomization energy, from the mean absolute
+#: error of 13.0 kJ/mol above under the normal-distribution conversion
+#: sigma = 1.253 * MAE this repository uses elsewhere.
+_POTENTIAL_ATOMIZATION_STD_J_PER_MOL = 16_300.0
+
+
+def _potential_uncertainty(identifier: str, prop: str) -> Uncertainty:
+    """Measured against experiment, not against the rung above.
+
+    An earlier version quoted the spread against B3LYP/6-31G, which was 73
+    kJ/mol and almost entirely that basis's own error rather than the
+    network's. Stating it would have made the better method look like the
+    worse one.
+    """
+    return Uncertainty(
+        std=_POTENTIAL_ATOMIZATION_STD_J_PER_MOL,
+        kind=UncertaintyKind.EPISTEMIC,
+        basis=(
+            f"mean absolute error of {identifier} against seven experimental electronic "
+            "atomization energies, 13.0 kJ/mol, converted to a one-sigma spread; both "
+            "sides are electronic energies against ground-state free atoms, with no "
+            "zero-point correction on either"
+        ),
+    )
+
+
 #: Quantum observables reachable from one QMResult field.
 _QM_OBSERVABLES = {
     "homo_lumo_gap": "homo_lumo_gap",
@@ -721,10 +808,12 @@ class PhysicsValidator:
         policy: ValidationPolicy | None = None,
         qm_backend=None,
         md_engine=None,
+        potential=None,
     ) -> None:
         self.policy = policy or ValidationPolicy()
         self._qm = qm_backend
         self._md = md_engine
+        self._potential = potential
 
     # -- backends ----------------------------------------------------------
 
@@ -772,7 +861,7 @@ class PhysicsValidator:
                 )
                 continue
 
-            prediction, diagnostics = self._run_target(target, spec)
+            prediction, diagnostics = self._run_target(target, spec, report)
             report.calls_made += 1
             if prediction is None:
                 report.skipped.setdefault(target.property, diagnostics)
@@ -798,7 +887,7 @@ class PhysicsValidator:
     # -- one target --------------------------------------------------------
 
     def _run_target(
-        self, target: ValidationTarget, spec: TargetSpec
+        self, target: ValidationTarget, spec: TargetSpec, report: "ValidationReport"
     ) -> tuple[Prediction | None, str]:
         from formulate.physics.geometry import geometry_from_smiles
 
@@ -812,11 +901,169 @@ class PhysicsValidator:
             return None, f"could not build a 3D geometry ({exc})"
 
         if target.method is ValidationMethod.QUANTUM:
-            return self._run_quantum(target, geometry, spec)
+            return self._run_quantum(target, geometry, spec, report)
         return self._run_dynamics(target, geometry, spec)
 
-    def _run_quantum(self, target: ValidationTarget, geometry, spec):
+    # -- the cheap rung ----------------------------------------------------
+
+    def potential(self):
+        """The fast potential, loaded once and shared across targets."""
+        if self._potential is None:
+            from formulate.physics.potentials import MacePotential
+
+            self._potential = MacePotential()
+        return self._potential
+
+    def _cheap_pass(
+        self, target: ValidationTarget, geometry, report: "ValidationReport"
+    ):
+        """Answer with the potential where it can, and say why when it cannot.
+
+        Returns ``(prediction, decision)``. A prediction means the cheap rung
+        settled it and the quantum calculation is not bought; ``None`` with a
+        decision means it is. The decision is recorded either way, because a
+        run that escalated everything and a run that escalated nothing are very
+        different runs and the report has to be able to tell them apart.
+        """
+        from formulate.physics.potentials import (
+            EscalationDecision,
+            EscalationPolicy,
+            UnsupportedSystem,
+        )
+
+        label = (
+            f"{target.candidate.label or target.candidate.primary_smiles}"
+            f" / {target.property}"
+        )
+        policy = EscalationPolicy(
+            uncertainty_fraction=self.policy.escalate_above_relative_uncertainty,
+            disagreement_sigma=self.policy.disagreement_sigma,
+        )
+
+        potential = self.potential()
+        if not potential.is_available():
+            reason = potential.unavailable_reason()
+            report.escalations.append(
+                (label, f"escalate to QM: no fast potential is installed ({reason})")
+            )
+            return None, None
+
+        unknown = sorted({s for s in geometry.symbols if s not in _ATOMIC_NUMBER_BY_SYMBOL})
+        if unknown:
+            # An element this table has never heard of is outside every
+            # organic potential's training set by construction. Reaching the
+            # dictionary for it raised a KeyError, which surfaced as a crash
+            # from a stage whose entire job is to decline things gracefully.
+            decision = policy.decide(
+                out_of_domain_reason=(
+                    f"no atomic number is tabulated for {', '.join(unknown)}, so the "
+                    "potential cannot even be asked about this molecule"
+                )
+            )
+            report.escalations.append((label, decision.describe()))
+            return None, decision
+
+        numbers = [_ATOMIC_NUMBER_BY_SYMBOL[s] for s in geometry.symbols]
+        refusal = potential.refusal(numbers)
+        if refusal is not None:
+            decision = policy.decide(out_of_domain_reason=refusal)
+            report.escalations.append((label, decision.describe()))
+            return None, decision
+
+        if target.property not in _POTENTIAL_OBSERVABLES:
+            report.escalations.append(
+                (
+                    label,
+                    "escalate to QM: "
+                    f"{potential.info.identifier} predicts energies and forces, and "
+                    f"{target.property} is not derivable from them",
+                )
+            )
+            return None, None
+
+        try:
+            value_ev = potential.atomization_energy_ev(numbers, geometry.positions)
+        except UnsupportedSystem as exc:
+            decision = policy.decide(out_of_domain_reason=str(exc))
+            report.escalations.append((label, decision.describe()))
+            return None, decision
+        except Exception as exc:
+            report.escalations.append(
+                (label, f"escalate to QM: the fast potential failed ({exc})")
+            )
+            return None, None
+        report.cheap_calls += 1
+
+        value = Quantity(value=value_ev * _J_PER_MOL_PER_EV, unit="J/mol")
+        uncertainty = _potential_uncertainty(potential.info.identifier, target.property)
+
+        incumbent = None
+        if target.candidate.results is not None:
+            incumbent = target.candidate.results.prediction_for(target.property)
+        other_value = other_std = None
+        if incumbent is not None and incumbent.quantity is not None:
+            other_value = incumbent.quantity.to("J/mol").value
+            other_std = incumbent.uncertainty.converted(
+                incumbent.quantity.unit, "J/mol"
+            ).std
+
+        if target.property in _POTENTIAL_IS_THE_BETTER_RUNG:
+            # In domain, and the rung above is measurably worse here. Nothing
+            # the disagreement trigger could find would be an argument for
+            # buying it, so it is not consulted.
+            decision = EscalationDecision(
+                False,
+                (
+                    f"{potential.info.identifier} is in domain and, on this property, "
+                    "6 times more accurate than the B3LYP/6-31G calculation the "
+                    "escalation would buy (13.0 against 78.7 kJ/mol over seven "
+                    "measured atomization energies)",
+                ),
+            )
+        else:
+            decision = policy.decide(
+                value=value.value,
+                uncertainty=uncertainty.std,
+                other_value=other_value,
+                other_uncertainty=other_std,
+                rank=target.candidate.results.aggregate_rank
+                if target.candidate.results is not None
+                else None,
+            )
+        report.escalations.append((label, decision.describe()))
+        if decision.escalate:
+            return None, decision
+
+        return (
+            physics_prediction(
+                target.property,
+                value,
+                uncertainty,
+                backend=f"potential:{potential.info.identifier}",
+                method=(
+                    f"{potential.info.identifier} single point, atomization against the "
+                    "model's own isolated-atom references"
+                ),
+                conditions=VACUUM_ZERO_KELVIN,
+                notes=(
+                    "electronic atomization energy: no zero-point correction, because a "
+                    "single-point energy contains no vibrational information",
+                    decision.describe(),
+                ),
+            ),
+            decision,
+        )
+
+    def _run_quantum(
+        self, target: ValidationTarget, geometry, spec, report: "ValidationReport"
+    ):
         from formulate.physics.qm import QMMethod, QMRequest
+
+        if self.policy.multi_fidelity:
+            settled, _ = self._cheap_pass(target, geometry, report)
+            if settled is not None:
+                report.calls_avoided += 1
+                return settled, ""
 
         backend = self.quantum()
         if not backend.is_available():
@@ -906,9 +1153,14 @@ class PhysicsValidator:
                 Quantity(value=result.value, unit="J/mol"),
                 Uncertainty(
                     # The systematic error of the level of theory, not a
-                    # convergence figure. Measured against four experimental
-                    # atomization energies, this basis under-binds by tens of
-                    # kJ/mol per bond, and consistently in one direction.
+                    # convergence figure. Measured against seven experimental
+                    # electronic atomization energies: mean absolute error 78.7
+                    # kJ/mol, mean relative error 5.1 per cent, and every one of
+                    # the seven under-bound. Five per cent is therefore the right
+                    # magnitude but the wrong shape - the error is a one-signed
+                    # bias, not a symmetric spread - and a symmetric interval is
+                    # kept only because correcting a bias measured on seven small
+                    # molecules would be fitting to the test set.
                     std=abs(result.value) * 0.05,
                     kind=UncertaintyKind.EPISTEMIC,
                     basis=(
