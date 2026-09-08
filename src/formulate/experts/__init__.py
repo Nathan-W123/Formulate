@@ -16,9 +16,10 @@ from .feasibility import SynthesisFeasibilityExpert
 from .hansen import HansenSolubilityExpert
 from .interfacial import InterfacialCorrelationExpert
 from .joback import JobackThermalExpert
-from .learned import LearnedBoilingPointExpert
+from .learned import LearnedBoilingPointExpert, LearnedRefractiveIndexExpert
 from .lipophilicity import CrippenLipophilicityExpert
 from .measured import MeasuredPropertyExpert
+from .optical import LorentzLorenzExpert
 from .mechanical import PolymerMechanicalExpert
 from .mixture import MixtureExpert
 from .polymer import PolymerDensityExpert, PolymerGlassTransitionExpert
@@ -51,6 +52,8 @@ PHASE4_EXPERTS = (
     MixtureExpert,
     AtomicCriticalExpert,
     LearnedBoilingPointExpert,
+    LearnedRefractiveIndexExpert,
+    LorentzLorenzExpert,
     DissolutionExpert,
     AdhesionExpert,
     UNIFACActivityExpert,
@@ -72,7 +75,9 @@ def default_registry() -> ExpertRegistry:
 
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
-    "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
+    "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert",
+    "LearnedBoilingPointExpert", "LearnedRefractiveIndexExpert", "LorentzLorenzExpert",
+    "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",

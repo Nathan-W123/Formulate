@@ -188,6 +188,16 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
         ),
         _p("dipole_moment", "debye", _E, "Electric dipole moment.", bounds=(0.0, None)),
         _p(
+            "refractive_index",
+            "",
+            _E,
+            "Refractive index of the liquid, sodium D line unless stated otherwise.",
+            condition_dependent=True,
+            # Below one is not physical for a transparent liquid at optical
+            # frequencies; nothing organic reaches four.
+            bounds=(1.0, 4.0),
+        ),
+        _p(
             "interaction_energy",
             "J/mol",
             _C,

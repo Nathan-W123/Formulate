@@ -183,6 +183,30 @@ complex is relaxed rather than searched — stated on every value.
   polarizable-embedding driver. `EmbeddingMode.POLARIZABLE` exists and refuses,
   naming both halves.
 
+**Electrical property coverage** reaches refractive index by two routes.
+`experts/optical.py` implements Lorentz-Lorenz with a Crippen molar refraction,
+and `LearnedRefractiveIndexExpert` fits 4411 handbook values. Measured on the
+385 compounds carrying a tabulated density, with the forest refitted without
+them: the physics is at 0.0123 mean absolute error and the forest at 0.0165,
+but the physics fed an estimated density instead goes to 0.1979 with an RMSE of
+2.55, because the equation has a pole. Neither wins outright, so neither has
+precedence in the code - the physics route propagates its density's uncertainty
+and `prefer()` selects on the tightest stated spread.
+
+Building it found two defects in the existing panel. Crippen's molar-refraction
+error was being counted twice, once inside the measured 0.0123 and once
+propagated, which made the physics route quote a spread three times too wide
+and lose to a worse answer. And `resolution_order` ran a consumer after the
+*first* expert declaring its dependency rather than after all of them, so a
+refractive index consumer reported "no density available" while `interfacial`
+was still queued behind `measured` and went on to produce one.
+
+A relative permittivity was trained on 1212 measured liquids and is not
+shipped: gated it looks excellent at 0.08 mean absolute error, and the gate
+admits only nonpolar molecules (median permittivity 2.16 against 7.15 for the
+refused). It answers the question nobody needed answering and declines every
+molecule whose dielectric constant is in doubt.
+
 **The optional minimal Hartree-Fock teaching backend** of section 7 is done.
 `physics/qm/minimal_hf.py` exposes basis functions as callable objects, the
 overlap, kinetic, nuclear-attraction and two-electron integrals in closed form,

@@ -88,6 +88,19 @@ class ExpertRegistry:
     def resolution_order(self, experts: Iterable[Expert]) -> list[Expert]:
         """Order experts so dependencies are produced before they are needed.
 
+        "Produced" means *every* expert that could supply a dependency has run,
+        not merely one of them. Ordering on the first supplier is what the
+        declared contract literally says and is wrong in effect: a consumer
+        then sees whichever answer happened to come first rather than the best
+        one available.
+
+        That was not hypothetical. Both ``measured`` and ``interfacial`` supply
+        a liquid density, and ``measured`` runs early, so a refractive index
+        consumer became ready as soon as ``measured`` had run - and for any
+        molecule ``measured`` had no density for, it reported that no density
+        was available while ``interfacial`` was still queued behind it and went
+        on to produce one.
+
         A dependency cycle is a programming error and raises rather than
         deadlocking or silently dropping an expert.
         """
@@ -95,7 +108,21 @@ class ExpertRegistry:
         produced: set[str] = set()
         ordered: list[Expert] = []
         while pending:
-            ready = [e for e in pending if e.dependencies <= produced]
+            ready = [
+                e
+                for e in pending
+                if e.dependencies <= produced
+                and not any(
+                    other is not e and (e.dependencies & other.supported_properties)
+                    for other in pending
+                )
+            ]
+            if not ready:
+                # Nothing can wait for every supplier - two experts each supply
+                # something the other consumes. Fall back to the weaker rule,
+                # which at least respects the declared dependencies, before
+                # deciding this is a cycle.
+                ready = [e for e in pending if e.dependencies <= produced]
             if not ready:
                 # Dependencies that nothing in this set can supply are external;
                 # run the rest anyway so they can report the gap themselves.

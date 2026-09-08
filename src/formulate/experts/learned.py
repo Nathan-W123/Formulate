@@ -56,8 +56,10 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import math
 import os
 import pathlib
+from dataclasses import dataclass
 from typing import Any
 
 from formulate.core.candidate import Candidate, MaterialClass
@@ -78,15 +80,91 @@ _DATA_DIRECTORY = pathlib.Path(__file__).resolve().parent.parent / "data"
 #: model represents, and Joback's own figure for it is deliberately inflated to
 #: 40 K for that reason. Learning it does not make it good; it makes it exist
 #: for the structures that would otherwise have nothing.
-LEARNABLE: dict[str, tuple[str, str, str]] = {
-    "normal_boiling_point": (
-        "boiling_point_measurements.json",
-        "K",
-        "Joback is the better estimate wherever it has groups to match, at 14.8 K "
-        "against 23.5 over the calibration set; this expert exists for the "
-        "structures it cannot type at all",
+@dataclass(frozen=True, slots=True)
+class Learnable:
+    """What one learnable property needs that the others cannot supply.
+
+    This was three positional strings until a second property was added, and
+    every boiling-point-shaped assumption in the class below turned out to be
+    hard-coded rather than declared: a noise floor of one kelvin, a relative
+    spread measured against a denominator floored at one kelvin, and the letter
+    K in three separate messages. On a refractive index of 1.36 the noise floor
+    alone forced a stated spread of 1.0, the gate then read that as the trees
+    disagreeing by 73 per cent, and the expert declined every molecule it was
+    asked about. The abstraction existed; it had simply never been used twice.
+    """
+
+    #: File under ``formulate/data`` holding the measurements.
+    filename: str
+    #: Unit the values are in, empty for a dimensionless property.
+    unit: str
+    #: How this expert stands against the non-learned route, measured.
+    comparison: str
+    #: Smallest stated uncertainty that means anything for this property, in
+    #: its own unit. Below this the forest is claiming a precision the
+    #: measurements it was fitted to do not have.
+    noise_floor: float
+    #: Denominator floor for the relative-spread gate, in the same unit. It
+    #: exists so a value near zero cannot make any spread look infinite.
+    scale_floor: float
+    #: What the training data is and what was held out of it.
+    provenance_note: str
+
+    def format(self, value: float) -> str:
+        """A value with its unit, shown to where the noise floor sits.
+
+        A boiling point whose floor is one kelvin is written to the kelvin; a
+        refractive index whose floor is 0.0005 is written to four decimals.
+        Printing further would claim a precision the property does not have,
+        which is the same error as stating one.
+        """
+        digits = max(0, min(6, -int(math.floor(math.log10(self.noise_floor)))))
+        return f"{value:.{digits}f}" + (f" {self.unit}" if self.unit else "")
+
+
+LEARNABLE: dict[str, Learnable] = {
+    "normal_boiling_point": Learnable(
+        filename="boiling_point_measurements.json",
+        unit="K",
+        comparison=(
+            "Joback is the better estimate wherever it has groups to match, at 14.8 K "
+            "against 23.5 over the calibration set; this expert exists for the "
+            "structures it cannot type at all"
+        ),
+        # A boiling point tabulated to better than a kelvin is unusual, and the
+        # compiled sources round to about that.
+        noise_floor=1.0,
+        scale_floor=1.0,
+        provenance_note=(
+            "training data excludes every value whose source was Joback, and excludes "
+            "the calibration compounds by InChIKey"
+        ),
+    ),
+    "refractive_index": Learnable(
+        filename="refractive_index_measurements.json",
+        unit="",
+        comparison=(
+            "Lorentz-Lorenz is the better estimate wherever a real density is "
+            "available, at 0.0123 against 0.0165 on 385 compounds this model never "
+            "saw; fed an estimated density instead it goes to 0.1995 with an RMSE of "
+            "2.55, because the equation has a pole and a molar volume slightly too "
+            "small sends the answer to infinity. This expert is what to use when the "
+            "density is not known"
+        ),
+        # Handbook refractive indices are tabulated to four decimal places and
+        # differ between sources in the fourth, so a tenth of that is the floor.
+        noise_floor=0.0005,
+        # Every liquid refractive index is above one, so this floor never binds;
+        # it is stated rather than omitted because the gate divides by it.
+        scale_floor=1.0,
+        provenance_note=(
+            "CRC handbook values resolved from CAS; the 385 compounds carrying a "
+            "tabulated density are kept in, and the published comparison against "
+            "Lorentz-Lorenz was measured on a forest refitted without them"
+        ),
     ),
 }
+
 
 #: A melting point was trained and is not shipped, recorded here so the
 #: experiment is not repeated.
@@ -103,7 +181,32 @@ _MELTING_POINT_REJECTED = (
     "and its own spread gate declined most molecules; not shipped"
 )
 
-_DATA = _DATA_DIRECTORY / LEARNABLE["normal_boiling_point"][0]
+#: A relative permittivity was trained and is not shipped either, for a
+#: different and more interesting reason than the melting point's.
+#:
+#: 1212 measured liquids, the same forest, the same gates. Ungated it is
+#: useless: mean absolute error 3.65 on a property whose values run from 1.9 to
+#: 104, with an RMSE of 8.59. Gated at the usual fifteen per cent it looks
+#: excellent - 0.08 mean absolute error - and that number is an artefact. The
+#: gate admits 34 of 243 test compounds, whose permittivities run 1.89 to 6.54
+#: with a median of 2.16, and 68 per cent of them sit below 3 against 21 per
+#: cent of the full test set. The admitted list is heptane, isooctane,
+#: octyl bromide, stearic acid: the model has learned to recognise nonpolar
+#: molecules and report that they are nonpolar.
+#:
+#: That is not a model that answers one molecule in seven accurately. It is a
+#: model that answers the question nobody needed answering, and declines every
+#: molecule whose dielectric constant is actually in doubt. Unlike the melting
+#: point there is no group-contribution alternative here, so this leaves the
+#: property uncovered - which is the honest state rather than a bad answer
+#: wearing a tight error bar.
+_RELATIVE_PERMITTIVITY_REJECTED = (
+    "trained on 1212 measured liquids; ungated MAE 3.65 on a 1.9-104 range, and its "
+    "spread gate admits only nonpolar molecules (median permittivity 2.16), so what "
+    "it answers well is what needed no model; not shipped"
+)
+
+_DATA = _DATA_DIRECTORY / LEARNABLE["normal_boiling_point"].filename
 
 #: Trees in the forest. Three hundred is where held-out error stops improving
 #: on this set; more only costs fitting time.
@@ -197,7 +300,7 @@ def learned_model(prop: str = "normal_boiling_point") -> dict[str, Any]:
     import joblib
     import numpy as np
 
-    path = _DATA_DIRECTORY / LEARNABLE[prop][0]
+    path = _DATA_DIRECTORY / LEARNABLE[prop].filename
     document = json.loads(path.read_text())
     digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
     cached = _cache_directory() / f"{prop}_{digest}.joblib"
@@ -268,12 +371,18 @@ class _LearnedExpert(Expert):
     #: declared there rather than derived here.
     prop: str = ""
     version = "1"
+
+    @property
+    def spec(self) -> Learnable:
+        """Everything about this property that the base class must not assume."""
+        return LEARNABLE[self.prop]
+
     family = PropertyFamily.THERMAL
     supported_classes = frozenset({MaterialClass.MOLECULE})
     supported_properties: frozenset[str] = frozenset()
 
     def _data_path(self) -> pathlib.Path:
-        return _DATA_DIRECTORY / LEARNABLE[self.prop][0]
+        return _DATA_DIRECTORY / self.spec.filename
 
     def is_available(self) -> bool:
         from formulate import chem
@@ -310,11 +419,12 @@ class _LearnedExpert(Expert):
                 f"this structure sits {distance / model['threshold']:.1f} times further "
                 "from the training data than the training molecules sit from each other, "
                 "so any number here would be an extrapolation rather than a prediction",
-                basis=f"{model['n_train']} molecules with measured boiling points",
+                basis=f"{model['n_train']} molecules with a measured "
+                f"{self.prop.replace('_', ' ')}",
             )
         return ApplicabilityDomain(
-            basis=f"{model['n_train']} molecules with measured boiling points; this one "
-            "falls inside their descriptor range"
+            basis=f"{model['n_train']} molecules with a measured "
+            f"{self.prop.replace('_', ' ')}; this one falls inside their descriptor range"
         )
 
     @staticmethod
@@ -337,27 +447,27 @@ class _LearnedExpert(Expert):
         row = features.reshape(1, -1)
         value = float(model["forest"].predict(row)[0])
         spread = float(np.std([tree.predict(row)[0] for tree in model["forest"].estimators_]))
-        std = max(spread * model["scale"], 1.0)
+        std = max(spread * model["scale"], self.spec.noise_floor)
 
         # The forest's own disagreement, as a fraction of what it predicts. A
         # nearest-neighbour distance says whether this molecule looks like the
         # training data; this says whether the trees actually agree about it,
         # and the two disagree often enough to need both.
-        relative = std / max(abs(value), 1.0)
+        relative = std / max(abs(value), self.spec.scale_floor)
         if relative > _MAX_RELATIVE_SPREAD:
             return Prediction.unsupported(
                 prop,
                 self.id,
                 f"the trees disagree by {relative:.0%} of the value they predict "
-                f"({value:.0f} K plus or minus {std:.0f}), which over the held-out set "
-                "marks a prediction worth about twice the usual error; declining rather "
-                "than reporting it",
+                f"({self.spec.format(value)} plus or minus {self.spec.format(std)}), "
+                "which over the held-out set marks a prediction worth about twice the "
+                "usual error; declining rather than reporting it",
             )
 
         return self._make(
             prop,
             value,
-            LEARNABLE[self.prop][1],
+            self.spec.unit,
             request,
             domain,
             std=std,
@@ -365,14 +475,14 @@ class _LearnedExpert(Expert):
             basis=(
                 "the forest's own disagreement, scaled by a factor fitted so that "
                 f"{model['held_out_coverage']:.0%} of held-out compounds fall inside one "
-                f"sigma; the held-out mean absolute error is {model['held_out_mae']:.1f} K"
+                "sigma; the held-out mean absolute error is "
+                f"{self.spec.format(model['held_out_mae'])}"
             ),
             notes=(
-                f"fitted to {model['n_train']} measured boiling points, tested on "
-                f"{model['n_held_out']} held out",
-                LEARNABLE[self.prop][2],
-                "training data excludes every value whose source was Joback, and excludes "
-                "the calibration compounds by InChIKey",
+                f"fitted to {model['n_train']} measured values of "
+                f"{self.prop.replace('_', ' ')}, tested on {model['n_held_out']} held out",
+                self.spec.comparison,
+                self.spec.provenance_note,
             ),
         )
 
@@ -385,3 +495,19 @@ class LearnedBoilingPointExpert(_LearnedExpert):
     supported_properties = frozenset({"normal_boiling_point"})
     method = "random forest over RDKit descriptors, fitted to measured boiling points"
 
+
+
+class LearnedRefractiveIndexExpert(_LearnedExpert):
+    """A refractive index for structures whose density is not known.
+
+    The companion to :class:`~formulate.experts.optical.LorentzLorenzExpert`,
+    which is better whenever a real density is available and much worse when it
+    is not. Neither has precedence written into it: both state their spreads
+    honestly and ``prefer()`` chooses.
+    """
+
+    id = "learned_refractive_index"
+    prop = "refractive_index"
+    family = PropertyFamily.ELECTRICAL
+    supported_properties = frozenset({"refractive_index"})
+    method = "random forest over RDKit descriptors, fitted to measured refractive indices"

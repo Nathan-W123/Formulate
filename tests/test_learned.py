@@ -155,3 +155,195 @@ def test_the_training_data_excludes_the_calibration_compounds():
         if mol is None:
             continue
         assert Chem.MolToInchiKey(mol) not in held_out, smiles
+
+
+# --------------------------------------------------------------------------
+# The abstraction, exercised by a second property with different units
+# --------------------------------------------------------------------------
+
+
+def test_every_learnable_property_declares_what_the_base_class_must_not_assume():
+    """The gaps this table closed were all silent on the boiling point.
+
+    A noise floor of one kelvin, a relative-spread denominator floored at one
+    kelvin, and the letter K in three messages were hard-coded rather than
+    declared. On a refractive index of 1.36 the noise floor alone forced a
+    stated spread of 1.0, the gate read that as the trees disagreeing by 73 per
+    cent, and the expert declined every molecule it was asked about.
+    """
+    from formulate.core.properties import get_property
+    from formulate.experts.learned import LEARNABLE
+
+    for prop, spec in LEARNABLE.items():
+        definition = get_property(prop)
+        assert spec.filename.endswith(".json")
+        assert spec.noise_floor > 0
+        assert spec.scale_floor > 0
+        assert spec.comparison and spec.provenance_note
+        if spec.unit:
+            # The declared unit must be the one the property is registered in.
+            from formulate.core.units import convert
+
+            convert(1.0, spec.unit, definition.canonical_unit)
+
+
+def test_a_value_is_printed_to_where_its_noise_floor_sits():
+    """Printing further claims a precision the property does not have."""
+    from formulate.experts.learned import LEARNABLE
+
+    assert LEARNABLE["normal_boiling_point"].format(351.42) == "351 K"
+    assert LEARNABLE["refractive_index"].format(1.36123) == "1.3612"
+
+
+def test_the_noise_floor_is_per_property_rather_than_one_kelvin_everywhere():
+    from formulate.experts.learned import LEARNABLE
+
+    assert LEARNABLE["refractive_index"].noise_floor < 0.01
+    assert LEARNABLE["normal_boiling_point"].noise_floor == 1.0
+
+
+@requires_rdkit
+def test_the_refractive_index_expert_answers_rather_than_declining_everything():
+    from formulate.core.candidate import molecule_candidate
+    from formulate.core.conditions import Conditions
+    from formulate.experts.base import PredictionRequest
+    from formulate.experts.learned import LearnedRefractiveIndexExpert
+
+    expert = LearnedRefractiveIndexExpert()
+    if not expert.is_available():
+        pytest.skip(expert.unavailable_reason())
+
+    answered = 0
+    for smiles in ("CCO", "Cc1ccccc1", "c1ccccc1", "CCCCCC", "CC(C)=O"):
+        prediction = expert.predict(
+            PredictionRequest(
+                candidate=molecule_candidate(smiles),
+                properties=frozenset({"refractive_index"}),
+                conditions=Conditions.standard(),
+            )
+        )[0]
+        if prediction.quantity is not None:
+            answered += 1
+            assert 1.2 < prediction.quantity.value < 2.0
+            assert 0.0 < prediction.uncertainty.std < 0.1
+    assert answered == 5
+
+
+@requires_rdkit
+def test_the_refractive_index_expert_states_its_units_and_provenance():
+    from formulate.core.candidate import molecule_candidate
+    from formulate.core.conditions import Conditions
+    from formulate.experts.base import PredictionRequest
+    from formulate.experts.learned import LearnedRefractiveIndexExpert
+
+    expert = LearnedRefractiveIndexExpert()
+    if not expert.is_available():
+        pytest.skip(expert.unavailable_reason())
+    prediction = expert.predict(
+        PredictionRequest(
+            candidate=molecule_candidate("Cc1ccccc1"),
+            properties=frozenset({"refractive_index"}),
+            conditions=Conditions.standard(),
+        )
+    )[0]
+    assert prediction.quantity.unit in ("", "dimensionless")
+    assert prediction.expert_version
+    assert prediction.provenance is not None
+    assert " K" not in prediction.uncertainty.basis, "a kelvin leaked into a dimensionless property"
+    assert any("refractive index" in note for note in prediction.notes)
+    assert any("Lorentz-Lorenz" in note for note in prediction.notes)
+
+
+@requires_rdkit
+def test_inference_is_reproducible():
+    """Same structure, same answer, twice, from a freshly built expert.
+
+    To well inside the property's noise floor rather than to the last bit:
+    scikit-learn averages its trees across threads, so the summation order
+    varies and two identical predictions can differ by one unit in the last
+    place. Demanding bit-identity would make this test fail on a difference of
+    2e-16 in a quantity whose fourth decimal is already noise, which is a
+    statement about floating-point reduction rather than about the model.
+    """
+    from formulate.core.candidate import molecule_candidate
+    from formulate.core.conditions import Conditions
+    from formulate.experts.base import PredictionRequest
+    from formulate.experts.learned import LearnedRefractiveIndexExpert
+
+    def once():
+        expert = LearnedRefractiveIndexExpert()
+        if not expert.is_available():
+            pytest.skip(expert.unavailable_reason())
+        return expert.predict(
+            PredictionRequest(
+                candidate=molecule_candidate("CCCCO"),
+                properties=frozenset({"refractive_index"}),
+                conditions=Conditions.standard(),
+            )
+        )[0]
+
+    from formulate.experts.learned import LEARNABLE
+
+    floor = LEARNABLE["refractive_index"].noise_floor
+    first, second = once(), once()
+    assert first.quantity.value == pytest.approx(second.quantity.value, abs=floor / 1000)
+    assert first.uncertainty.std == pytest.approx(second.uncertainty.std, abs=floor / 1000)
+    assert first.expert_version == second.expert_version
+
+
+@requires_rdkit
+def test_a_structure_far_outside_the_training_data_is_refused():
+    from formulate.core.candidate import molecule_candidate
+    from formulate.experts.learned import LearnedRefractiveIndexExpert
+
+    expert = LearnedRefractiveIndexExpert()
+    if not expert.is_available():
+        pytest.skip(expert.unavailable_reason())
+    exotic = expert.assess_domain(molecule_candidate("C[Pt](C)(C)C"))
+    ordinary = expert.assess_domain(molecule_candidate("CCCCO"))
+    assert ordinary.in_domain
+    assert not exotic.in_domain or exotic.score <= ordinary.score
+
+
+@requires_rdkit
+def test_an_unparseable_structure_fails_rather_than_raising():
+    from formulate.core.candidate import molecule_candidate
+    from formulate.core.prediction import PredictionStatus
+    from formulate.core.conditions import Conditions
+    from formulate.experts.base import PredictionRequest
+    from formulate.experts.learned import LearnedRefractiveIndexExpert
+
+    expert = LearnedRefractiveIndexExpert()
+    if not expert.is_available():
+        pytest.skip(expert.unavailable_reason())
+    prediction = expert.predict(
+        PredictionRequest(
+            candidate=molecule_candidate("C[Xx]C"),
+            properties=frozenset({"refractive_index"}),
+            conditions=Conditions.standard(),
+        )
+    )[0]
+    assert prediction.status in (PredictionStatus.FAILED, PredictionStatus.OUT_OF_DOMAIN)
+
+
+def test_the_rejected_permittivity_model_is_recorded_with_its_reason():
+    """So the experiment is not repeated, and so the reason is not "it was bad".
+
+    It was not simply bad: gated it looks excellent, and that number is an
+    artefact of the gate admitting only nonpolar molecules.
+    """
+    from formulate.experts.learned import _RELATIVE_PERMITTIVITY_REJECTED
+
+    assert "nonpolar" in _RELATIVE_PERMITTIVITY_REJECTED
+    assert "not shipped" in _RELATIVE_PERMITTIVITY_REJECTED
+
+
+def test_the_rejected_models_are_not_registered():
+    from formulate.core.candidate import MaterialClass
+    from formulate.experts import default_registry
+
+    registry = default_registry()
+    for prop in ("relative_permittivity",):
+        assert registry.coverage([prop], MaterialClass.MOLECULE) == {} or not registry.coverage(
+            [prop], MaterialClass.MOLECULE
+        ).get(prop)

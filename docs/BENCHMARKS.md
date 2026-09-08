@@ -350,3 +350,105 @@ is a central difference rather than an analytic gradient — the analytic Pulay
 term needs derivatives of every integral with respect to the basis-function
 centres, which is more machinery than a module written to be read should carry,
 and a finite difference demonstrates the point without asserting it.
+
+---
+
+## Refractive index: two routes, neither with precedence
+
+`python bench/refractive_index_routes.py` — needs `formulate[learned]`.
+
+The brief asks the learned layer to reach electronic and electrical properties.
+Refractive index was chosen because it is one of the few where a closed-form
+relation genuinely works, so the learned route has something real to beat:
+
+    (n² − 1)/(n² + 2) = R_m / V_m
+
+with R_m the molar refraction (Crippen's atomic contributions) and V_m the
+molar volume. That makes the question "is a model better than the physics
+here?" answerable rather than rhetorical.
+
+**The comparison had to be redone once.** A first pass gave the forest 0.0140
+against Lorentz–Lorenz's 0.0867 and looked decisive. It was measuring the wrong
+thing: 4327 compounds for the physics route against 883 for the forest, on
+different populations, with the forest's training set overlapping the physics
+route's test set, and the physics route fed a Joback-then-Rackett molar volume
+so that nearly all of its error was the density estimate. Redone on the 385
+compounds that carry a tabulated liquid density, with the forest refitted with
+all 385 removed:
+
+| route | answers | MAE | bias | RMSE |
+|---|---|---|---|---|
+| Lorentz–Lorenz, measured density | 100% | **0.0123** | −0.0060 | 0.0378 |
+| Lorentz–Lorenz, estimated density | 99% | 0.1979 | +0.1679 | 2.5500 |
+| learned forest (never saw these) | 100% | 0.0165 | +0.0081 | **0.0342** |
+
+The physics wins on MAE when it has a real density. The forest wins on RMSE —
+fewer catastrophic outliers. And the middle row is why: the equation has a pole
+at R_m = V_m, so a molar volume slightly too small sends n toward infinity, and
+its RMSE is sixty-seven times its own MAE.
+
+**Both ship, and neither has precedence written into it.** The physics expert
+propagates its density's uncertainty, so it states ±0.0154 on a tabulated
+density and ±0.04–0.06 on a Rackett estimate; `prefer()` selects on the
+tightest stated in-domain uncertainty and picks correctly in all three regimes:
+
+| the density is | Lorentz–Lorenz states | learned states | chosen | who was actually closer |
+|---|---|---|---|---|
+| tabulated (toluene) | ±0.0154, err +0.0012 | ±0.0192, err +0.0174 | physics | physics |
+| Rackett-estimated (tert-butylbenzene) | ±0.0546, err −0.0033 | ±0.0073, err +0.0028 | learned | learned, just |
+| unavailable (dodecyl benzoate) | abstains | ±0.0122 | learned | — |
+
+One honest edge: on dodecane the forest states ±0.0045 against the physics
+route's ±0.0154 and wins, while being slightly further out (+0.0053 against
+−0.0040). The forest is a little overconfident on molecules inside its training
+set. The mechanism did what it was told; it is reported rather than tuned away.
+
+### Two defects this found
+
+**The molar refraction error was being counted twice.** The 0.0123 above was
+measured *with* Crippen molar refractions, so it already contains their error.
+Propagating Crippen's own stated 2.5 cm³/mol on top made the physics expert
+quote ±0.049 on an answer within 0.0012 of the measurement, and the ranking
+preferred a route fourteen times further out that said so more confidently.
+Only the density's uncertainty is propagated now.
+
+**A consumer ran after the first supplier of its dependency, not after all of
+them.** Both `measured` and `interfacial` supply a liquid density, and
+`measured` runs early, so the refractive index consumer became ready as soon as
+`measured` had run — and for any molecule `measured` had no density for, it
+reported that none was available while `interfacial` was still queued behind it
+and went on to produce one. `resolution_order` now waits for every expert that
+could supply a dependency. This affected the existing panel too, not only the
+new expert.
+
+### The learned layer's abstraction had never been used twice
+
+`LEARNABLE` was three positional strings, and every boiling-point-shaped
+assumption in the base class turned out to be hard-coded rather than declared:
+a noise floor of one kelvin, a relative-spread denominator floored at one
+kelvin, and the letter K in three messages. On a refractive index of 1.36 the
+noise floor alone forced a stated spread of 1.0, the gate read that as the
+trees disagreeing by 73 per cent, and the expert declined every molecule it was
+asked about. It is now a `Learnable` record declaring unit, noise floor, scale
+floor, provenance and the measured comparison against the non-learned route.
+
+### Relative permittivity: trained, and not shipped
+
+1212 measured liquids, the same forest, the same gates. Ungated it is useless —
+MAE 3.65 on a property whose values run 1.9 to 104, RMSE 8.59. Gated at the
+usual 15% it looks excellent at MAE 0.08, and that number is an artefact:
+
+| | admitted | refused |
+|---|---|---|
+| count (of 243 test compounds) | 34 | 209 |
+| permittivity range | 1.89 – 6.54 | 1.94 – 104.0 |
+| median | 2.16 | 7.15 |
+| fraction below ε = 3 | 68% | — (21% across the whole test set) |
+
+The admitted list is heptane, isooctane, octyl bromide, stearic acid. The model
+has learned to recognise nonpolar molecules and report that they are nonpolar,
+and declines every molecule whose dielectric constant is actually in doubt.
+Unlike the melting point there is no group-contribution alternative, so this
+leaves the property uncovered — which is the honest state rather than a bad
+answer wearing a tight error bar. Recorded in `learned.py` so the experiment is
+not repeated.
