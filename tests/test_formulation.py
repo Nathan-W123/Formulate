@@ -353,3 +353,71 @@ def test_a_measured_density_is_preferred_over_the_correlation_that_needs_joback(
     # gram per cubic centimetre, which is forty per cent.
     assert measured_value("liquid_density", "CO") == pytest.approx(786.6, abs=2.0)
     assert measured_value("critical_temperature", "CO") == pytest.approx(512.5, abs=1.0)
+
+
+def test_a_blend_containing_a_polymer_resolves():
+    """A polymer component used to take the whole formulation down with it.
+
+    The mixture rules are all per unit volume, so a chain contributes exactly
+    what one repeat unit does and the molar mass cancels out of every one of
+    them. Nothing was ever out of reach here; polymer components were simply
+    never routed to the polymer experts, so a blend with a binder in it lost
+    its density and all three Hansen components at once.
+    """
+    from formulate.core.candidate import (
+        Candidate,
+        ComponentRole,
+        FractionBasis,
+        MaterialClass,
+        MixtureComponent,
+        MixtureSpec,
+        MoleculeSpec,
+        MonomerUnit,
+        PolymerSpec,
+    )
+    from formulate.core.conditions import Conditions
+    from formulate.core.quantity import Quantity
+
+    polystyrene = PolymerSpec(
+        monomers=(MonomerUnit(smiles="[*]CC(c1ccccc1)[*]"),),
+        number_average_molar_mass=Quantity(value=5.0e5, unit="g/mol"),
+    )
+    blend = Candidate(
+        material_class=MaterialClass.MIXTURE,
+        conditions=Conditions.standard(),
+        mixture=MixtureSpec(
+            components=(
+                MixtureComponent(
+                    role=ComponentRole.SOLVENT,
+                    fraction=0.95,
+                    molecule=MoleculeSpec(smiles="Cc1ccccc1"),
+                ),
+                MixtureComponent(
+                    role=ComponentRole.BINDER, fraction=0.05, polymer=polystyrene
+                ),
+            ),
+            basis=FractionBasis.MASS,
+        ),
+    )
+    result = _predict(MixtureExpert(), blend, ["liquid_density", "hansen_dispersion"])
+    assert result["liquid_density"].is_usable
+    assert result["hansen_dispersion"].is_usable
+    # Polystyrene at 1074 kg/m^3 pulls toluene's 862 upwards a little.
+    density = result["liquid_density"].quantity.to("kg/m^3").value
+    assert 860.0 < density < 900.0
+
+
+def test_a_polymer_repeat_unit_keeps_its_attachment_points():
+    """Stripping them turns a backbone methylene into a methyl.
+
+    Polystyrene's backbone carbon has two dummies, one carbon and one hydrogen,
+    so it types as a CH2. Remove the dummies and it becomes a CH3, and every
+    group assignment downstream shifts with it.
+    """
+    from formulate.experts.hansen import hoftyzer_van_krevelen
+
+    with_dummies = hoftyzer_van_krevelen("[*]CC(c1ccccc1)[*]", 99.2)
+    assert with_dummies is not None
+    stripped = hoftyzer_van_krevelen("CCc1ccccc1", 99.2)
+    assert stripped is not None
+    assert with_dummies[0] != pytest.approx(stripped[0], rel=1e-6)

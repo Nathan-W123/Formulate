@@ -239,7 +239,11 @@ _HVK_GROUPS: tuple[tuple[str, float, float, float], ...] = (
     ("[CX3H2]=[CX3]", 400.0, 0.0, 0.0),
     ("[CX3H1](=[CX3])", 200.0, 0.0, 0.0),
     ("[CX3H0;$([CX3]=[CX3])]", 70.0, 0.0, 0.0),
-    ("[cX3]", 238.0, 18.0, 0.0),
+    # Per aromatic carbon, so a phenyl adds up to Van Krevelen's 1430 and 110.
+    # The polar figure is 110/sqrt(6) rather than 110/6, because the polar
+    # term adds in quadrature: splitting it evenly gave a phenyl 44 instead
+    # of 110, and polystyrene a polar parameter of 0.4 against a real 4.5.
+    ("[cX3]", 238.0, 44.9, 0.0),
     # The ester oxygen must not itself be bonded to oxygen, or a peroxyester
     # matches and a peroxide is typed as two esters. Every atom is covered
     # in that case, so the unmatched-atom refusal cannot see it: benzoyl
@@ -265,7 +269,7 @@ _POLYHALOGENATED = "[#6](-[F,Cl,Br,I])-[F,Cl,Br,I]"
 #: the compilation over the forty reference structures this method accepts.
 HVK_SIGMA: dict[str, float] = {
     "hansen_dispersion": 1.12,
-    "hansen_polar": 1.09,
+    "hansen_polar": 1.01,
     "hansen_hydrogen_bonding": 1.48,
 }
 
@@ -301,7 +305,13 @@ def hoftyzer_van_krevelen(smiles: str, molar_volume_cm3: float) -> tuple[float, 
             dispersion += fd
             polar_squared += fp * fp
             bonding += eh
-    if {atom.GetIdx() for atom in mol.GetAtoms()} - used:
+    # Attachment points are bonds to the next repeat unit, not atoms, and a
+    # polymer's repeat unit is written with them. Leaving them in is what makes
+    # the H counts right - the backbone carbon of polystyrene is a CH2 because
+    # two of its four connections are dummies - so they are skipped here rather
+    # than stripped, which would turn that CH2 into a CH3.
+    real = {atom.GetIdx() for atom in mol.GetAtoms() if atom.GetAtomicNum() > 0}
+    if real - used:
         return None
     return (
         dispersion / molar_volume_cm3,
@@ -351,7 +361,7 @@ class GroupContributionHansenExpert(Expert):
             score=1.0,
             basis=(
                 "measured against the compilation over the forty reference structures "
-                "this method accepts: mean absolute error 0.89, 0.87 and 1.18 MPa^0.5 "
+                "this method accepts: mean absolute error 0.89, 0.80 and 1.18 MPa^0.5 "
                 "on the dispersion, polar and hydrogen bonding components"
             ),
         )

@@ -27,6 +27,7 @@ from formulate.core.candidate import (
     MaterialClass,
     MixtureComponent,
     MoleculeSpec,
+    PolymerSpec,
     molecule_candidate,
 )
 from formulate.core.prediction import Prediction
@@ -123,6 +124,57 @@ class MixtureExpert(Expert):
 
     # -- component evaluation ---------------------------------------------
 
+    @staticmethod
+    def _polymer_properties(payload, smiles, request, triple):
+        """Repeat-unit molar mass, bulk density and Hansen triple for a polymer.
+
+        The repeat unit is taken as written, attachment points included: they
+        are bonds to the next unit rather than atoms, and leaving them in is
+        what keeps the hydrogen counts right. Polystyrene's backbone carbon is
+        a methylene because two of its four connections are dummies; strip them
+        and it becomes a methyl, and every group assignment shifts.
+        """
+        from rdkit import Chem
+        from rdkit.Chem import Descriptors
+
+        from .hansen import hoftyzer_van_krevelen
+        from .polymer import PolymerDensityExpert
+
+        unit = Chem.MolFromSmiles(smiles)
+        if unit is None:
+            return None, None, triple
+        molar_mass = float(Descriptors.MolWt(unit))
+
+        density = None
+        try:
+            candidate = Candidate(
+                material_class=MaterialClass.POLYMER,
+                polymer=payload,
+                conditions=request.conditions,
+            )
+            from formulate.experts.base import PredictionRequest as Req
+
+            # The polymer expert calls it an amorphous density, and it is the
+            # right number for this: a dissolved coil occupies the volume its
+            # amorphous bulk would, not the volume of a melt or a crystal.
+            for prediction in PolymerDensityExpert().predict(
+                Req(
+                    candidate=candidate,
+                    properties=frozenset({"amorphous_density"}),
+                    conditions=request.conditions,
+                )
+            ):
+                if prediction.is_usable and prediction.quantity is not None:
+                    density = prediction.quantity.to("kg/m^3").value
+        except Exception:
+            density = None
+
+        if triple is None and density:
+            estimate = hoftyzer_van_krevelen(smiles, molar_mass / (density / 1000.0))
+            if estimate is not None:
+                triple = tuple(value * 1000.0 for value in estimate)  # MPa^0.5 -> Pa^0.5
+        return molar_mass, density, triple
+
     def component_properties(
         self, component: MixtureComponent, request: PredictionRequest
     ) -> ComponentProperties:
@@ -135,7 +187,17 @@ class MixtureExpert(Expert):
 
         molar_mass = density = None
         triple = hansen_triple(smiles) if smiles else None
-        if isinstance(payload, MoleculeSpec) and smiles:
+
+        if isinstance(payload, PolymerSpec) and smiles:
+            # A polymer is one repeat unit for every purpose here. Volume
+            # fractions need a density and the mixing rules need a triple, and
+            # both are per unit volume, so the chain length cancels out of all
+            # of them - which is why a formulation containing a polymer was
+            # never actually out of reach, it was just never routed anywhere.
+            molar_mass, density, triple = self._polymer_properties(
+                payload, smiles, request, triple
+            )
+        elif isinstance(payload, MoleculeSpec) and smiles:
             sub = molecule_candidate(smiles, conditions=request.conditions)
             registry = self.registry()
             wanted = frozenset(
