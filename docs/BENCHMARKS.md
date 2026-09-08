@@ -864,3 +864,70 @@ So the shootable configuration is a **reactive resin of 50–500 mPa·s through 
   transition is not sharply resolved there.
 - **Nothing has been said about what 145 g of curing resin does on landing**,
   or to a bystander, or to the person carrying 5.8 N of thrust on one wrist.
+
+---
+
+## The three things the shot left open
+
+`python bench/web_shooter_cure.py`
+
+### 1. Cure chemistry: the exotherm sets the recipe
+
+Chain polymerisation of a vinyl monomer releases 50–90 kJ per mole of double
+bonds, and a mole of small monomer is about 100 g. Divided by a specific heat
+near 1700 J/(kg·K), that is a few hundred kelvin if nothing escapes — and a
+4.2 mm strand has a 7.6 s thermal time, so a 2 s cure keeps **79%** of it.
+
+Methyl methacrylate, cured in 2 s in a 4.2 mm strand:
+
+| reactive fraction | adiabatic rise | peak | verdict |
+|---|---|---|---|
+| 100% (neat) | 340 K | 294 °C | **cooks itself** — MMA boils at 100 |
+| 30% | 102 K | 106 °C | burns |
+| 20% | 68 K | 79 °C | burns |
+| **15%** | 51 K | **65 °C** | **usable** |
+| 10% | 34 K | 52 °C | usable |
+
+**So at most ~15% of the resin may actually react.** The rest must be
+pre-formed polymer or filler carrying heat capacity only — which is exactly
+what acrylic bone cement does, for exactly this reason, and it raises the
+viscosity into the range the coherent jet needs anyway. One choice satisfies
+two constraints.
+
+The cure-time window is **0.5–5 s**: faster than 0.5 s and a solid rod arrives
+and bounces with no anchor; slower than ~5 s and it runs off before it holds.
+
+### 2. Laminar margin
+
+| µ (mPa·s) | Re | margin to 2000 | break-up length |
+|---|---|---|---|
+| 50 | 1764 | 1.1× | 27 m |
+| **90** | 980 | **2.0×** | 32 m |
+| 150 | 588 | 3.4× | 39 m |
+| 300 | 294 | 6.8× | 57 m |
+
+The earlier 50 mPa·s row sat at Re 1764, too close to the transition to rely
+on. **90 mPa·s gives a 2× margin** and 150 gives 3.4×, both comfortably inside
+what a filled resin is anyway.
+
+### 3. What arrives
+
+| | | |
+|---|---|---|
+| shot volume | 139 mL | 145 g |
+| impact energy | **29 J** | paintball ~10 J, .22 air rifle ~20 J |
+| thrust while firing | 5.8 N | 0.6 kgf — trivial |
+| hanging load after | **800 N** | 82 kgf through one wrist |
+
+29 J is squarely in eye-injury territory and is not lethal. The thrust is
+nothing. **The hazard is the 800 N afterwards**, which is inherent to the idea
+rather than to the chemistry, and a curing mass at 65 °C against skin is
+uncomfortable rather than injurious — 15% reactive was chosen to put it there.
+
+### Still not established
+
+Cure *kinetics*. The cure time is an input to this calculation and nothing in
+this repository derives it from an initiator, a temperature or a recipe. The
+retained-heat fraction is a lumped one-parameter model, correct at both limits
+and monotone between, not a solution of the coupled problem — where a hotter
+core reacts faster and releases its heat sooner.
