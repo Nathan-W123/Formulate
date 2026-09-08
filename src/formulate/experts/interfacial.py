@@ -56,12 +56,39 @@ _METHOD_RELATIVE_ERROR = {
 #: The multipliers are chosen so that the fraction of reference compounds
 #: falling inside their own stated one-sigma bound lands near the ~68% a
 #: correct estimate implies, erring slightly wide rather than slightly narrow.
+#: Polar surface area above which a molecule with no hydrogen-bond donor is
+#: still too polar for a corresponding-states correlation.
+#:
+#: Counting donors alone misses a whole class. Propylene carbonate has none and
+#: came back at 77 mN/m against a measured 41.9 - eighty-four per cent out, and
+#: outside its own two-sigma bound, because with no donors it was given the
+#: narrowest error bar in the table. Measured over the reference set, splitting
+#: the donor-free compounds at twenty square angstroms separates a six per cent
+#: mean error from a sixteen per cent one. Fifteen rather than twenty, so that
+#: a sulfoxide falls on the polar side: dimethyl sulfoxide carries 17.1 square
+#: angstroms and is out by half, which is the worst donor-free case in the set.
+_POLAR_APROTIC_TPSA = 15.0
+
 _ASSOCIATION_FACTOR: dict[str, dict[int, float]] = {
-    "surface_tension": {0: 1.0, 1: 2.5, 2: 4.5},
+    # Donor counts, then the polar-aprotic case keyed separately below. The
+    # The single-donor figure is seven rather than the 2.5 it was: the alcohols
+    # are where Brock-Bird fails hardest, at a measured seventy-one per cent
+    # mean error over seven compounds, where a 2.5-fold widening of a ten per
+    # cent base claimed a quarter of that. The two-donor case measures better,
+    # at twenty-six per cent, but over two compounds only - too few to claim
+    # that more hydrogen bonding helps, so it inherits the single-donor figure
+    # rather than being fitted to them.
+    "surface_tension": {0: 1.0, 1: 7.0, 2: 7.0},
     "hildebrand_solubility_parameter": {0: 1.0, 1: 3.0, 2: 4.0},
     "liquid_density": {0: 1.0, 1: 2.5, 2: 3.5},
     "molar_volume_liquid": {0: 1.0, 1: 2.5, 2: 3.5},
 }
+
+
+def _polar_surface_area(smiles: str) -> float:
+    from formulate import chem
+
+    return float(chem.descriptors(smiles).get("topological_polar_surface_area", 0.0))
 
 
 def _hbd_count(smiles: str) -> int:
@@ -70,9 +97,36 @@ def _hbd_count(smiles: str) -> int:
     return int(chem.descriptors(smiles).get("hbd", 0.0))
 
 
-def association_factor(prop: str, hbd: int) -> float:
-    """Error multiplier for ``prop`` given a hydrogen-bond donor count."""
-    return _ASSOCIATION_FACTOR[prop][min(hbd, 2)]
+#: A limit this widening does not remove, recorded rather than smoothed over.
+#:
+#: Doubling the bar covers the seven donor-free polar compounds in the reference
+#: set, whose mean error is sixteen per cent. It does not cover propylene
+#: carbonate, which is not among them: predicted 77 mN/m against a measured
+#: 41.9, still outside two sigma after the widening. Brock-Bird takes only a
+#: critical temperature, a critical pressure and a boiling point, so it cannot
+#: see a dipole at all, and a cyclic carbonate carries a very large one. For
+#: that class the correlation is structurally wrong rather than imprecise, and
+#: the honest fix is a measurement or a simulation, not a wider interval.
+
+#: Extra widening for a donor-free molecule whose polar surface area says it is
+#: nonetheless polar. Only surface tension is measured here; the others keep
+#: their donor-count behaviour rather than inheriting a correction fitted to a
+#: different property.
+_POLAR_APROTIC_FACTOR = {"surface_tension": 2.0}
+
+
+def association_factor(prop: str, hbd: int, tpsa: float = 0.0) -> float:
+    """Error multiplier for ``prop``, from hydrogen bonding and polarity.
+
+    ``tpsa`` is the topological polar surface area. It matters only for the
+    donor-free compounds, where the donor count alone says "non-associating"
+    about molecules like propylene carbonate and dimethyl sulfoxide that a
+    corresponding-states correlation handles badly.
+    """
+    factor = _ASSOCIATION_FACTOR[prop][min(hbd, 2)]
+    if hbd == 0 and tpsa >= _POLAR_APROTIC_TPSA:
+        factor *= _POLAR_APROTIC_FACTOR.get(prop, 1.0)
+    return factor
 
 _DEPENDENCY_UNITS = {
     "critical_temperature": "K",
@@ -289,7 +343,7 @@ class InterfacialCorrelationExpert(Expert):
 
         smiles = request.candidate.molecule.smiles  # type: ignore[union-attr]
         hbd = _hbd_count(smiles)
-        factor = association_factor(prop, hbd)
+        factor = association_factor(prop, hbd, _polar_surface_area(smiles))
         relative = _METHOD_RELATIVE_ERROR[prop] * factor
         method_std = abs(value) * relative
         total = math.hypot(method_std, propagated)

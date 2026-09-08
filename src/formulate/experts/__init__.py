@@ -10,6 +10,7 @@ from __future__ import annotations
 from .activity import UNIFACActivityExpert
 from .adhesion import AdhesionExpert
 from .base import Expert, PredictionRequest
+from .critical import AtomicCriticalExpert
 from .dissolution import DissolutionExpert
 from .feasibility import SynthesisFeasibilityExpert
 from .hansen import HansenSolubilityExpert
@@ -48,6 +49,7 @@ PHASE1_EXPERTS = (
 #: forbids answering for the bulk polymer with the monomer's properties.
 PHASE4_EXPERTS = (
     MixtureExpert,
+    AtomicCriticalExpert,
     LearnedBoilingPointExpert,
     DissolutionExpert,
     AdhesionExpert,
@@ -70,7 +72,7 @@ def default_registry() -> ExpertRegistry:
 
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
-    "AdhesionExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
+    "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",

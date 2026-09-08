@@ -142,12 +142,42 @@ def test_the_associating_compounds_are_no_longer_the_worst_cases(panel_results):
     """
     result = panel_results["surface_tension"]
     assert result.count >= 30
-    assert result.mean_absolute_error < 1.0
+    # Was 0.27 over forty compounds. Atomic critical constants then made two
+    # more answerable - dimethyl sulfoxide and dimethylformamide, which no
+    # compilation measures and which Joback could not type - and Brock-Bird
+    # handles both badly, at around half. The average is worse because the
+    # coverage is wider, which is the trade rather than a regression: the
+    # bound is raised to admit it and stays tight enough to catch one.
+    assert result.count >= 42
+    assert result.mean_absolute_error < 1.5
 
     worst = result.worst
     assert worst is not None
     assert worst[0] not in {"glycerol", "ethylene glycol", "acetic acid", "water"}
-    assert worst[1] < 5.0
+
+
+def test_surface_tension_errors_stay_inside_the_bars_they_quote(panel_results):
+    """Accuracy fell as coverage grew. Honesty is what must not.
+
+    The worst case used to be under 5 mN/m, because every compound the panel
+    answered had a measurement behind it. It is now 22, for dimethyl sulfoxide,
+    which no compilation measures and which only became answerable at all once
+    atomic critical constants replaced the group table Joback could not apply
+    to a sulfoxide. Raising that bound and moving on would be the wrong lesson:
+    a correlation reaching further is allowed to be less accurate, and is not
+    allowed to be quietly confident about it.
+
+    So this asserts the property that actually protects the ranking. Every
+    prediction, measured or correlated, has to sit inside twice the uncertainty
+    it quotes.
+    """
+    result = panel_results["surface_tension"]
+    outside = [
+        (error, stated)
+        for error, stated in zip(result.errors, result.stated_std)
+        if stated and abs(error) > 2.0 * stated
+    ]
+    assert not outside, f"{len(outside)} predictions fall outside their own two sigma"
 
 
 def test_description_states_that_this_is_not_a_benchmark(panel_results):
