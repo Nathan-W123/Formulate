@@ -112,11 +112,24 @@ which constraint eliminated what, which single relaxation would admit
 candidates, how far the nearest miss is, and which constraints were never
 satisfied together.
 
-**Physics refuses what it cannot support.** A bulk density needs a periodic
-condensed phase, and on this installation no potential can provide one at the
-required size. Rather than returning a number from eight molecules with a wide
-error bar — the error is systematic, so the error bar would not rescue it —
-the run refuses and estimates what an adequate calculation would cost.
+**Physics refuses what it cannot support, and the refusals are audited.** A
+bulk property needs a periodic condensed phase, which this installation now
+reaches through OPLS-AA and OpenMM: density, cohesive energy, self-diffusion,
+surface tension and shear viscosity all run. The last two arrived late, and the
+reasons they had been refused for turned out to be wrong — both are components
+of a pressure tensor, and what was missing was not system size or physics but
+an accessor, since OpenMM publishes no pressure tensor at all. Recovering it by
+finite difference retired both entries at once, which is why a stated refusal
+is worth writing down precisely: a vague one cannot be found to be false.
+
+What is still refused says what it would take. A normal boiling point needs a
+saturated vapour, and the slab that measures a surface tension is a
+liquid-vapour coexistence — but at 298 K a compound of ordinary volatility puts
+well under one molecule in the vacuum gap, so the refusal is now a counted
+number rather than an assertion. Rather than returning a value from a box too
+small to hold the phenomenon — the error would be systematic, so an error bar
+would not rescue it — the run refuses and estimates what an adequate
+calculation would cost.
 
 ## What is implemented
 
