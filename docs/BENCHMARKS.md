@@ -931,3 +931,53 @@ this repository derives it from an initiator, a temperature or a recipe. The
 retained-heat fraction is a lumped one-parameter model, correct at both limits
 and monotone between, not a solution of the coupled problem — where a hotter
 core reacts faster and releases its heat sooner.
+
+---
+
+## A quantum validation that failed
+
+`python bench/polymerisation_enthalpy_qm.py`
+
+The web-shooter analysis rests on correlations and dimensionless groups, and
+almost none of it is reachable by the physics stage — of the eight properties
+involved, seven are on the not-validatable list with a stated physical reason
+and only `liquid_density` is validatable at all, by dynamics that a default
+budget does not buy.
+
+One number is different. The whole "at most 15% of the resin may react"
+conclusion rests on an enthalpy of polymerisation taken from a table — 57.8
+kJ/mol for methyl methacrylate — and a bond-energy difference is exactly what a
+quantum calculation is for. So it was run, as the propagation step a carbon
+radical adding across the double bond, at B3LYP/6-31G* with the open-shell path
+in the PySCF backend.
+
+**It did not reproduce the tabulated values.**
+
+| system | QM | published | difference |
+|---|---|---|---|
+| ethylene (control) | −118.9 kJ/mol | −93.0 | **−25.9** |
+| ethylene, geometries optimised | −120.3 kJ/mol | −93.0 | **−27.3** |
+| methyl methacrylate | −149.5 kJ/mol | −57.8 | **−91.7** |
+
+Optimising the geometries moved the control by 1.4 kJ/mol and did not close the
+gap, so the unrelaxed geometry was not the problem. What is left is that **the
+calculation is not the quantity**: an electronic energy difference for one
+radical adding to one monomer is missing the zero-point and thermal corrections
+that turn it into a 298 K enthalpy, and a single addition does not feel the
+chain crowding that makes methyl methacrylate's polymerisation enthalpy so much
+smaller than ethylene's in the first place. The 92 kJ/mol gap on MMA is
+substantially that steric effect, which is precisely what the model omits.
+
+So the tabulated 57.8 kJ/mol stands, and this calculation does not support it.
+It is recorded because the attempt is informative in the other direction: every
+error here points the same way, toward **more** heat rather than less, so the
+conclusion that the resin must be heavily diluted survives and strengthens. At
+149 kJ/mol the allowed reactive fraction would fall from 15% to about 6%.
+
+**Nothing else in the web-shooter chain has been validated by QM or MD, and the
+engine would refuse most of it.** It is a chain of correlations, and several
+links are weak by their own account: the melt viscosity expert is one order of
+magnitude over three polymers, the cure time is an input rather than a
+prediction, the diffusion coefficient in the drying calculation is an input, and
+the Hansen route got polymer–polymer miscibility wrong for a well-understood
+reason. It is a feasibility argument, not a validated design.
