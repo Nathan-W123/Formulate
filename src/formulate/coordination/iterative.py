@@ -168,6 +168,8 @@ class IterativeCoordinator(DeterministicCoordinator):
             total_evaluated=run.evaluated,
             feasible=run.ranking.feasible_count,
             hypervolume=run.ranking.hypervolume,
+            hypervolume_collapsed=run.ranking.hypervolume_is_structurally_zero,
+            pinned_axes=run.ranking.pinned_axes,
             frontier_size=len(run.ranking.frontier),
             mean_structural_distance=run.ranking.mean_diversity,
             best_scalar=best,
@@ -204,8 +206,15 @@ class IterativeCoordinator(DeterministicCoordinator):
 
         if len(rounds) > config.plateau_rounds:
             recent = rounds[-(config.plateau_rounds + 1):]
+            # A hypervolume pinned to zero by one objective is not evidence of a
+            # plateau, and reading it as one ended every search at exactly
+            # plateau_rounds with a stop reason asserting convergence that had
+            # not happened. The measure is uninformative here rather than
+            # negative, so the predicate abstains and the run continues to its
+            # round limit.
+            informative = not any(record.hypervolume_collapsed for record in recent)
             gains = [b.hypervolume - a.hypervolume for a, b in zip(recent, recent[1:])]
-            if all(gain <= config.hypervolume_tolerance for gain in gains):
+            if informative and all(gain <= config.hypervolume_tolerance for gain in gains):
                 return (
                     f"hypervolume gained no more than {config.hypervolume_tolerance:g} "
                     f"for {config.plateau_rounds} consecutive rounds"
@@ -232,7 +241,9 @@ class IterativeCoordinator(DeterministicCoordinator):
 
 
 def default_iterative_coordinator(
-    config: RunConfig | None = None, iteration: IterationConfig | None = None
+    config: RunConfig | None = None,
+    iteration: IterationConfig | None = None,
+    exclude: Sequence[str] = (),
 ) -> IterativeCoordinator:
     """An iterative coordinator seeded by the database and driven by evolution.
 
@@ -242,6 +253,11 @@ def default_iterative_coordinator(
     composition of any formulation among them. The third only fires when the
     target names a mixture and some recipe has already been evaluated; on a
     molecule-only search it returns nothing and costs nothing.
+
+    ``exclude`` withholds structures from the retrieval catalogue. It exists for
+    the recovery harness: an experiment that asks whether the search can reach a
+    material has to stop the database from handing it over, and hiding it only
+    from the ranking would not be hiding it at all.
     """
     from formulate.exploration.bayesopt import BayesOptExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
@@ -251,7 +267,7 @@ def default_iterative_coordinator(
 
     return IterativeCoordinator(
         explorers=[
-            ReferenceDatabaseExplorer(),
+            ReferenceDatabaseExplorer(exclude=exclude),
             MixtureSeedExplorer(),
             EvolutionaryExplorer(),
             GenerativeExplorer(),
@@ -391,6 +407,7 @@ def default_validating_coordinator(
     config: RunConfig | None = None,
     iteration: IterationConfig | None = None,
     validation=None,
+    exclude: Sequence[str] = (),
 ) -> "ValidatingCoordinator":
     """Retrieval, evolution and composition search, then a bounded physics stage."""
     from formulate.exploration.bayesopt import BayesOptExplorer
@@ -401,7 +418,7 @@ def default_validating_coordinator(
 
     return ValidatingCoordinator(
         explorers=[
-            ReferenceDatabaseExplorer(),
+            ReferenceDatabaseExplorer(exclude=exclude),
             MixtureSeedExplorer(),
             EvolutionaryExplorer(),
             GenerativeExplorer(),

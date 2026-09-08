@@ -196,3 +196,59 @@ def test_mean_pairwise_distance_is_bounded():
 
 def test_mean_pairwise_distance_of_a_single_candidate_is_undefined():
     assert mean_pairwise_distance([molecule_candidate("CCO")]) is None
+
+
+# --------------------------------------------------------------------------
+# A hypervolume that is zero for the wrong reason
+# --------------------------------------------------------------------------
+
+
+def test_an_axis_pinned_at_zero_is_named_rather_than_only_zeroing_the_volume():
+    """Hypervolume is a product of edge lengths, so one zero edge zeroes it.
+
+    That is arithmetically right and, read as a progress signal, badly wrong.
+    A recovery run whose logp window was narrower than the method answering it
+    scored every candidate zero on that axis; the frontier was excellent on the
+    other four and the measure said nothing had been achieved, in every round,
+    which the iterative coordinator then read as convergence.
+    """
+    from formulate.ranking.ranker import _pinned
+
+    axes = ("boiling", "density", "logp")
+    frontier = [[0.9, 0.8, 0.0], [0.7, 0.95, 0.0]]
+    assert _pinned(frontier, axes) == ("logp",)
+
+
+def test_an_axis_with_one_positive_point_is_not_pinned():
+    from formulate.ranking.ranker import _pinned
+
+    assert _pinned([[0.9, 0.0], [0.7, 0.3]], ("a", "b")) == ()
+
+
+def test_nothing_is_pinned_on_an_empty_frontier():
+    from formulate.ranking.ranker import _pinned
+
+    assert _pinned([], ("a", "b")) == ()
+    assert _pinned([[0.5]], ()) == ()
+
+
+def test_a_collapsed_hypervolume_is_distinguished_from_an_unimproved_one():
+    from formulate.ranking.ranker import RankingResult
+
+    collapsed = RankingResult(hypervolume=0.0, pinned_axes=("logp",))
+    flat = RankingResult(hypervolume=0.0, pinned_axes=())
+    improved = RankingResult(hypervolume=0.4, pinned_axes=("logp",))
+    assert collapsed.hypervolume_is_structurally_zero
+    assert not flat.hypervolume_is_structurally_zero
+    # A positive hypervolume is not collapsed whatever the axis bookkeeping says.
+    assert not improved.hypervolume_is_structurally_zero
+
+
+def test_the_ranking_report_explains_a_zero_it_cannot_otherwise_justify():
+    from formulate.ranking.ranker import RankingResult
+
+    described = RankingResult(
+        axes=("logp",), hypervolume=0.0, pinned_axes=("logp",)
+    ).describe()
+    assert "collapsed measure" in described
+    assert "logp" in described

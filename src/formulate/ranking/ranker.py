@@ -72,9 +72,25 @@ class RankingResult:
     #: Objectives excluded because not every candidate had them.
     dropped_axes: tuple[str, ...] = ()
     hypervolume: float = 0.0
+    #: Axes on which every frontier point scores exactly zero desirability.
+    #:
+    #: Hypervolume is a product of edge lengths measured from the origin, so a
+    #: single such axis makes it exactly zero however good the frontier is
+    #: everywhere else. That is arithmetically right and, read as a progress
+    #: signal, badly wrong: the iterative coordinator stops on "hypervolume
+    #: gained nothing", and a run whose logp desirability was pinned at zero
+    #: reported no progress in every round and stopped as though it had
+    #: converged. Naming the axes is what lets a reader, and the stopping rule,
+    #: tell a flat search from a collapsed measure.
+    pinned_axes: tuple[str, ...] = ()
     feasible_count: int = 0
     infeasible_count: int = 0
     mean_diversity: float | None = None
+
+    @property
+    def hypervolume_is_structurally_zero(self) -> bool:
+        """True when the measure is zero because an axis is pinned, not flat."""
+        return bool(self.pinned_axes) and self.hypervolume == 0.0
 
     @property
     def frontier(self) -> list[RankedCandidate]:
@@ -111,6 +127,13 @@ class RankingResult:
                 + ", ".join(self.dropped_axes)
             )
         lines.append(f"Frontier size: {len(self.frontier)}   hypervolume: {self.hypervolume:.4f}")
+        if self.hypervolume_is_structurally_zero:
+            lines.append(
+                "  that hypervolume is zero because no frontier candidate scores above "
+                "zero desirability on " + ", ".join(self.pinned_axes) + "; it is a "
+                "collapsed measure rather than an unimproved one, and progress on the "
+                "other objectives is invisible to it"
+            )
         if self.mean_diversity is not None:
             lines.append(f"Mean structural distance: {self.mean_diversity:.3f}")
         lines.append("")
@@ -158,6 +181,7 @@ class Ranker:
             axes=axes,
             dropped_axes=dropped,
             hypervolume=hypervolume(frontier_vectors) if frontier_vectors and axes else 0.0,
+            pinned_axes=_pinned(frontier_vectors, axes),
             feasible_count=len(feasible),
             infeasible_count=len(infeasible),
             mean_diversity=mean_pairwise_distance([e.candidate for e in entries]),
@@ -242,3 +266,18 @@ class Ranker:
                 scalar=entry.scalar,
                 feasible=entry.feasible,
             )
+
+
+def _pinned(vectors: Sequence[Sequence[float]], axes: Sequence[str]) -> tuple[str, ...]:
+    """Axes on which every frontier point sits exactly at the nadir.
+
+    ``hypervolume`` measures from the origin, so an axis where every point is
+    zero contributes a zero edge and collapses the product.
+    """
+    if not vectors or not axes:
+        return ()
+    return tuple(
+        name
+        for index, name in enumerate(axes)
+        if all(vector[index] <= 0.0 for vector in vectors)
+    )

@@ -50,6 +50,19 @@ class ReferenceDatabaseExplorer(Explorer):
     id = "database:reference"
     version = "1"
 
+    def __init__(self, exclude: Sequence[str] = ()) -> None:
+        """``exclude`` hides structures from the catalogue.
+
+        A recovery experiment that leaves the answer in the pool measures
+        whether the ranking can find a compound it was handed, which is a
+        different and much easier question than whether the search can reach
+        one it was not. Names are matched on canonical structure, so hiding a
+        compound written one way hides it written any other way.
+        """
+        self._excluded = frozenset(
+            key for key in (_canonical(smiles) for smiles in exclude) if key
+        )
+
     def propose(
         self,
         spec: TargetSpec,
@@ -66,6 +79,8 @@ class ReferenceDatabaseExplorer(Explorer):
         for record in load_reference_compounds():
             if len(out) >= count:
                 break
+            if _canonical(record["smiles"]) in self._excluded:
+                continue
             candidate = Candidate(
                 material_class=MaterialClass.MOLECULE,
                 molecule=MoleculeSpec(smiles=record["smiles"]),
@@ -84,3 +99,12 @@ class ReferenceDatabaseExplorer(Explorer):
             seen.add(candidate.structure_id)
             out.append(candidate)
         return out
+
+
+def _canonical(smiles: str) -> str:
+    """Canonical form where RDKit is present, the string itself where it is not."""
+    from formulate import chem
+
+    if not chem.rdkit_available():
+        return smiles
+    return chem.canonical_smiles(smiles) or smiles

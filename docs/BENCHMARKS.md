@@ -114,3 +114,95 @@ tightest stated in-domain uncertainty.
 - Any element outside {H, C, N, O, F, P, S, Cl, Br, I}, which the model refuses.
 - Charged or open-shell species. MACE-OFF23 is fitted to neutral closed-shell
   organics and nothing here checks that a candidate is one.
+
+---
+
+## End-to-end inverse design: hide a known material and look for it
+
+Four common solvents, each described only by its own measured properties —
+boiling point, melting point, density, surface tension, logp — with the answer
+withheld. Two arms, reported apart:
+
+- **Retrieval** leaves the material in the catalogue. It is close to
+  tautological: the material is described by its own measurements and a lookup
+  expert holds exactly those measurements. It is run anyway, because failing it
+  would mean the ranking is broken rather than that search is hard.
+- **Discovery** removes it. Anything found there was built by an explorer, and
+  the harness records which one, so a catalogue leak cannot be mistaken for a
+  result.
+
+Three rounds, batches of 20, one seed. `python bench/recover_known_materials.py`.
+
+| material | retrieval | discovery | produced by |
+|---|---|---|---|
+| toluene | rank 1 of 160 | not proposed | — |
+| ethanol | rank 1 of 140 | **rank 1 of 159** | `evolutionary:mutate` |
+| acetone | rank 1 of 140 | not proposed | — |
+| chloroform | rank 1 of 140 | not proposed | — |
+
+**Retrieval 4 of 4. Discovery 1 of 4.** Identical at both window widths below,
+so the recall is a property of the search rather than of how the target was
+phrased.
+
+Ethanol is a real recovery: the catalogue withheld it and the mutation operator
+rebuilt it. It is also the easiest of the four — two heavy atoms, reachable from
+methanol or 1-propanol in one edit. The three that failed were never *proposed*,
+not ranked badly; what the search returned instead was chemically sensible in
+every case (ethylbenzene and propyl acetate for toluene, 2-butanone and methanol
+for acetone, carbon tetrachloride and dichloromethane for chloroform). Inverse
+design here means "reaches a near neighbour", not "reaches the answer".
+
+Frontier diversity 0.92–0.94 throughout. No physics ran: none of these five
+properties is on the validatable list, so the ranking is the expert panel's.
+
+### The hypervolume was collapsed, not flat
+
+Every run reported a hypervolume gain of exactly zero, and the iterative
+coordinator stops on "hypervolume gained nothing" — so every search also
+stopped early and reported convergence that had not happened. Both were one
+mechanism.
+
+Desirability is risk-adjusted: a prediction is scored one standard deviation in
+the unfavourable direction. Crippen puts ethanol's logp at −0.0014 against a
+measured −0.31, comfortably inside a ±0.80 window, for a nominal desirability
+of 0.393. Crippen's own error is about 0.8, so the pessimistic value lands
+outside the window and the risk-adjusted desirability is exactly 0.000. Every
+candidate scores zero on that axis; hypervolume is a product of edge lengths
+from the origin, so one zero edge zeroes it whatever the other four objectives
+did.
+
+**A target window narrower than roughly two standard deviations of the method
+answering it produces an objective nothing can score.** That is correct,
+conservative behaviour by the desirability layer, and it is invisible in the
+number it produces.
+
+Three changes followed. `RankingResult.pinned_axes` names the axes where every
+frontier point sits at zero, and the report says a zero hypervolume is a
+collapsed measure rather than an unimproved one. The plateau rule abstains
+instead of reading the collapse as convergence. `SearchMetrics.hypervolume_per_evaluation`
+returns None rather than 0.0, because zero reads as "bought no improvement",
+which is a different claim from "bought none that this measure can see".
+
+Widening the windows checks the diagnosis rather than asserting it:
+
+| window (fraction of each property's observed spread) | hypervolume gain | retrieval | discovery |
+|---|---|---|---|
+| 10% | 0 in every run, `logp` pinned | 4/4 | 1/4 |
+| 35% | +0.015 to +0.13 | 4/4 | 1/4 |
+
+The measure comes back to life and the recall does not move, which is what the
+diagnosis predicts. Had the recall moved too, the windows would have been doing
+more work than intended and the tighter number would be the honest one.
+
+### What was not measured
+
+- **Uncertainty calibration during search.** `evaluation/calibration.py` measures
+  it against the reference set; nothing here measures whether the stated
+  uncertainties stay honest on structures the generators invent, which is
+  where they are least likely to be.
+- **Polymers and mixtures end to end.** `spec_for` accepts either material
+  class and the harness runs, but the reference set the answers are hidden from
+  contains only molecules, so there is nothing to hide. A polymer or mixture
+  recovery experiment needs a reference set of polymers or mixtures first.
+- **More than one seed.** Discovery is a stochastic search and 1 of 4 on one
+  seed is an observation, not a rate.

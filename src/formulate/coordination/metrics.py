@@ -39,6 +39,13 @@ class RoundRecord:
     #: New candidates contributed per generation strategy.
     contributions: dict[str, int] = field(default_factory=dict)
     rejection_reasons: dict[str, int] = field(default_factory=dict)
+    #: True when that hypervolume is zero because an objective is pinned at
+    #: zero desirability across the whole frontier, rather than because the
+    #: frontier stopped improving. The two are indistinguishable in the number,
+    #: and the stopping rule reads the number.
+    hypervolume_collapsed: bool = False
+    #: The pinned objectives, for the report.
+    pinned_axes: tuple[str, ...] = ()
 
     def describe(self) -> str:
         diversity = (
@@ -49,7 +56,8 @@ class RoundRecord:
         return (
             f"round {self.index:>2}  proposed {self.proposed:>4}  "
             f"filtered {self.rejected_by_filters:>4}  evaluated {self.total_evaluated:>4}  "
-            f"feasible {self.feasible:>4}  hypervolume {self.hypervolume:.4f}  "
+            f"feasible {self.feasible:>4}  "
+            f"hypervolume {self.hypervolume:.4f}{'*' if self.hypervolume_collapsed else ''}  "
             f"frontier {self.frontier_size:>3}  diversity {diversity}  best {best}"
         )
 
@@ -103,9 +111,26 @@ class SearchMetrics:
 
     @property
     def hypervolume_per_evaluation(self) -> float | None:
-        """Frontier improvement bought per expert evaluation spent."""
+        """Frontier improvement bought per expert evaluation spent.
+
+        None rather than zero when the measure has collapsed: a search whose
+        hypervolume is pinned at zero by one objective bought no *measurable*
+        improvement, which is not the same claim as buying none, and reporting
+        0.0 makes it look like the second.
+        """
+        if self.hypervolume_collapsed:
+            return None
         spent = self.total_evaluated
         return self.hypervolume_gain / spent if spent else None
+
+    @property
+    def hypervolume_collapsed(self) -> bool:
+        """Every round's hypervolume was zeroed by a pinned objective."""
+        return bool(self.rounds) and all(r.hypervolume_collapsed for r in self.rounds)
+
+    @property
+    def pinned_axes(self) -> tuple[str, ...]:
+        return self.rounds[-1].pinned_axes if self.rounds else ()
 
     def evaluations_to_reach(self, fraction: float) -> int | None:
         """Evaluations needed to first reach ``fraction`` of the final hypervolume.
@@ -169,6 +194,16 @@ class SearchMetrics:
             f"Hypervolume: {self.rounds[0].hypervolume:.4f} -> "
             f"{self.rounds[-1].hypervolume:.4f} (gain {self.hypervolume_gain:+.4f})"
         )
+        if self.hypervolume_collapsed:
+            lines.append(
+                "  That zero is a collapsed measure, not an unimproved one: no "
+                "candidate on the frontier scores above zero desirability on "
+                + ", ".join(self.pinned_axes)
+                + ", and hypervolume is a product of edge lengths, so one such axis "
+                "zeroes it whatever the others do. Read the frontier size and the "
+                "best baseline score instead, and widen or drop that requirement if "
+                "progress on it is what you wanted to see."
+            )
         per_evaluation = self.hypervolume_per_evaluation
         if per_evaluation is not None:
             lines.append(

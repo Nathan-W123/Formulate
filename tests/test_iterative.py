@@ -236,3 +236,94 @@ def test_seed_candidates_override_exploration():
     )
     run = coordinator.run_iterative(_SPEC, seed_candidates=seeds)
     assert run.metrics.rounds[0].proposed == 3
+
+
+# --------------------------------------------------------------------------
+# Not mistaking a collapsed measure for convergence
+# --------------------------------------------------------------------------
+
+
+def _round(index, hypervolume, collapsed=False, total=10):
+    from formulate.coordination.metrics import RoundRecord
+
+    return RoundRecord(
+        index=index,
+        proposed=5,
+        rejected_by_filters=0,
+        newly_evaluated=5,
+        total_evaluated=total,
+        feasible=5,
+        hypervolume=hypervolume,
+        frontier_size=3,
+        mean_structural_distance=0.5,
+        best_scalar=0.5,
+        hypervolume_collapsed=collapsed,
+        pinned_axes=("logp",) if collapsed else (),
+    )
+
+
+def test_a_genuine_plateau_still_stops_the_search():
+    from formulate.coordination.iterative import IterationConfig, IterativeCoordinator
+    from formulate.coordination.metrics import SearchMetrics
+
+    metrics = SearchMetrics(rounds=[_round(i, 0.4) for i in range(4)])
+    reason = IterativeCoordinator(explorers=[])._stop_reason(
+        metrics, IterationConfig(plateau_rounds=2)
+    )
+    assert "hypervolume gained no more than" in reason
+
+
+def test_a_hypervolume_zeroed_by_a_pinned_axis_is_not_a_plateau():
+    """The bug: every run stopped at exactly plateau_rounds claiming convergence.
+
+    A pinned objective holds the hypervolume at zero, so the gain between any
+    two rounds is zero, so the plateau predicate fired regardless of how much
+    the search was actually improving on the other objectives.
+    """
+    from formulate.coordination.iterative import IterationConfig, IterativeCoordinator
+    from formulate.coordination.metrics import SearchMetrics
+
+    metrics = SearchMetrics(rounds=[_round(i, 0.0, collapsed=True) for i in range(4)])
+    reason = IterativeCoordinator(explorers=[])._stop_reason(
+        metrics, IterationConfig(plateau_rounds=2, max_rounds=10)
+    )
+    assert reason == ""
+
+
+def test_a_budget_still_stops_a_search_whose_measure_has_collapsed():
+    """Abstaining on the plateau test must not disable the other limits."""
+    from formulate.coordination.iterative import IterationConfig, IterativeCoordinator
+    from formulate.coordination.metrics import SearchMetrics
+
+    metrics = SearchMetrics(rounds=[_round(i, 0.0, collapsed=True) for i in range(4)])
+    reason = IterativeCoordinator(explorers=[])._stop_reason(
+        metrics, IterationConfig(plateau_rounds=2, max_evaluations=5)
+    )
+    assert "evaluation budget" in reason
+
+
+def test_efficiency_is_unreported_rather_than_zero_when_the_measure_collapsed():
+    """Zero would read as "bought no improvement", which is a different claim."""
+    from formulate.coordination.metrics import SearchMetrics
+
+    metrics = SearchMetrics(rounds=[_round(i, 0.0, collapsed=True) for i in range(3)])
+    assert metrics.hypervolume_collapsed
+    assert metrics.hypervolume_per_evaluation is None
+    assert metrics.pinned_axes == ("logp",)
+
+
+def test_efficiency_is_still_reported_when_the_measure_is_sound():
+    from formulate.coordination.metrics import SearchMetrics
+
+    metrics = SearchMetrics(rounds=[_round(0, 0.1), _round(2, 0.5, total=20)])
+    assert not metrics.hypervolume_collapsed
+    assert metrics.hypervolume_per_evaluation == pytest.approx(0.4 / 20)
+
+
+def test_the_search_report_says_why_a_zero_hypervolume_is_zero():
+    from formulate.coordination.metrics import SearchMetrics
+
+    metrics = SearchMetrics(rounds=[_round(i, 0.0, collapsed=True) for i in range(3)])
+    described = metrics.describe()
+    assert "collapsed measure" in described
+    assert "logp" in described
