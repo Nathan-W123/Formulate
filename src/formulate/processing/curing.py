@@ -27,20 +27,28 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 
-#: Standard enthalpies of polymerisation, kJ per mole of monomer, and molar
-#: masses in g/mol. Negative in the thermodynamic convention; stored positive
-#: because what matters here is how much heat comes out.
-POLYMERISATION: dict[str, tuple[float, float]] = {
-    "methyl methacrylate": (57.8, 100.12),
-    "styrene": (69.9, 104.15),
-    "methyl acrylate": (78.7, 86.09),
-    "vinyl acetate": (88.0, 86.09),
-    # Crosslinkers, at their family's enthalpy per double bond times their
-    # functionality. A diacrylate releases twice what an acrylate does per
-    # molecule and weighs less than twice as much, so per kilogram it is the
-    # hotter resin - which is the price of the gel point that makes it fast.
-    "1,6-hexanediol diacrylate": (2 * 78.7, 226.27),
-    "trimethylolpropane triacrylate": (3 * 78.7, 296.32),
+#: Standard enthalpies of polymerisation, kJ **per mole of double bond**, with
+#: molar masses in g/mol and double bonds per monomer. Negative in the
+#: thermodynamic convention; stored positive because what matters here is how
+#: much heat comes out.
+#:
+#: Per double bond rather than per monomer, because that is the quantity that
+#: is nearly constant - opening a vinyl double bond releases fifty to ninety
+#: kilojoules whatever it is attached to - and because storing it per monomer
+#: put a diacrylate's 157 kJ next to an acrylate's 79 with nothing to say they
+#: were different units of the same thing. A test asserts the range, and it is
+#: what caught that.
+POLYMERISATION: dict[str, tuple[float, float, int]] = {
+    "methyl methacrylate": (57.8, 100.12, 1),
+    "styrene": (69.9, 104.15, 1),
+    "methyl acrylate": (78.7, 86.09, 1),
+    "vinyl acetate": (88.0, 86.09, 1),
+    # Crosslinkers, at their family's enthalpy per double bond. A diacrylate
+    # opens twice as many bonds per molecule and weighs less than twice as
+    # much, so per kilogram it is the hotter resin - which is the price of the
+    # gel point that makes it fast.
+    "1,6-hexanediol diacrylate": (78.7, 226.27, 2),
+    "trimethylolpropane triacrylate": (78.7, 296.32, 3),
 }
 
 #: Specific heat of a typical acrylic or vinyl liquid, J/(kg K).
@@ -121,9 +129,9 @@ def adiabatic_temperature_rise(
             f"no polymerisation enthalpy for {monomer}; the table has "
             f"{sorted(POLYMERISATION)}"
         )
-    enthalpy_kj, molar_mass = POLYMERISATION[monomer]
-    #: J per kilogram of monomer.
-    per_kilogram = enthalpy_kj * 1000.0 / (molar_mass * 1e-3)
+    enthalpy_kj, molar_mass, double_bonds = POLYMERISATION[monomer]
+    #: J per kilogram of monomer: every double bond in it opens.
+    per_kilogram = enthalpy_kj * double_bonds * 1000.0 / (molar_mass * 1e-3)
     return reactive_fraction * per_kilogram / specific_heat
 
 

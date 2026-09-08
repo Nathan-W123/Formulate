@@ -41,9 +41,15 @@ def test_the_rise_is_linear_in_what_actually_reacts():
 
 def test_every_tabulated_monomer_has_a_physical_enthalpy():
     """Vinyl chain polymerisation runs 50 to 90 kJ per mole of double bond."""
-    for monomer, (enthalpy, molar_mass) in POLYMERISATION.items():
+    for monomer, (enthalpy, molar_mass, double_bonds) in POLYMERISATION.items():
         assert 40.0 < enthalpy < 100.0, monomer
-        assert 50.0 < molar_mass < 200.0, monomer
+        assert double_bonds >= 1, monomer
+        assert molar_mass > 0.0, monomer
+        # Wide enough for a crosslinker. The bound was written when the table
+        # held only monofunctional vinyls; a triacrylate legitimately weighs
+        # three hundred, and the invariant that actually constrains the
+        # chemistry is the enthalpy per double bond checked above.
+        assert 50.0 < molar_mass < 400.0, monomer
 
 
 def test_an_untabulated_monomer_is_refused():
