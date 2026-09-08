@@ -120,12 +120,17 @@ the run refuses and estimates what an adequate calculation would cost.
 
 ## What is implemented
 
-Phases 1, 2, 4 and 5 complete; most of Phase 3. See
-[docs/ROADMAP.md](docs/ROADMAP.md) for what is deliberately not built and why.
+All five phases are implemented. See [docs/ROADMAP.md](docs/ROADMAP.md) for
+what is deliberately not built and why, and [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
+for every number this repository has measured about itself, including the ones
+that came out badly.
 
 Phase 5's deliverable is a measurement, not a coordinator: the adaptive policy
-is benchmarked against the fixed pipeline at equal wall-clock, and currently
-**does not** earn its complexity, which the benchmark reports plainly.
+is benchmarked against the fixed pipeline and currently **does not** earn its
+complexity. On the most recent run it won five of five paired seeds at p = 0.06
+— and made 2.7 times as many expert evaluations to do it, which is a bigger
+budget rather than a better policy. The benchmark now weighs what each arm
+spent and says so.
 
 Search iterates: retrieval seeds a population, evolution mutates and
 recombines it, Bayesian optimisation tunes the continuous composition of the
@@ -153,6 +158,11 @@ where they exist:
 | `polymer_tg` | thermal | polymer | glass transition from an additive molar function over repeat-unit groups |
 | `polymer_density` | mechanical | polymer | amorphous density from van der Waals volume and a fitted packing factor |
 | `polymer_mechanical` | mechanical | polymer | Young's and shear modulus, entanglement molar mass, flaw-free strength bound |
+| `critical_atomic` | thermal | molecule | critical constants from atom counts, where group contribution has no groups |
+| `learned_boiling_point` | thermal | molecule | fitted boiling point, for structures no group table covers |
+| `lorentz_lorenz` | electrical | molecule | refractive index from a density and a molar refraction |
+| `learned_refractive_index` | electrical | molecule | fitted refractive index, for when no density is available |
+| `dissolution` | interfacial | molecule | solubility of a named solute, from Hansen distance |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation
@@ -161,11 +171,25 @@ against which the glass transition comes out at 22 K RMSE and the density at
 3.7%. In-sample agreement is not reported as evidence, because a fitted model
 reproduces what it was fitted to by construction.
 
+The two refractive index experts are a worked example of section 4's design:
+neither has precedence over the other anywhere in the code. Measured on the 385
+reference compounds that carry a tabulated density, with the learned model
+refitted without them, Lorentz–Lorenz is at 0.0123 mean absolute error and the
+forest at 0.0165 — but the same equation fed an *estimated* density goes to
+0.198, because it has a pole. So the physics expert propagates its density's
+uncertainty, states ±0.015 on a tabulated density and ±0.05 on an estimate, and
+`prefer()` picks on the tightest stated spread.
+
 `formulate calibrate` measures both accuracy and whether the stated uncertainty
 is honest — a model with a 3 K error claiming 1 K is more dangerous to a
-ranking than one with a 15 K error claiming 15 K. Against the bundled reference
-compounds all four calibrated properties currently report one-sigma coverage
-between 59% and 84%, against the ~68% a correct estimate implies.
+ranking than one with a 15 K error claiming 15 K. It also refuses to flatter
+itself: for the five properties where a compiled measurement can answer, the
+default run was comparing that lookup against the table it was compiled from,
+reporting a critical temperature accurate to exactly zero. Those rows are now
+labelled *not an accuracy measurement*, and `--expert joback` measures the
+estimator instead — 14.8 °C on the boiling point, 27.8 K on the critical
+temperature, with one-sigma coverage between 59% and 80% against the ~68% a
+correct estimate implies.
 
 ## What this does not establish
 
@@ -177,16 +201,29 @@ report next to the numbers they qualify:
   compound can be synthesised.
 - Bulk, formulation and processing behaviour is not established by
   single-molecule correlations.
-- No quantum or molecular-dynamics validation runs in this phase, so no result
-  yet carries physics evidence.
+- Physics validation is opt-in and bounded. A default run's budget does not
+  buy a condensed-phase simulation, and the report says so in those words
+  rather than leaving the absence to be inferred.
+- Inverse design here reaches a near neighbour rather than the answer. Hiding
+  four known solvents and describing them only by their measured properties,
+  the search recovered one of the four; what it returned instead was
+  chemically sensible in every case.
 
-Electrical experts, and the mechanical properties beyond density, are
-deliberately absent rather than stubbed. `formulate experts` reports them as
-uncovered for the material classes they would apply to.
+The mechanical properties beyond density are deliberately absent rather than
+stubbed, and so is a dielectric constant: a model for it was trained on 1212
+measured liquids and rejected, because its confidence gate admitted only
+nonpolar molecules and so answered the question nobody needed answering.
+`formulate experts` reports uncovered properties for the material classes they
+would apply to.
 
 ## Development
 
 ```bash
-python -m pytest          # 442 tests
+python -m pytest -m "not slow"    # the fast suite
+python -m pytest                  # everything, including real MD and QM
 python -m pytest --cov=formulate
 ```
+
+`bench/` holds the scripts behind every number in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md); each one is runnable on its own and
+prints what it measured.

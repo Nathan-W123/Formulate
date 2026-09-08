@@ -125,7 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "benchmark",
         help=(
             "compare the adaptive coordinator against the fixed pipeline at equal "
-            "wall-clock budget, and say which to use"
+            "wall-clock budget, weigh the evaluations each spent, and say which to use"
         ),
     )
     bench.add_argument("spec", help="path to a target specification")
@@ -139,6 +139,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "calibrate", help="check expert accuracy and uncertainty against reference compounds"
     )
     calibrate.add_argument("--json", action="store_true", help="emit machine-readable results")
+    calibrate.add_argument(
+        "--expert",
+        help=(
+            "restrict the comparison to one expert, by id. Without it a compiled "
+            "measurement answers wherever it has a value, and the result is the "
+            "database agreeing with itself rather than an estimator being tested"
+        ),
+    )
     return parser
 
 
@@ -262,6 +270,43 @@ def _cmd_physics(_: argparse.Namespace) -> int:
             f"molecules, {requirement.min_production_ps:.0f} ps"
         )
         print(f"      {requirement.rationale}")
+
+    # The section 8 rungs. They are not dynamics backends and do not belong in
+    # the table above, but this command is where someone looks to find out what
+    # physics is available, so leaving them out made them undiscoverable.
+    from formulate.physics.potentials import available_potentials
+    from formulate.physics.qmmm import QMMMCalculator
+
+    print()
+    print("Fast interatomic potentials (single point only):")
+    potentials = available_potentials()
+    if not potentials:
+        from formulate.physics.potentials import MacePotential
+
+        print(f"  none installed - {MacePotential().unavailable_reason()}")
+    for potential in potentials:
+        info = potential.info
+        print(f"  {info.identifier}  elements {sorted(info.supported_elements)}")
+        print(f"      trained at {info.training_level or 'an unstated level'}")
+        print(
+            "      uncertainty estimator: "
+            + ("yes" if info.provides_uncertainty else "none, so escalation uses the "
+               "element domain and cross-method disagreement instead")
+        )
+
+    print()
+    print("QM/MM embedding:")
+    capabilities = QMMMCalculator().capabilities()
+    if not capabilities["available"]:
+        print(f"  unavailable - {capabilities['unavailable_reason']}")
+    else:
+        print(f"  modes: {', '.join(capabilities['embedding_modes'])}")
+        for mode, reason in capabilities["unsupported_embedding_modes"].items():
+            print(f"  {mode}: unsupported - {reason}")
+        print(f"  link atoms: {capabilities['link_atoms']}")
+        print(f"  boundary charges: {capabilities['boundary_charge_scheme']}")
+        print(f"  MM charges from: {capabilities['mm_charge_source']}")
+        print(f"  gradients: {'yes' if capabilities['gradients'] else 'not implemented'}")
     return 0
 
 
@@ -301,7 +346,9 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
     from formulate.experts import default_registry
     from formulate.exploration import load_reference_compounds
 
-    results = calibrate(default_registry(), load_reference_compounds())
+    results = calibrate(
+        default_registry(), load_reference_compounds(), expert_id=args.expert
+    )
     if args.json:
         print(
             json.dumps(
@@ -315,6 +362,8 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
                         "within_one_sigma": entry.within_one_sigma,
                         "within_two_sigma": entry.within_two_sigma,
                         "verdict": entry.verdict(),
+                        "answered_by": entry.answered_by,
+                        "self_comparison": entry.self_comparison,
                     }
                     for name, entry in results.items()
                 },

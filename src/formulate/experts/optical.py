@@ -39,6 +39,7 @@ import math
 
 from formulate.core.candidate import MaterialClass
 from formulate.core.prediction import Prediction, PredictionStatus
+from formulate.core.properties import PropertyFamily
 from formulate.core.provenance import ProvenanceKind, ProvenanceRecord
 from formulate.core.quantity import ApplicabilityDomain, Quantity, Uncertainty, UncertaintyKind
 
@@ -107,6 +108,7 @@ class LorentzLorenzExpert(Expert):
 
     id = "lorentz_lorenz"
     version = "1"
+    family = PropertyFamily.ELECTRICAL
     supported_properties = frozenset({"refractive_index"})
     supported_classes = frozenset({MaterialClass.MOLECULE})
     dependencies = frozenset(_DEPENDENCY_UNITS)

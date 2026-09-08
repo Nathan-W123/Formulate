@@ -80,3 +80,11 @@ markers = ["slow: runs real molecular dynamics and takes tens of seconds"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint.per-file-ignores]
+# i, j, k, l are the four atoms of a torsion and the four indices of a
+# two-electron integral. Renaming l to satisfy E741 would make the code
+# disagree with every reference these formulas are taken from, which is a worse
+# outcome than an ambiguous single letter in a context where i, j and k are
+# already three of the four.
+"src/formulate/physics/md/mmff.py" = ["E741"]

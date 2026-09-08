@@ -78,7 +78,9 @@ def _blend(fractions):
 
 def test_the_process_interpolates_a_known_function():
     rng = np.random.default_rng(0)
-    f = lambda X: np.sin(3 * X[:, 0]) + 0.5 * X[:, 1] ** 2
+    def f(X):
+        return np.sin(3 * X[:, 0]) + 0.5 * X[:, 1] ** 2
+
     x = rng.uniform(-1, 1, size=(40, 2))
     gp = GaussianProcess().fit(x, f(x), restarts=4, seed=1)
 

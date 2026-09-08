@@ -284,3 +284,79 @@ def test_associating_compounds_get_a_wider_bar_where_the_data_shows_they_need_on
     for prop in ("critical_volume", "enthalpy_fusion", "heat_capacity_gas"):
         plain, associating = _MEASURED_SPREAD[prop]
         assert plain == associating, prop
+
+
+# --------------------------------------------------------------------------
+# A row that measures nothing must say so
+# --------------------------------------------------------------------------
+
+
+def test_a_lookup_answer_is_not_reported_as_accuracy():
+    """The default run reported a critical temperature good to exactly zero.
+
+    Over fifty compounds, mean absolute error 0.0000, and a boiling point good
+    to 0.22 degrees. Both read as extraordinary accuracy and were the compiled
+    measurement being compared against the table it was compiled from.
+    """
+    from formulate.evaluation.calibration import PropertyCalibration
+
+    lookup = PropertyCalibration(
+        property="critical_temperature", unit="K", count=50,
+        errors=[0.0] * 50, stated_std=[1.0] * 50, answered_by={"measured": 50},
+    )
+    assert lookup.self_comparison
+    assert "NOT AN ACCURACY MEASUREMENT" in lookup.verdict()
+    assert "NOT AN ACCURACY MEASUREMENT" in lookup.describe()
+
+
+def test_an_estimator_is_judged_on_its_uncertainty_as_before():
+    from formulate.evaluation.calibration import PropertyCalibration
+
+    estimator = PropertyCalibration(
+        property="normal_boiling_point", unit="K", count=10,
+        # Seven of ten inside the stated one sigma, which is the ~68% a
+        # correct estimate implies. An earlier fixture put all ten inside and
+        # was then correctly judged conservative.
+        errors=[5.0, -4.0, 4.0, -5.0, 3.0, -4.0, 5.0, -9.0, 8.0, -10.0],
+        stated_std=[6.0] * 10, answered_by={"joback": 10},
+    )
+    assert estimator.self_comparison == ""
+    assert "reasonable" in estimator.verdict()
+
+
+def test_a_mixed_row_still_names_the_lookup_share():
+    from formulate.evaluation.calibration import PropertyCalibration
+
+    mixed = PropertyCalibration(
+        property="liquid_density", unit="g/cm^3", count=10,
+        errors=[0.0] * 10, stated_std=[0.01] * 10,
+        answered_by={"measured": 7, "interfacial": 3},
+    )
+    assert "7 of 10" in mixed.self_comparison
+
+
+@requires_rdkit
+def test_the_report_warns_before_the_numbers_rather_than_after():
+    """A reader who stops at the first table must have been told already."""
+    from formulate.evaluation.calibration import calibrate, describe
+    from formulate.experts import default_registry
+    from formulate.exploration import load_reference_compounds
+
+    text = describe(calibrate(default_registry(), load_reference_compounds()))
+    assert "SOME ROWS BELOW MEASURE NOTHING" in text
+    assert text.index("MEASURE NOTHING") < text.index("mean absolute error")
+
+
+@requires_rdkit
+def test_restricting_to_an_estimator_produces_a_real_measurement():
+    from formulate.evaluation.calibration import calibrate
+    from formulate.experts import default_registry
+    from formulate.exploration import load_reference_compounds
+
+    results = calibrate(
+        default_registry(), load_reference_compounds(), expert_id="joback"
+    )
+    boiling = results["normal_boiling_point"]
+    assert boiling.self_comparison == ""
+    assert boiling.mean_absolute_error > 5.0, "a group method is not exact"
+    assert "measured" not in boiling.answered_by

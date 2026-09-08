@@ -66,6 +66,8 @@ class PropertyCalibration:
     out_of_domain: int = 0
     #: Compound -> why its prediction was not comparable with the reference.
     skipped_on_conditions: dict = field(default_factory=dict)
+    #: Expert id -> how many of these comparisons it answered.
+    answered_by: dict = field(default_factory=dict)
 
     @property
     def mean_absolute_error(self) -> float:
@@ -97,8 +99,41 @@ class PropertyCalibration:
             return None
         return sum(1 for e, s in pairs if abs(e) <= 2 * s) / len(pairs)
 
+    #: Experts that answer from a compiled measurement rather than estimating.
+    #: Comparing one of these against a reference table compiled from the same
+    #: sources measures whether the database agrees with itself.
+    LOOKUP_EXPERTS = frozenset({"measured"})
+
+    @property
+    def self_comparison(self) -> str:
+        """Why this row is a consistency check rather than an accuracy figure.
+
+        Empty when the property was answered by an estimating expert. The
+        default `formulate calibrate` run reported a mean absolute error of
+        exactly zero on the critical temperature over fifty compounds, and a
+        boiling point good to 0.22 degrees, which read as extraordinary
+        accuracy and were the compiled measurement being compared against the
+        table it was compiled from.
+        """
+        lookups = {
+            expert: count
+            for expert, count in self.answered_by.items()
+            if expert in self.LOOKUP_EXPERTS
+        }
+        if not lookups:
+            return ""
+        answered = sum(lookups.values())
+        return (
+            f"{answered} of {self.count} answered by a compiled measurement "
+            f"({', '.join(sorted(lookups))}), so this is the database agreeing with "
+            "itself rather than an estimator being tested; restrict to one expert to "
+            "measure that expert"
+        )
+
     def verdict(self) -> str:
         """A short judgement on whether the stated uncertainty is trustworthy."""
+        if self.self_comparison:
+            return "NOT AN ACCURACY MEASUREMENT - " + self.self_comparison
         coverage = self.within_one_sigma
         if coverage is None:
             return "no stated uncertainty to assess"
@@ -120,6 +155,8 @@ class PropertyCalibration:
                 f"    within 1 sigma {coverage:.0%}   within 2 sigma "
                 f"{self.within_two_sigma:.0%}   -> {self.verdict()}"
             )
+        elif self.self_comparison:
+            lines.append(f"    -> {self.verdict()}")
         if self.worst is not None:
             lines.append(f"    worst case {self.worst[0]} off by {abs(self.worst[1]):.4g}")
         if self.out_of_domain:
@@ -209,6 +246,9 @@ def calibrate(
 
             entry = results[prop]
             entry.count += 1
+            entry.answered_by[prediction.expert_id] = (
+                entry.answered_by.get(prediction.expert_id, 0) + 1
+            )
             entry.errors.append(error)
             std = prediction.uncertainty.converted(prediction.quantity.unit, unit).std
             entry.stated_std.append(std if std is not None else 0.0)
@@ -283,6 +323,17 @@ def describe(results: dict[str, PropertyCalibration]) -> str:
         "evaluation of the underlying methods.",
         "",
     ]
+    tautological = [name for name, entry in results.items() if entry.self_comparison]
+    if tautological:
+        lines.extend(
+            [
+                "SOME ROWS BELOW MEASURE NOTHING. " + ", ".join(sorted(tautological)) + " "
+                "were answered by an expert that looks the value up rather than",
+                "estimating it, against a reference table compiled from the same sources.",
+                "Those rows are consistency checks; pass --expert to measure an estimator.",
+                "",
+            ]
+        )
     for entry in results.values():
         lines.append(entry.describe())
         lines.append("")

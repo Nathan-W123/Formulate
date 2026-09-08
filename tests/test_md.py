@@ -182,7 +182,9 @@ def test_cluster_density_scales_with_the_requested_density():
     geometry = geometry_from_smiles("CCO", n_conformers=2)
     dense = build_cluster(geometry, 8, target_density_g_cm3=1.2)
     sparse = build_cluster(geometry, 8, target_density_g_cm3=0.4)
-    span = lambda c: float(np.prod(c.positions.max(axis=0) - c.positions.min(axis=0)))
+    def span(c):
+        return float(np.prod(c.positions.max(axis=0) - c.positions.min(axis=0)))
+
     assert span(dense) < span(sparse)
 
 
