@@ -18,10 +18,12 @@ from formulate.experts.base import PredictionRequest
 from formulate.experts.kinetics import (
     INITIATION,
     MONOMERS,
-    TERMINATION,
     FreeRadicalCureExpert,
     PropagationExpert,
     cure_time,
+    functionality,
+    gel_conversion,
+    kinetic_chain_length,
     propagation_constant,
 )
 
@@ -41,7 +43,61 @@ def _request(smiles: str, prop: str, *, processing=REDOX, temperature=298.15):
 def test_every_monomer_has_kinetics_and_a_structure():
     from formulate.experts.kinetics import _SMILES
 
-    assert set(MONOMERS) == set(TERMINATION) == set(_SMILES)
+    assert set(MONOMERS) == set(_SMILES)
+
+
+def test_the_tabulated_functionality_agrees_with_the_structure():
+    """The table records it; the expert reads it off the molecule.
+
+    Two sources for the same fact is a defect waiting to happen, so the one
+    that is derived is the one used and this checks they never diverge.
+    """
+    from formulate.experts.kinetics import _SMILES
+
+    for name, row in MONOMERS.items():
+        assert functionality(_SMILES[name]) == row.functionality, name
+
+
+def test_a_monofunctional_monomer_has_no_gel_point():
+    """It makes linear chains. There is nothing for a network to form from."""
+    assert gel_conversion("methyl methacrylate", 298.15, 1.0e-4) is None
+    assert gel_conversion("vinyl acetate", 298.15, 1.0e-4) is None
+
+
+def test_a_crosslinker_gels_far_below_the_conversion_a_linear_polymer_vitrifies_at():
+    """The correction that moved the answer by two orders of magnitude.
+
+    Vitrification needs half the monomer converted; gelation needs one
+    crosslink per primary chain, and the chains are hundreds of units long.
+    """
+    gel = gel_conversion("1,6-hexanediol diacrylate", 298.15, 1.0e-4)
+    assert gel is not None
+    assert gel < 0.01
+    fast = cure_time("1,6-hexanediol diacrylate", 298.15, 1.0e-4)
+    slow = cure_time("1,6-hexanediol diacrylate", 298.15, 1.0e-4, conversion=0.5)
+    assert slow / fast > 100.0
+
+
+def test_a_higher_functionality_gels_sooner():
+    rate = INITIATION["redox-peroxide-amine"][0]
+    assert cure_time("trimethylolpropane triacrylate", 298.15, rate) < cure_time(
+        "1,6-hexanediol diacrylate", 298.15, rate
+    )
+
+
+def test_a_faster_initiator_shortens_the_chains_and_so_delays_the_gel_point():
+    """The trade-off that stops a stronger initiator being the answer.
+
+    Raising the radical flux speeds propagation as its square root and cuts
+    the kinetic chain length in proportion, and short chains need more
+    conversion before one crosslink per chain exists.
+    """
+    slow = gel_conversion("1,6-hexanediol diacrylate", 298.15, 1.0e-6)
+    fast = gel_conversion("1,6-hexanediol diacrylate", 298.15, 1.0e-2)
+    assert kinetic_chain_length("1,6-hexanediol diacrylate", 298.15, 1.0e-2) < (
+        kinetic_chain_length("1,6-hexanediol diacrylate", 298.15, 1.0e-6)
+    )
+    assert fast > slow
 
 
 def test_propagation_is_faster_for_acrylates_than_methacrylates():
@@ -83,13 +139,29 @@ def test_two_initiation_regimes_at_once_are_refused_rather_than_summed():
     assert "one at a time" in prediction.notes[0]
 
 
+def test_a_crosslinker_is_not_judged_on_the_glass_transition_of_a_linear_polymer():
+    """The refusal that was turning away the only chemistry fast enough.
+
+    A crosslinked network is rigid because it is one molecule, not because
+    its chains are stiff, so the linear analogue's glass transition says
+    nothing about it. Hexanediol diacrylate is an acrylate, and every linear
+    acrylate here is a rubber at ambient temperature.
+    """
+    prediction = FreeRadicalCureExpert().predict(
+        _request("C=CC(=O)OCCCCCCOC(=O)C=C", "cure_time")
+    )[0]
+    assert prediction.quantity is not None
+    assert prediction.quantity.value < 2.0
+    assert MONOMERS["1,6-hexanediol diacrylate"].linear_tg_k is None
+
+
 def test_a_monomer_whose_polymer_is_a_rubber_at_the_cure_temperature_is_refused():
-    """Butyl acrylate cures fastest of all seven and is useless for a solid."""
+    """Butyl acrylate is among the fastest and is useless for a solid."""
     prediction = FreeRadicalCureExpert().predict(_request("C=CC(=O)OCCCC", "cure_time"))[0]
     assert prediction.quantity is None
     assert "219 K" in prediction.notes[0]
-    # And it is refused despite being the fastest: the point is that speed
-    # alone does not make a cure.
+    assert "monofunctional" in prediction.notes[0]
+    # And it is refused despite being fast: speed alone does not make a cure.
     assert cure_time("butyl acrylate", 298.15, INITIATION["redox-peroxide-amine"][0]) < cure_time(
         "methyl methacrylate", 298.15, INITIATION["redox-peroxide-amine"][0]
     )
@@ -112,19 +184,21 @@ def test_a_structure_outside_the_benchmark_set_is_refused_not_extrapolated():
         assert "benchmark set" in prediction.notes[0]
 
 
-def test_no_free_radical_monomer_cures_in_a_second_at_ambient():
-    """The finding the expert was written to test, kept as a regression.
+def test_no_linear_monomer_cures_in_a_second_at_ambient():
+    """Why a crosslinker was necessary and a faster initiator was not enough.
 
-    Every regime, every monomer that produces a solid: the fastest is vinyl
-    acetate under a redox pair at about eighty seconds, which is two orders
-    away from a jet that has to set in flight. If a data change ever makes
-    this pass, the data change is what needs checking.
+    Over every regime and every monofunctional monomer that produces a solid,
+    the fastest is vinyl acetate under a redox pair at about eighty seconds.
+    Nothing that vitrifies to solidify gets near a jet that has to set in
+    flight; only gelation does.
     """
-    solid = [m for m, row in MONOMERS.items() if row[3] > 298.15]
+    solid = [
+        m
+        for m, row in MONOMERS.items()
+        if row.functionality == 1 and row.linear_tg_k and row.linear_tg_k > 298.15
+    ]
     assert solid  # the test would be vacuous otherwise
     best = min(
-        cure_time(m, 298.15, rate)
-        for m in solid
-        for rate, _ in INITIATION.values()
+        cure_time(m, 298.15, rate) for m in solid for rate, _ in INITIATION.values()
     )
     assert best > 10.0

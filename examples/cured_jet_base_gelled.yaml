@@ -1,0 +1,63 @@
+name: web fluid v5 - the reactive base, at the two seconds the flight actually allows
+notes: >
+  v3 asked for a two second cure and found nothing; v4 bought a candidate by
+  moving the ceiling to eighty seconds, which is not a tuning but a different
+  product - a web that lands liquid and becomes load-bearing a minute and a
+  half later. This run puts the ceiling back where the flight time puts it and
+  fixes the model instead.
+
+  What was wrong was the endpoint, not the kinetics. The expert measured the
+  time to stop flowing as the time to vitrify, which needs half the monomer
+  converted. A crosslinker does not vitrify to solidify; it gels, and it gels
+  once one crosslink exists per primary chain, which is a fraction of a per
+  cent of conversion because the chains are hundreds of units long. Two orders
+  of magnitude of the answer were in that choice, and no amount of searching
+  over monomers would have found them.
+
+  So functionality is now read from each candidate's structure, gelation comes
+  from Flory-Stockmayer, and the glass transition test that refused the four
+  fastest monomers is applied only where it means something - to a linear
+  polymer. A crosslinked network is rigid because it is one molecule, not
+  because its chains are stiff.
+
+  The boiling point ceiling of 200 C is also removed. It was inherited from
+  the solvent-cast runs, where the carrier had to evaporate out of the
+  filament; in a reactive jet the base is meant to stay, so low volatility is
+  a merit and the only thing an upper bound was really guarding against -
+  a syrup too thick to extrude - is already covered by the viscosity
+  requirement, which measures it directly.
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  processing: ["redox-peroxide-amine"]
+requirements:
+  # Back to the flight time: ten metres at twenty metres per second is half a
+  # second in the air, and two seconds allows a strand that finishes setting
+  # just after it arrives.
+  - property: cure_time
+    direction: minimize
+    lower: 0 s
+    upper: 2 s
+    hard: true
+    weight: 4.0
+    rationale: it has to stop flowing before or shortly after it arrives
+  # Lower bound only. A base that boils below the cartridge temperature is
+  # gone before it is fired; there is no upper limit worth stating.
+  - property: normal_boiling_point
+    direction: maximize
+    lower: 60 degC
+    upper: 300 degC
+    hard: true
+    rationale: liquid in the cartridge, and meant to stay in the strand
+  - property: shear_viscosity
+    direction: minimize
+    lower: 0 Pa*s
+    upper: 0.01 Pa*s
+    weight: 2.0
+    rationale: the 0.36 bar extrusion figure assumed a thin liquid
+  - property: liquid_density
+    direction: minimize
+    lower: 700 kg/m^3
+    upper: 1200 kg/m^3
+    weight: 1.0
+    rationale: the strand carries its own weight first

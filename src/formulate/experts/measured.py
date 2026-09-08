@@ -197,11 +197,52 @@ def measured_value(prop: str, smiles: str) -> float | None:
         return _measured_surface_tension(cas)
     if name == "rho":
         return _measured_liquid_density(cas)
+    if name in ("Tb", "Tm"):
+        return _measured_transition(name, cas)
     try:
-        value = {"Tb": Tb, "Tm": Tm, "MW": MW, "Tc": Tc}[name](cas)
+        value = {"MW": MW, "Tc": Tc}[name](cas)
     except Exception:
         return None
     return None if value is None else float(value)
+
+
+#: The one method in the compilation's melting and boiling point lists that is
+#: not a measurement.
+#:
+#: ``chemicals`` returns Joback's group contribution when it has nothing else,
+#: and the default accessor does not say which it gave you. This module exists
+#: to stop a correlation being extrapolated below a melting point and reported
+#: as measured; without this filter the melting point doing the stopping was
+#: itself a correlation, arriving through the same "measured, not estimated"
+#: label with an error bar of one kelvin.
+#:
+#: It matters most for exactly the compounds a design run reaches for and a
+#: handbook does not cover. Joback's melting point is the weakest of its
+#: correlations - on methyl methacrylate, where a measurement exists to check
+#: it against, it gives 173 K against 225. For 1,6-hexanediol diacrylate,
+#: where none does, it gives 306 K, and the panel refused every liquid
+#: property of a monomer that is sold as a liquid on the strength of it.
+#:
+#: Removing it does not lose the estimate. The Joback expert supplies one under
+#: its own name with its own measured error, which is where an estimate belongs.
+_ESTIMATED_METHOD = "JOBACK"
+
+
+def _measured_transition(name: str, cas: str) -> float | None:
+    """A melting or boiling point, from a compilation and never from a method."""
+    try:
+        from chemicals import Tb_methods, Tm_methods
+
+        accessor, methods = (Tb, Tb_methods) if name == "Tb" else (Tm, Tm_methods)
+        for method in methods(cas) or ():
+            if method == _ESTIMATED_METHOD:
+                continue
+            value = accessor(cas, method=method)
+            if value is not None:
+                return float(value)
+    except Exception:
+        return None
+    return None
 
 
 def _measured_liquid_density(cas: str, temperature: float = 298.15) -> float | None:

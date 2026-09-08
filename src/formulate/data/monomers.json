@@ -1,6 +1,17 @@
 {
   "compounds": [
     {
+      "boiling_point_c": 130.0,
+      "cas": "13048-33-4",
+      "critical_pressure_pa": 1930000.0,
+      "critical_temperature_k": 765.0,
+      "critical_volume_m3_mol": 0.000782,
+      "enthalpy_fusion_j_mol": 33014.0,
+      "functionality": 2,
+      "name": "1,6-hexanediol diacrylate",
+      "smiles": "C=CC(=O)OCCCCCCOC(=O)C=C"
+    },
+    {
       "boiling_point_c": 146.6,
       "cas": "141-32-2",
       "critical_pressure_pa": 2760000.0,
@@ -32,6 +43,18 @@
       "melting_point_c": -71.0,
       "name": "ethyl acrylate",
       "smiles": "C=CC(=O)OCC"
+    },
+    {
+      "boiling_point_c": 260.0,
+      "cas": "97-90-5",
+      "critical_pressure_pa": 2324783.4,
+      "critical_temperature_k": 725.43802,
+      "critical_volume_m3_mol": 0.000611,
+      "enthalpy_fusion_j_mol": 25214.0,
+      "functionality": 2,
+      "melting_point_c": -40.0,
+      "name": "ethylene glycol dimethacrylate",
+      "smiles": "C=C(C)C(=O)OCCOC(=O)C(=C)C"
     },
     {
       "boiling_point_c": 80.1,
@@ -71,6 +94,16 @@
       "surface_tension_25c": 31.875409
     },
     {
+      "cas": "15625-89-5",
+      "critical_pressure_pa": 1602563.1,
+      "critical_temperature_k": 893.54226,
+      "critical_volume_m3_mol": 0.000886,
+      "enthalpy_fusion_j_mol": 36459.0,
+      "functionality": 3,
+      "name": "trimethylolpropane triacrylate",
+      "smiles": "C=CC(=O)OCC(CC)(COC(=O)C=C)COC(=O)C=C"
+    },
+    {
       "boiling_point_c": 72.6,
       "cas": "108-05-4",
       "critical_pressure_pa": 4185000.0,
@@ -83,5 +116,5 @@
       "smiles": "C=COC(C)=O"
     }
   ],
-  "provenance": "The seven monomers whose propagation rate coefficients the IUPAC Working Party on Modeling of Polymerization Kinetics and Processes established by pulsed-laser polymerisation. Property values from the 'chemicals' compilation, resolved by name and checked against the structure's molar mass - resolving these by SMILES returns the wrong compound silently, which is how the check came to be here. Fields the compilation does not cover are omitted rather than estimated. Deliberately kept out of reference_compounds.json: that file is the held-out set every measured uncertainty in this repository was calibrated against, and growing it would invalidate a dozen stated figures without recomputing any of them."
+  "provenance": "The seven monomers whose propagation rate coefficients the IUPAC Working Party on Modeling of Polymerization Kinetics and Processes established by pulsed-laser polymerisation. Property values from the 'chemicals' compilation, resolved by name and checked against the structure's molar mass - resolving these by SMILES returns the wrong compound silently, which is how the check came to be here. Fields the compilation does not cover are omitted rather than estimated. Deliberately kept out of reference_compounds.json: that file is the held-out set every measured uncertainty in this repository was calibrated against, and growing it would invalidate a dozen stated figures without recomputing any of them. The three crosslinkers were added later, when a gel point rather than a vitrification point turned out to be what a fast cure is made of; their functionality is recorded here but read from the structure at prediction time, so the two cannot disagree. Melting and boiling points are taken only where a compilation carries a measurement; where the package falls back to a group contribution the field is absent, because a wrong melting point does not merely add noise, it changes the phase a candidate is judged to be in."
 }

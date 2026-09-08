@@ -49,6 +49,7 @@ gum.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from ..core.candidate import Candidate, MaterialClass
 from ..core.properties import PropertyFamily
@@ -58,33 +59,75 @@ from .base import Expert, Prediction
 #: Molar gas constant, J/(mol K).
 GAS_CONSTANT = 8.314462618
 
-#: IUPAC-recommended propagation kinetics: monomer -> (A in L/mol/s, Ea in
-#: kJ/mol, bulk monomer concentration in mol/L, homopolymer Tg in K).
-#:
-#: The Arrhenius pairs are the pulsed-laser benchmark values. Bulk monomer
-#: concentrations are the neat liquid's density over its molar mass at 298 K.
-#: Homopolymer glass transitions are the standard handbook values, and are
-#: here because they decide whether a cure produces a solid or a gum.
-MONOMERS: dict[str, tuple[float, float, float, float]] = {
-    "styrene": (4.27e7, 32.5, 8.7, 373.0),
-    "methyl methacrylate": (2.67e6, 22.36, 9.4, 378.0),
-    "butyl methacrylate": (3.78e6, 22.9, 6.3, 293.0),
-    "methyl acrylate": (1.66e7, 17.7, 11.1, 283.0),
-    "ethyl acrylate": (1.80e7, 17.5, 9.2, 249.0),
-    "butyl acrylate": (2.21e7, 17.9, 7.0, 219.0),
-    "vinyl acetate": (1.47e7, 20.4, 10.8, 305.0),
-}
+@dataclass(frozen=True, slots=True)
+class MonomerKinetics:
+    """Everything needed to turn one monomer into a rate."""
 
-#: Chain-length-averaged termination coefficients at 298 K and low conversion,
-#: L/mol/s. Order-of-magnitude; see this module's opening note.
-TERMINATION: dict[str, float] = {
-    "styrene": 7.0e7,
-    "methyl methacrylate": 2.5e7,
-    "butyl methacrylate": 2.0e7,
-    "methyl acrylate": 1.0e8,
-    "ethyl acrylate": 1.2e8,
-    "butyl acrylate": 1.5e8,
-    "vinyl acetate": 3.0e7,
+    #: Arrhenius prefactor for propagation, L/(mol s).
+    prefactor: float
+    #: Propagation activation energy, kJ/mol.
+    activation_kj: float
+    #: Chain-length-averaged termination coefficient at 298 K, L/(mol s).
+    termination: float
+    #: Concentration of polymerisable double bonds in the neat liquid, mol/L.
+    #: For a monofunctional monomer this is just its molar concentration; for a
+    #: crosslinker it is that times the functionality.
+    concentration: float
+    #: Polymerisable double bonds per molecule.
+    functionality: int
+    #: Glass transition of the *linear* homopolymer, K. ``None`` for a
+    #: crosslinker, where there is no linear homopolymer and the network's
+    #: rigidity comes from the crosslinks rather than from chain stiffness.
+    linear_tg_k: float | None
+    source: str
+
+
+#: Propagation kinetics per monomer.
+#:
+#: The seven monofunctional entries carry their own IUPAC pulsed-laser
+#: benchmark Arrhenius pairs. The crosslinkers do not: nobody has run a
+#: pulsed-laser experiment on a diacrylate, because the thing gels during the
+#: measurement. They borrow the coefficient of their family, which is a real
+#: approximation and worth stating plainly - k_p belongs to the propagating
+#: radical and the double bond it attacks, and those are the same chemistry in
+#: butyl acrylate and in hexanediol diacrylate. What differs is the medium, and
+#: it differs in the direction that makes this conservative: a crosslinking
+#: system stiffens as it reacts, which suppresses termination far more than
+#: propagation and makes real cures faster than this predicts, not slower.
+MONOMERS: dict[str, MonomerKinetics] = {
+    "styrene": MonomerKinetics(4.27e7, 32.5, 7.0e7, 8.7, 1, 373.0, "IUPAC benchmark"),
+    "methyl methacrylate": MonomerKinetics(
+        2.67e6, 22.36, 2.5e7, 9.4, 1, 378.0, "IUPAC benchmark"
+    ),
+    "butyl methacrylate": MonomerKinetics(
+        3.78e6, 22.9, 2.0e7, 6.3, 1, 293.0, "IUPAC benchmark"
+    ),
+    "methyl acrylate": MonomerKinetics(
+        1.66e7, 17.7, 1.0e8, 11.1, 1, 283.0, "IUPAC benchmark"
+    ),
+    "ethyl acrylate": MonomerKinetics(
+        1.80e7, 17.5, 1.2e8, 9.2, 1, 249.0, "IUPAC benchmark"
+    ),
+    "butyl acrylate": MonomerKinetics(
+        2.21e7, 17.9, 1.5e8, 7.0, 1, 219.0, "IUPAC benchmark"
+    ),
+    "vinyl acetate": MonomerKinetics(
+        1.47e7, 20.4, 3.0e7, 10.8, 1, 305.0, "IUPAC benchmark"
+    ),
+    # Crosslinkers. Concentrations are the functionality times the neat
+    # liquid's molar concentration, from supplier densities (1.010, 1.051 and
+    # 1.103 g/cm^3) rather than from the compilation, which carries none of
+    # them. The density enters the rate linearly and the answers here are two
+    # orders inside their target, so a few per cent on it changes nothing.
+    "1,6-hexanediol diacrylate": MonomerKinetics(
+        2.21e7, 17.9, 1.5e8, 8.93, 2, None, "acrylate family k_p (butyl acrylate)"
+    ),
+    "ethylene glycol dimethacrylate": MonomerKinetics(
+        2.67e6, 22.36, 2.5e7, 10.60, 2, None, "methacrylate family k_p (MMA)"
+    ),
+    "trimethylolpropane triacrylate": MonomerKinetics(
+        2.21e7, 17.9, 1.5e8, 11.17, 3, None, "acrylate family k_p (butyl acrylate)"
+    ),
 }
 
 #: SMILES of each tabulated monomer, canonicalised on first use.
@@ -96,7 +139,16 @@ _SMILES: dict[str, str] = {
     "ethyl acrylate": "C=CC(=O)OCC",
     "butyl acrylate": "C=CC(=O)OCCCC",
     "vinyl acetate": "C=COC(C)=O",
+    "1,6-hexanediol diacrylate": "C=CC(=O)OCCCCCCOC(=O)C=C",
+    "ethylene glycol dimethacrylate": "C=C(C)C(=O)OCCOC(=O)C(=C)C",
+    "trimethylolpropane triacrylate": "C=CC(=O)OCC(CC)(COC(=O)C=C)COC(=O)C=C",
 }
+
+#: A polymerisable double bond: a terminal methylene on a non-aromatic carbon.
+#: Every monomer in this table carries one or more, and the count is read from
+#: the structure rather than tabulated, so a candidate's functionality cannot
+#: disagree with what it is made of.
+POLYMERISABLE = "[CH2]=[CX3]"
 
 #: Radical generation rate of each initiation regime at 298 K, mol/(L s), with
 #: the recipe it assumes. These are the weakest numbers in the module and the
@@ -150,10 +202,77 @@ def _identify(candidate: Candidate) -> str | None:
     return None
 
 
+def functionality(smiles: str) -> int:
+    """Polymerisable double bonds in one molecule, read from its structure."""
+    from rdkit import Chem
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return 0
+    return len(mol.GetSubstructMatches(Chem.MolFromSmarts(POLYMERISABLE)))
+
+
 def propagation_constant(monomer: str, temperature_k: float) -> float:
-    """k_p in L/(mol s) from the benchmark Arrhenius pair."""
-    prefactor, activation_kj, _, _ = MONOMERS[monomer]
-    return prefactor * math.exp(-activation_kj * 1e3 / (GAS_CONSTANT * temperature_k))
+    """k_p in L/(mol s) from the Arrhenius pair."""
+    row = MONOMERS[monomer]
+    return row.prefactor * math.exp(
+        -row.activation_kj * 1e3 / (GAS_CONSTANT * temperature_k)
+    )
+
+
+def radical_concentration(monomer: str, initiation_rate: float) -> float:
+    """Steady-state radical concentration, ``sqrt(R_i / 2 k_t)``, in mol/L."""
+    return math.sqrt(initiation_rate / (2.0 * MONOMERS[monomer].termination))
+
+
+def kinetic_chain_length(monomer: str, temperature_k: float, initiation_rate: float) -> float:
+    """Monomer units added per radical before it terminates.
+
+    ``k_p [M] / (2 k_t [R])``: the rate one chain grows over the rate it dies.
+    This is the quantity that decides when a crosslinking system gels, and it
+    moves the opposite way to the overall rate - pushing the initiation rate up
+    makes the polymerisation faster and the chains shorter, and short chains
+    gel late. That trade-off is the reason a faster initiator is not a way to
+    reach a two second cure.
+    """
+    row = MONOMERS[monomer]
+    kp = propagation_constant(monomer, temperature_k)
+    return kp * row.concentration / (2.0 * row.termination * radical_concentration(monomer, initiation_rate))
+
+
+def gel_conversion(monomer: str, temperature_k: float, initiation_rate: float) -> float | None:
+    """Conversion at which the system gels, or None for a linear polymer.
+
+    Flory and Stockmayer: a chain-growth network gels once one crosslink has
+    formed per weight-average primary chain, which puts the gel point at
+    ``1 / (rho (DPw - 1))`` for ``rho`` pendant double bonds per repeat unit.
+    A neat monomer of functionality ``f`` leaves ``f - 1`` of them, so a
+    monofunctional monomer never gels at all - it makes linear chains, and
+    stops flowing only when the unreacted monomer plasticising it has been
+    consumed.
+
+    That distinction is the whole reason this function exists. Solidifying by
+    vitrification needs half the monomer converted; gelling needs a fraction of
+    a per cent, because one crosslink per chain is enough and the chains are
+    hundreds of units long. It is the difference between a minute and a tenth
+    of a second, and it is not a refinement of the earlier calculation - the
+    earlier calculation was answering a different question.
+
+    Two things make this a lower bound on the gel conversion, and therefore on
+    the time. Cyclisation wastes pendant double bonds on loops within the same
+    chain, which do not count towards the network and push real gel points
+    higher, by a factor of a few in a neat multifunctional monomer. And the
+    treatment assumes termination by combination, which doubles the primary
+    chain length; disproportionation would halve it and gel later.
+    """
+    row = MONOMERS[monomer]
+    if row.functionality < 2:
+        return None
+    pendant = row.functionality - 1
+    weight_average = 2.0 * kinetic_chain_length(monomer, temperature_k, initiation_rate)
+    if weight_average <= 1.0:
+        return None
+    return min(1.0 / (pendant * (weight_average - 1.0)), 1.0)
 
 
 def cure_time(
@@ -161,21 +280,28 @@ def cure_time(
     temperature_k: float,
     initiation_rate: float,
     *,
-    conversion: float = SOLIDIFICATION_CONVERSION,
+    conversion: float | None = None,
 ) -> float:
-    """Seconds to reach ``conversion`` under a steady radical supply.
+    """Seconds for a reacting liquid to stop flowing.
 
-    Steady state puts the radical concentration at ``sqrt(R_i / 2 k_t)``, and
-    a first-order consumption of monomer at that concentration integrates to
-    ``-ln(1 - x) / (k_p [R])``. The approximation being made is that k_t holds
-    at its low-conversion value throughout, which it does not: the
-    Trommsdorff effect drops it by orders of magnitude as the medium thickens,
-    which makes real cures *accelerate* towards the end. So this is an upper
-    bound on the time, and a generous one - which is the safe direction for
-    ruling a chemistry out and the unsafe direction for ruling one in.
+    The endpoint depends on what kind of polymer it makes. A crosslinker stops
+    flowing at its gel point; a monofunctional monomer has no gel point and
+    stops flowing when it vitrifies, which is taken at half conversion.
+
+    Steady state puts the radical concentration at ``sqrt(R_i / 2 k_t)``, and a
+    first-order consumption of monomer at that concentration integrates to
+    ``-ln(1 - x) / (k_p [R])``. The approximation is that k_t holds at its
+    low-conversion value throughout, which it does not: the Trommsdorff effect
+    drops it by orders of magnitude as the medium thickens, so real cures
+    accelerate. This is therefore an upper bound on the time, which is the safe
+    direction for ruling a chemistry out and the unsafe one for ruling it in.
     """
+    if conversion is None:
+        conversion = gel_conversion(monomer, temperature_k, initiation_rate)
+        if conversion is None:
+            conversion = SOLIDIFICATION_CONVERSION
     kp = propagation_constant(monomer, temperature_k)
-    radicals = math.sqrt(initiation_rate / (2.0 * TERMINATION[monomer]))
+    radicals = radical_concentration(monomer, initiation_rate)
     return -math.log(1.0 - conversion) / (kp * radicals)
 
 
@@ -287,45 +413,83 @@ class FreeRadicalCureExpert(_KineticsExpert):
         regime = regimes[0]
         rate, recipe = INITIATION[regime]
 
-        glass_transition = MONOMERS[monomer][3]
-        if glass_transition <= temperature:
-            return Prediction.unsupported(
-                prop,
-                self.id,
-                f"poly({monomer}) has a glass transition at {glass_transition:.0f} K, at or "
-                f"below the {temperature:.0f} K it would cure at, so it is a rubber at every "
-                "conversion. There is a time at which this liquid stops being a liquid and it "
-                "is not a time at which it becomes a solid",
-            )
+        row = MONOMERS[monomer]
+        gel = gel_conversion(monomer, temperature, rate)
+
+        # The glass transition only decides anything for a linear polymer. A
+        # crosslinked network is rigid because it is a single molecule, not
+        # because its chains are stiff, so the homopolymer Tg of the linear
+        # analogue says nothing about it - and applying the test anyway would
+        # refuse every diacrylate, which is exactly the chemistry that gets a
+        # cure into the seconds.
+        if gel is None:
+            if row.linear_tg_k is None:  # pragma: no cover - table invariant
+                return Prediction.unsupported(
+                    prop, self.id, f"{monomer} has neither a gel point nor a linear Tg"
+                )
+            if row.linear_tg_k <= temperature:
+                return Prediction.unsupported(
+                    prop,
+                    self.id,
+                    f"poly({monomer}) has a glass transition at {row.linear_tg_k:.0f} K, at or "
+                    f"below the {temperature:.0f} K it would cure at, so it is a rubber at "
+                    "every conversion. There is a time at which this liquid stops being a "
+                    "liquid and it is not a time at which it becomes a solid. It is "
+                    "monofunctional, so it has no gel point to reach instead",
+                )
 
         value = cure_time(monomer, temperature, rate)
-        # The rate goes as the inverse square root of the initiation rate and
-        # of k_t, so an order of magnitude in either is a factor of about three
-        # in the time. That, not the ten per cent on k_p, is the uncertainty.
+        if gel is None:
+            endpoint = (
+                f"taken as the time to {SOLIDIFICATION_CONVERSION:.0%} conversion, where the "
+                f"mixture's own glass transition climbs through {temperature:.0f} K; "
+                f"poly({monomer}) is glassy at {row.linear_tg_k:.0f} K. It is monofunctional "
+                "and never gels"
+            )
+            # Inverse square root of two order-of-magnitude quantities.
+            spread = 2.0
+            extra: tuple[str, ...] = ()
+        else:
+            endpoint = (
+                f"taken as the time to gel at {gel * 100:.3g} per cent conversion, from "
+                f"Flory-Stockmayer with {row.functionality - 1} pendant double bond(s) per "
+                f"repeat unit and a weight-average primary chain of "
+                f"{2 * kinetic_chain_length(monomer, temperature, rate):.0f}"
+            )
+            spread = 4.0
+            extra = (
+                "the gel conversion is a lower bound: cyclisation spends pendant double "
+                "bonds on loops within the same chain, which do not join the network, and "
+                "pushes real gel points higher by a factor of a few in a neat "
+                "multifunctional monomer. The quoted uncertainty carries that",
+                f"k_p is borrowed from the {row.source}; no pulsed-laser measurement exists "
+                "for a crosslinker, because it gels during the experiment",
+            )
+
         return self._make(
             prop,
             value,
             "s",
             request,
             domain,
-            std=value * 2.0,
+            std=value * spread,
             kind=UncertaintyKind.EPISTEMIC,
             basis=(
                 "dominated by the inverse square root of an order-of-magnitude termination "
-                "coefficient and an order-of-magnitude initiation rate, so a factor of about "
-                "three either way"
+                "coefficient and an order-of-magnitude initiation rate, widened for a "
+                "crosslinker by the cyclisation the gel point ignores"
             ),
             notes=(
                 f"initiation regime {regime}: {recipe}",
-                f"taken as the time to {SOLIDIFICATION_CONVERSION:.0%} conversion, where the "
-                f"mixture's own glass transition climbs through {temperature:.0f} K; "
-                f"poly({monomer}) is glassy at {glass_transition:.0f} K",
-                "an upper bound: the termination coefficient is held at its low-conversion "
-                "value, and the Trommsdorff effect drops it by orders of magnitude as the "
-                "medium thickens, so real cures accelerate towards the end",
-            ),
+                endpoint,
+                "an upper bound in time: the termination coefficient is held at its "
+                "low-conversion value, and the Trommsdorff effect drops it by orders of "
+                "magnitude as the medium thickens, so real cures accelerate towards the end",
+            )
+            + extra,
             monomer=monomer,
             regime=regime,
+            functionality=row.functionality,
         )
 
 
