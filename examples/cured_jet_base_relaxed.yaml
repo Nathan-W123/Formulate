@@ -1,0 +1,50 @@
+name: web fluid v4 - the reactive base, with the timing relaxed to what chemistry allows
+notes: >
+  Run v3 asked for a base that cures in under two seconds and found nothing:
+  every monomer in the benchmark set that produces a solid is between eighty
+  seconds and ninety minutes, and the four that are faster all make rubbers
+  and were refused on their homopolymer glass transition. The nearest miss was
+  reported at 79.06 seconds against a ceiling of 2.
+
+  This run relaxes the ceiling to that number rather than to a round one, so
+  that what is being bought with the relaxation is visible. It is not a
+  tuning: two seconds was the flight time, and a hundred and twenty seconds is
+  not. Accepting it means the strand leaves the nozzle liquid, lands liquid,
+  and becomes load-bearing a minute and a half later - which is a different
+  product from the one the earlier runs were designing, and the change belongs
+  in the spec where it can be read rather than in a paragraph of prose.
+
+  Everything else is held at v3's values so that the only thing that moved is
+  the thing that was shown to be impossible.
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  processing: ["redox-peroxide-amine"]
+requirements:
+  # Was 2 s. The pool's fastest solid-forming monomer is 79 s and the run that
+  # established that is examples/cured_jet_base.yaml.
+  - property: cure_time
+    direction: minimize
+    lower: 0 s
+    upper: 120 s
+    hard: true
+    weight: 4.0
+    rationale: relaxed from the flight time to what free-radical chemistry permits
+  - property: normal_boiling_point
+    direction: in_range
+    lower: 60 degC
+    upper: 200 degC
+    hard: true
+    rationale: liquid in the cartridge, not volatile enough to flash off the jet
+  - property: shear_viscosity
+    direction: minimize
+    lower: 0 Pa*s
+    upper: 0.01 Pa*s
+    weight: 2.0
+    rationale: the 0.36 bar extrusion figure assumed a thin liquid
+  - property: liquid_density
+    direction: minimize
+    lower: 700 kg/m^3
+    upper: 1200 kg/m^3
+    weight: 1.0
+    rationale: the strand carries its own weight first
