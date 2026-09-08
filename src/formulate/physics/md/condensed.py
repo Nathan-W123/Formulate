@@ -746,8 +746,12 @@ class ViscosityResult:
     plateau_drift: float
     #: Decay time of the stress autocorrelation, picoseconds.
     correlation_time_ps: float
-    #: Root mean square of the instantaneous shear stress, bar.
+    #: Root mean square of the instantaneous configurational shear stress, bar.
     stress_rms_bar: float
+    #: Root mean square of the *kinetic* shear stress as a fraction of that.
+    #: The kinetic term is deliberately left out of the integral - see the
+    #: protocol's note on why - and this is how much was left out.
+    kinetic_fraction: float
     sampled_ps: float
     n_molecules: int
     wall_seconds: float
@@ -755,10 +759,19 @@ class ViscosityResult:
 
 
 def _autocorrelation(series: np.ndarray, max_lag: int) -> np.ndarray:
-    """Unbiased autocorrelation of a single stress component, by FFT."""
+    """Unbiased autocorrelation of a single stress component, by FFT.
+
+    No mean is subtracted. An off-diagonal stress has a mean of exactly zero in
+    an isotropic liquid, and subtracting the sample mean instead would remove a
+    little of the signal along with it - the slowly varying part is precisely
+    what the Green-Kubo integral is made of. Zero padding to twice the length
+    turns the circular correlation the transform computes into a linear one,
+    and dividing by the number of overlapping pairs at each lag makes the
+    estimator unbiased rather than tapered.
+    """
     n = series.size
     padded = np.zeros(2 * n)
-    padded[:n] = series - 0.0  # the mean shear stress is zero by symmetry
+    padded[:n] = series
     spectrum = np.fft.rfft(padded)
     correlation = np.fft.irfft(spectrum * np.conjugate(spectrum))[:max_lag]
     return correlation / (n - np.arange(max_lag))
@@ -808,6 +821,8 @@ def run_shear_viscosity(
         SHEARS,
         centres_of_mass,
         configurational_stress,
+        kinetic_stress,
+        molecular_momenta,
         molecule_owner,
     )
 
@@ -852,18 +867,27 @@ def run_shear_viscosity(
     # including it badly sampled is worse than leaving it out knowingly.
     n_samples = int(production_ps * 1000.0 / stress_interval_fs)
     stress = np.zeros((n_samples, len(SHEARS)))
+    kinetic = np.zeros((n_samples, len(SHEARS)))
     for index in range(n_samples):
         integrator.step(steps_per_sample)
-        positions = (
-            context.getState(positions=True, enforcePeriodicBox=False)
-            .getPositions(asNumpy=True)
-            .value_in_unit(u.nanometer)
+        state = context.getState(
+            positions=True, velocities=True, enforcePeriodicBox=False
+        )
+        positions = state.getPositions(asNumpy=True).value_in_unit(u.nanometer)
+        velocities = state.getVelocities(asNumpy=True).value_in_unit(
+            u.nanometer / u.picosecond
         )
         centres = centres_of_mass(positions, masses, owner, n_molecules)
+        momentum, molecular_mass = molecular_momenta(
+            velocities, masses, owner, n_molecules
+        )
+        tensor = kinetic_stress(momentum, molecular_mass, volume_nm3)
+        kinetic[index] = [tensor[a, b] for a, b in SHEARS]
         stress[index] = configurational_stress(
             context, positions, vectors, centres, owner, volume_nm3, SHEARS
         )
     stress *= KJ_PER_MOL_NM3_IN_PA  # to pascals
+    kinetic *= KJ_PER_MOL_NM3_IN_PA
 
     dt_ps = stress_interval_fs / 1000.0
     max_lag = max(4, int(correlation_ps / dt_ps))
@@ -916,6 +940,15 @@ def run_shear_viscosity(
             "per cent of the mean; more sampling is needed before a force field error "
             "can be told from noise"
         )
+    kinetic_fraction = float(
+        np.sqrt(np.mean(kinetic**2)) / max(np.sqrt(np.mean(stress**2)), 1e-30)
+    )
+    if kinetic_fraction > 0.1:
+        diagnostics.append(
+            f"the kinetic shear stress is {kinetic_fraction * 100:.0f} per cent of the "
+            "configurational one by root mean square, and it is not in the integral; "
+            "this liquid is dilute enough that leaving it out is a real omission"
+        )
     if decay > correlation_ps / 3.0:
         diagnostics.append(
             f"the stress correlation is still {decay:.2f} ps wide against a "
@@ -930,6 +963,9 @@ def run_shear_viscosity(
         plateau_drift=drift,
         correlation_time_ps=decay,
         stress_rms_bar=float(np.sqrt(np.mean(stress**2)) / 1e5),
+        kinetic_fraction=float(
+            np.sqrt(np.mean(kinetic**2)) / max(np.sqrt(np.mean(stress**2)), 1e-30)
+        ),
         sampled_ps=production_ps,
         n_molecules=n_molecules,
         wall_seconds=time.perf_counter() - started,

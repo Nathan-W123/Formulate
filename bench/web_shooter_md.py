@@ -130,7 +130,7 @@ def stage_bulk() -> None:
         initial_density=0.80,
         pressure_bar=1.0,
         equilibration_ps=200.0,
-        production_ps=300.0,
+        production_ps=200.0,
         cutoff_nm=1.0,
         seed=7,
         force_field="opls-aa",
@@ -186,7 +186,7 @@ def stage_tension() -> None:
         vacuum_nm=3.0,
         cutoff_nm=1.2,
         equilibration_ps=150.0,
-        production_ps=500.0,
+        production_ps=400.0,
         seed=11,
     )
     _compare(
@@ -205,6 +205,8 @@ def stage_tension() -> None:
     print(f"    vapour {result.vapour_molecules:.2f} molecules in the gap, "
           f"implying {result.vapour_pressure_pa / 1000.0:.1f} kPa")
     print(f"    {result.production_ps:.0f} ps production, {result.wall_seconds / 3600:.2f} h")
+    for note in result.notes:
+        print(f"    - {note}")
     for note in result.diagnostics:
         print(f"    ! {note}")
 

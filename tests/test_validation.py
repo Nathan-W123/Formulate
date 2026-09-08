@@ -67,9 +67,13 @@ def test_properties_outside_reach_are_refused_with_a_physical_reason(prop):
 def test_quantum_is_never_offered_a_bulk_property():
     for prop in ("liquid_density", "self_diffusion_coefficient", "work_of_separation"):
         assert ValidationMethod.QUANTUM not in VALIDATABLE[prop]
-    # And a bulk property with no workflow at all is offered to neither method.
-    assert "shear_viscosity" not in VALIDATABLE
-    assert "shear_viscosity" in NOT_VALIDATABLE_REASONS
+    # And a property with no workflow at all is offered to neither method.
+    # Shear viscosity used to be the example here and no longer is: a
+    # Green-Kubo integral became reachable once the pressure tensor did.
+    # A partition coefficient is not, and will not be for the same reason it
+    # never was - it is a free-energy difference between two solvents.
+    assert "logp" not in VALIDATABLE
+    assert "logp" in NOT_VALIDATABLE_REASONS
 
 
 def test_dynamics_is_never_offered_an_electronic_property():
@@ -363,20 +367,22 @@ def test_a_property_with_no_workflow_is_refused_with_a_physical_reason():
             "conditions": {"temperature": "25 degC", "pressure": "1 atm"},
             "requirements": [
                 {
-                    "property": "shear_viscosity",
+                    "property": "logp",
                     "direction": "minimize",
-                    "lower": "0 Pa*s",
-                    "upper": "0.01 Pa*s",
+                    "lower": "-2",
+                    "upper": "4",
                 },
             ],
         }
     )
     permitted, refused = validatable_properties(spec)
     assert permitted == {}
-    # Not a vague "unsupported": no dynamics workflow produces a viscosity at
-    # all, and saying which one would be needed is what stops someone wiring
-    # up whichever protocol happens to be nearest.
-    assert "Green-Kubo" in refused["shear_viscosity"]
+    # Not a vague "unsupported": the refusal names the calculation that would
+    # be needed, which is what stops someone wiring up whichever protocol
+    # happens to be nearest. Shear viscosity used to be the example here, and
+    # naming its calculation - a Green-Kubo integral - is what eventually got
+    # it implemented.
+    assert "free-energy perturbation" in refused["logp"]
 
 
 @requires_rdkit
@@ -463,8 +469,13 @@ def test_cohesive_energy_density_is_validatable_again_now_a_bulk_route_exists():
     """It was refused while the only route was a finite cluster in the wrong unit."""
     assert "cohesive_energy_density" in VALIDATABLE
     assert "cohesive_energy_density" not in NOT_VALIDATABLE_REASONS
-    # Shear viscosity still has no route at all and stays refused.
-    assert "shear_viscosity" not in VALIDATABLE
+    # Shear viscosity was refused alongside it and is now reachable too, by
+    # the same kind of move: the missing thing was a pressure tensor, not
+    # physics. What stays refused is what no amount of tooling reaches from a
+    # single-phase trajectory.
+    assert "shear_viscosity" in VALIDATABLE
+    assert "logp" not in VALIDATABLE
+    assert "logp" in NOT_VALIDATABLE_REASONS
 
 
 # -- energies defined as a difference -------------------------------------
@@ -627,11 +638,18 @@ def test_the_liquid_fitted_force_field_claims_a_tighter_error_than_the_gas_fitte
 
 
 def test_every_condensed_property_that_runs_has_a_stated_systematic_error():
-    """Except self-diffusion, which was never measured and says so."""
-    from formulate.coordination.validation import CONDENSED_PROTOCOLS, CONDENSED_SYSTEMATIC
+    """Except the ones named as unmeasured, whose runs say so instead."""
+    from formulate.coordination.validation import (
+        CONDENSED_PROTOCOLS,
+        CONDENSED_SYSTEMATIC,
+        UNMEASURED_SYSTEMATIC,
+    )
 
     for field in CONDENSED_SYSTEMATIC.values():
-        assert set(field) == set(CONDENSED_PROTOCOLS) - {"self_diffusion_coefficient"}
+        assert set(field) == set(CONDENSED_PROTOCOLS) - UNMEASURED_SYSTEMATIC
+    # The exemption list is not a place to hide a property: everything on it
+    # has to be a property this system actually runs.
+    assert UNMEASURED_SYSTEMATIC <= set(CONDENSED_PROTOCOLS)
 
 
 def test_a_square_root_halves_the_relative_error_it_inherits():

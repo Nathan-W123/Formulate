@@ -88,6 +88,15 @@ VALIDATABLE: dict[str, frozenset[ValidationMethod]] = {
     "molar_volume_liquid": frozenset({ValidationMethod.DYNAMICS}),
     "enthalpy_vaporization": frozenset({ValidationMethod.DYNAMICS}),
     "hildebrand_solubility_parameter": frozenset({ValidationMethod.DYNAMICS}),
+    # These two were refused for years for a reason that turned out not to be
+    # about physics. Both are components of the pressure tensor - a surface
+    # tension is a difference between diagonal ones, a shear viscosity the
+    # autocorrelation of an off-diagonal one - and OpenMM publishes no pressure
+    # tensor at all. formulate.physics.md.stress recovers it by finite
+    # difference, and with it both properties became ordinary condensed-phase
+    # protocols. They are the most expensive ones here by a wide margin.
+    "surface_tension": frozenset({ValidationMethod.DYNAMICS}),
+    "shear_viscosity": frozenset({ValidationMethod.DYNAMICS}),
 }
 
 #: Ideal-gas constant in kJ/(mol K), for the RT that separates a potential
@@ -133,6 +142,8 @@ CONDENSED_PROTOCOLS: dict[str, str] = {
     "enthalpy_vaporization": "cohesive_energy_density",
     "hildebrand_solubility_parameter": "cohesive_energy_density",
     "self_diffusion_coefficient": "self_diffusion",
+    "surface_tension": "surface_tension",
+    "shear_viscosity": "shear_viscosity",
 }
 
 #: Rough wall-clock cost of each condensed protocol on this installation, in
@@ -142,6 +153,17 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
     "density": 3600.0,
     "cohesive_energy_density": 4200.0,
     "self_diffusion": 5400.0,
+    # The two pressure-tensor protocols are an order of magnitude dearer than
+    # the rest, for two different reasons. A slab has to be several times a
+    # cutoff thick before it has an interior, so its box is large before any
+    # sampling starts, and it needs a constant-pressure run first to find the
+    # density it will then be held at. A Green-Kubo integral needs the stress
+    # every ten femtoseconds rather than the volume every picosecond, and each
+    # of those samples is six single-point energies, so the finite difference
+    # rather than the dynamics sets the cost. Both measured on this
+    # installation, on 2-butanone; see docs/BENCHMARKS.md.
+    "surface_tension": 19800.0,
+    "shear_viscosity": 9000.0,
 }
 
 #: Measured systematic error of each force field in the condensed phase, as a
@@ -172,6 +194,12 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
 #: Self-diffusion is absent from both rows because neither was measured for it,
 #: and a coefficient that spans orders of magnitude is not a place to
 #: interpolate a systematic error from a density. Runs of it say so instead.
+#: Surface tension and shear viscosity are absent for the same reason and not
+#: for a weaker one: they are new, they have been measured on one compound, and
+#: one compound is a calibration set of size one. Borrowing the density's 1.2
+#: per cent for them would be worse than admitting the gap - a tension is a
+#: small difference between two large pressures and has no reason to inherit a
+#: density's accuracy. See UNMEASURED_SYSTEMATIC below.
 CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
     "opls-aa": {
         "liquid_density": 0.012,
@@ -188,6 +216,18 @@ CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
         "hildebrand_solubility_parameter": 0.15,
     },
 }
+
+
+#: Protocols whose force-field systematic error has not been measured here.
+#:
+#: A missing row in CONDENSED_SYSTEMATIC is otherwise indistinguishable from a
+#: systematic error of zero, and the difference matters: the uncertainty a run
+#: of one of these reports is sampling error only, which is a floor rather than
+#: an estimate. Naming them makes the gap assertable by a test instead of
+#: something a reader has to notice.
+UNMEASURED_SYSTEMATIC: frozenset[str] = frozenset(
+    {"self_diffusion_coefficient", "surface_tension", "shear_viscosity"}
+)
 
 
 #: How each force field is named in a prediction's method string.
@@ -275,15 +315,6 @@ NOT_VALIDATABLE_REASONS: dict[str, str] = {
     "synthetic_accessibility": (
         "synthesisability is a statement about available routes and reagents, not a "
         "physical observable; section 13 places it outside what QM or MD can establish"
-    ),
-    "shear_viscosity": (
-        "a viscosity comes from a Green-Kubo integral of the stress autocorrelation "
-        "or from non-equilibrium shear, and neither exists in this system; there is "
-        "no dynamics workflow that produces it, adequate sampling or not"
-    ),
-    "surface_tension": (
-        "surface tension requires a converged liquid-vapour interface, which needs a "
-        "periodic condensed phase larger than the available potentials support"
     ),
 }
 
@@ -1308,6 +1339,27 @@ class PhysicsValidator:
 
         temperature = spec.conditions.temperature_k or 298.15
         molecules = self.policy.condensed_molecules
+
+        if protocol in ("surface_tension", "shear_viscosity") and force_field != "opls-aa":
+            return None, (
+                f"a {protocol.replace('_', ' ')} is a component of the pressure tensor, and "
+                "MMFF94 is 26 per cent low on a density here; a tensor built from a force "
+                f"field that wrong is not worth the wall clock. OPLS-AA declined: {fallback_reason}"
+            )
+        if protocol == "surface_tension":
+            from formulate.physics.md.interface import minimum_slab_molecules
+            from rdkit.Chem import Descriptors
+
+            needed = minimum_slab_molecules(
+                float(Descriptors.MolWt(mol)), self.policy.assumed_density
+            )
+            if molecules < needed:
+                return None, (
+                    f"a slab of {molecules} molecules of this compound is under four "
+                    f"cutoffs thick, so it has two interfaces and no bulk liquid between "
+                    f"them; {needed} are needed, and the policy allows {molecules}"
+                )
+
         try:
             if protocol == "self_diffusion":
                 density = self.policy.assumed_density
@@ -1327,6 +1379,61 @@ class PhysicsValidator:
                 )
                 diagnostics = result.diagnostics
                 in_domain = abs(result.log_log_slope - 1.0) <= 0.15
+            elif protocol in ("surface_tension", "shear_viscosity"):
+                # Both are run at the density the liquid chooses for itself,
+                # not at an assumed one. A slab held at the wrong density has
+                # the wrong tension, and a viscosity is exponential in density,
+                # so the constant-pressure run in front of these is not
+                # preparation - it is part of the measurement.
+                liquid = condensed.run_npt(
+                    mol, molecules, temperature, force_field=force_field
+                )
+                caveats: tuple[str, ...] = ()
+                if protocol == "surface_tension":
+                    from formulate.physics.md import interface
+
+                    result = interface.surface_tension(
+                        mol, molecules, temperature, liquid.density_g_cm3, seed=11
+                    )
+                    value = Quantity(
+                        value=result.surface_tension_mn_m * 1e-3, unit="N/m"
+                    )
+                    uncertainty = Uncertainty(
+                        std=result.surface_tension_error * 1e-3,
+                        kind=UncertaintyKind.SAMPLING,
+                        basis=(
+                            f"block-averaged over {result.production_ps:.0f} ps of a "
+                            f"{result.box_nm[0]:.1f} x {result.box_nm[1]:.1f} x "
+                            f"{result.box_nm[2]:.1f} nm slab holding "
+                            f"{result.liquid_nm:.1f} nm of liquid"
+                        ),
+                    )
+                    # A slab's capillary-wave bias arrives as a note rather
+                    # than a diagnostic, so it reaches the reader without
+                    # marking every box this size out of domain; the
+                    # systematic term is what covers it.
+                    caveats = result.notes
+                else:
+                    result = condensed.run_shear_viscosity(
+                        mol,
+                        molecules,
+                        temperature,
+                        density_g_cm3=liquid.density_g_cm3,
+                        force_field=force_field,
+                        seed=13,
+                    )
+                    value = Quantity(value=result.viscosity_pa_s, unit="Pa*s")
+                    uncertainty = Uncertainty(
+                        std=result.error_pa_s,
+                        kind=UncertaintyKind.SAMPLING,
+                        basis=(
+                            "spread of the three independent shear components over a "
+                            f"plateau read from {result.plateau_window_ps[0]:.1f} to "
+                            f"{result.plateau_window_ps[1]:.1f} ps"
+                        ),
+                    )
+                diagnostics = liquid.diagnostics + result.diagnostics + caveats
+                in_domain = not result.diagnostics
             else:
                 liquid = condensed.run_npt(
                     mol, molecules, temperature, force_field=force_field
@@ -1411,11 +1518,11 @@ class PhysicsValidator:
                 f"OPLS-AA would have been the more accurate choice and was not used: "
                 f"{fallback_reason}",
             )
-        if protocol == "self_diffusion":
+        if target.property in UNMEASURED_SYSTEMATIC:
             notes = notes + (
-                "the force field's systematic error on a diffusion coefficient was not "
-                "measured, so the quoted uncertainty is sampling error only and is a "
-                "floor rather than an estimate",
+                f"the force field's systematic error on a {target.property.replace('_', ' ')} "
+                "was not measured here, so the quoted uncertainty is sampling error only "
+                "and is a floor rather than an estimate",
             )
 
         return (

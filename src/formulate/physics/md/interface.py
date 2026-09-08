@@ -84,6 +84,26 @@ class Slab:
         return self.box_nm[2] - self.liquid_nm
 
 
+def minimum_slab_molecules(
+    molar_mass: float,
+    density_g_cm3: float,
+    *,
+    lateral_nm: float = 3.2,
+    cutoff_nm: float = 1.2,
+) -> int:
+    """Fewest molecules whose slab still has a bulk interior between its faces.
+
+    A liquid-vapour interface is two or three molecular diameters of gradient.
+    Two of them back to back with nothing in between is not a slab with two
+    surfaces, it is a film, and its tension is not the liquid's. The threshold
+    used here is four cutoffs of liquid, which for a 1.2 nm cutoff and a 3.2 nm
+    face is a few hundred molecules - well above what a density needs, and the
+    reason a validation policy sized for a density cannot pay for a tension.
+    """
+    volume_nm3 = 4.0 * cutoff_nm * lateral_nm * lateral_nm
+    return int(math.ceil(volume_nm3 * _AVOGADRO * density_g_cm3 * 1e-21 / molar_mass))
+
+
 def pack_slab(
     mol,
     n_molecules: int,
@@ -188,7 +208,17 @@ class SurfaceTensionResult:
     box_nm: tuple[float, float, float]
     liquid_nm: float
     wall_seconds: float
+    #: Things that make this number wrong: the slab evaporated, the sampling
+    #: error swamps the mean, the run was too short. Any of them means the
+    #: result should not be used.
     diagnostics: tuple[str, ...] = ()
+    #: Things that make this number *biased by a known amount* while leaving it
+    #: usable. Kept apart from the diagnostics because a caller that treats
+    #: every caveat as a fault marks every slab out of domain: the capillary
+    #: wave truncation below is a permanent property of a box this size, not a
+    #: symptom, and its few per cent belongs in a systematic error term rather
+    #: than in a refusal.
+    notes: tuple[str, ...] = ()
 
 
 def surface_tension(
@@ -346,8 +376,9 @@ def surface_tension(
             f"{vapour_mean:.0f} of {n_molecules} molecules are in the vapour, so the "
             "slab is losing mass and its density is no longer the one it was packed at"
         )
+    notes: list[str] = []
     if lateral_nm < 4.0:
-        diagnostics.append(
+        notes.append(
             f"a {lateral_nm:.1f} nm lateral edge suppresses capillary waves longer "
             "than itself, which biases the tension low by a few per cent"
         )
@@ -369,4 +400,5 @@ def surface_tension(
         liquid_nm=slab.liquid_nm,
         wall_seconds=time.perf_counter() - started,
         diagnostics=tuple(diagnostics),
+        notes=tuple(notes),
     )

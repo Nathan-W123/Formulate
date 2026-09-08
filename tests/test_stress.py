@@ -175,3 +175,104 @@ def test_centres_of_mass_weight_by_mass_and_not_by_count():
     masses = np.array([3.0, 1.0])
     centres = centres_of_mass(positions, masses, molecule_owner(1, 2), 1)
     assert centres[0] == pytest.approx([0.25, 0.0, 0.0])
+
+
+def test_the_finite_difference_matches_the_force_based_virial_on_a_real_force_field():
+    """The pair test uses one interaction; this uses all of OPLS-AA at once.
+
+    An aperiodic cluster has a molecular virial with an exact closed form.
+    Displacing every molecule by ``eps`` times its centre of mass changes the
+    energy by ``-eps * sum_I R_I . F_I`` to first order, because the
+    displacement is affine and the force is minus the gradient - and both
+    sides of that are things OpenMM will report. It holds term by term, so it
+    checks the finite difference against bonds, angles, torsions, the
+    fourteen-scaled exclusions and the full uncut non-bonded sum together,
+    which the two-particle case cannot.
+    """
+    import openmm as mm
+    import openmm.unit as u
+
+    Chem = pytest.importorskip("rdkit.Chem")
+    from rdkit.Chem import AllChem
+
+    # Imported before foyer is reachable at all: this module installs the
+    # simtk alias that a 2021 foyer still imports under.
+    from formulate.physics.md import opls
+    from formulate.physics.md.condensed import pack_box
+    from formulate.physics.md.stress import STRAIN
+
+    if not opls.available():
+        pytest.skip("OPLS-AA is not installed")
+
+    mol = Chem.AddHs(Chem.MolFromSmiles("CCC(C)=O"))
+    AllChem.EmbedMolecule(mol, randomSeed=0xF00D)
+    AllChem.MMFFOptimizeMolecule(mol)
+    params = opls.extract_parameters(mol)
+
+    n_molecules = 8
+    box = pack_box(mol, n_molecules, 0.75, seed=5)
+    system, _ = opls.build_system(params, n_molecules, box_nm=None)
+    context = mm.Context(
+        system, mm.VerletIntegrator(1.0e-6), mm.Platform.getPlatformByName("Reference")
+    )
+    positions = box.positions - box.positions.mean(axis=0)
+    context.setPositions(positions)
+    forces = (
+        context.getState(forces=True)
+        .getForces(asNumpy=True)
+        .value_in_unit(u.kilojoule_per_mole / u.nanometer)
+    )
+
+    masses = np.array(params.masses * n_molecules)
+    owner = molecule_owner(n_molecules, params.n_atoms)
+    centres = centres_of_mass(positions, masses, owner, n_molecules)
+    molecular_force = np.zeros((n_molecules, 3))
+    np.add.at(molecular_force, owner, forces)
+
+    def energy(shift: np.ndarray) -> float:
+        context.setPositions(positions + shift)
+        return (
+            context.getState(energy=True)
+            .getPotentialEnergy()
+            .value_in_unit(u.kilojoule_per_mole)
+        )
+
+    for alpha, beta in DIAGONAL + SHEARS:
+        shift = np.zeros_like(positions)
+        shift[:, alpha] = STRAIN * centres[owner, beta]
+        derivative = (energy(shift) - energy(-shift)) / (2.0 * STRAIN)
+        exact = -float(centres[:, beta] @ molecular_force[:, alpha])
+        assert derivative == pytest.approx(exact, rel=1e-4)
+
+
+def test_the_autocorrelation_recovers_a_known_correlation_time():
+    """The estimator the Green-Kubo integral is built on, against two cases.
+
+    White noise has all its correlation at lag zero and none after it. An
+    Ornstein-Uhlenbeck process has a single exponential whose time constant
+    and whose integral are both known in advance, and the integral is what a
+    viscosity actually is.
+    """
+    from formulate.physics.md.condensed import _autocorrelation
+
+    rng = np.random.default_rng(0)
+
+    white = _autocorrelation(rng.normal(size=200_000), 5)
+    assert white[0] == pytest.approx(1.0, abs=0.02)
+    assert np.abs(white[1:]).max() < 0.02
+
+    tau, n = 20.0, 400_000
+    decay = math.exp(-1.0 / tau)
+    kick = math.sqrt(1.0 - decay * decay)
+    noise = rng.normal(size=n)
+    series = np.zeros(n)
+    for i in range(1, n):
+        series[i] = decay * series[i - 1] + kick * noise[i]
+
+    acf = _autocorrelation(series, 80)
+    lags = np.arange(80)
+    fitted = -1.0 / np.polyfit(lags[:60], np.log(acf[:60]), 1)[0]
+    assert fitted == pytest.approx(tau, rel=0.05)
+    # The integral is the correlation time, less the exponential tail beyond
+    # the window and half a step at the origin from the trapezoidal rule.
+    assert np.trapezoid(acf, lags) == pytest.approx(tau, rel=0.06)
