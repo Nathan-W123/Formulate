@@ -647,3 +647,76 @@ It is a regime, not a fibre, and every assessment carries that on it:
   An untabulated pair is refused, because the exponent carries solvent quality
   and borrowing one across solvents changes the intrinsic viscosity threefold at
   high molar mass.
+
+---
+
+## Does the filament dry before it lands?
+
+`python bench/web_shooter_drying.py`
+
+Surviving capillary break-up leaves a solution, not a fibre. Two resistances in
+series decide whether it becomes one in flight: getting vapour away from the
+surface, and getting solvent from the core to the surface.
+
+2-butanone (ρ 799 kg/m³, M 72.11 g/mol from the panel; Pₛₐₜ 12.1 kPa; Fuller
+air-side diffusivity 9.18 mm²/s against a literature ~9), 80 wt% solvent, a
+10 m shot at 20 m/s — **500 ms of flight**:
+
+| radius | D = 10⁻¹⁰ m²/s | D = 10⁻¹¹ | D = 10⁻¹² |
+|---|---|---|---|
+| 5 µm | **dry** (43 ms) | **dry** (432 ms) | skinned |
+| 20 µm | skinned (692 ms) | skinned | skinned |
+| 100 µm | skinned (17 s) | skinned | skinned |
+| 500 µm | wet | wet | wet |
+| 2.1 mm | wet | wet | wet |
+
+**Evaporation is never the problem.** It takes 1.8 ms at 5 µm and 179 ms at
+100 µm — comfortably inside the flight. Diffusion out of the core is what
+fails, and it fails by orders of magnitude, because the skin vitrifies first and
+becomes the barrier for everything behind it.
+
+The radius where diffusion just keeps up with a half-second flight:
+
+| D (m²/s) | radius | diameter |
+|---|---|---|
+| 10⁻¹⁰ | 17.0 µm | 34 µm |
+| 10⁻¹¹ | 5.4 µm | 10.8 µm |
+| 10⁻¹² | 1.7 µm | 3.4 µm |
+| 10⁻¹³ | 0.5 µm | 1.1 µm |
+
+**Spider dragline silk is 3–5 µm in diameter.** That is not a coincidence: a
+strand spun in air and expected to set before it lands has to be a few microns
+across, and a spider is at the value this calculation lands on.
+
+### The contradiction the calculation exists to produce
+
+Holding an 800 N adult at a well-drawn 58 MPa needs a **4.2 mm** strand. Drying
+in flight needs one under **11 µm**. The two requirements are 400× apart in
+diameter, and a bundle of the thin ones would need:
+
+| D (m²/s) | filaments needed |
+|---|---|
+| 10⁻¹⁰ | 15,184 |
+| 10⁻¹¹ | 151,836 |
+
+Which is, of course, what a real web is: many fine strands, not one thick one.
+A single-orifice shooter producing one monofilament cannot do both — it lands
+tacky-cored if it is thick enough to hold you, and holds ~4 N if it is thin
+enough to dry.
+
+### What this does not decide
+
+- **The diffusion coefficient is an input, not a prediction**, and it is the
+  dominant uncertainty by a wide margin. It falls four to six orders of
+  magnitude as the surface vitrifies. Nothing here estimates it, because a
+  concentration- and temperature-dependent mutual diffusivity in a vitrifying
+  polymer solution is not something a correlation over a structure supplies, and
+  inventing one would put the whole verdict on a fabricated number.
+- **The evaporation time is a lower bound.** The mass-transfer coefficient is a
+  crossflow correlation on a cylinder and the filament moves along its own axis,
+  where the boundary layer grows down the length instead of being renewed. The
+  surface is also held at saturation, which overstates the driving force once it
+  starts to dry. Both errors point the same way, which is why the conclusion
+  "evaporation is not the problem" is safe.
+- **Nothing models the moving boundary.** A real drying filament has a
+  concentration profile and a shrinking radius, not a single diffusion time.

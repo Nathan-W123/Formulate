@@ -7,6 +7,14 @@ as much as on the liquid, so these are not things a candidate *has* and they do
 not enter the property registry or the ranking.
 """
 
+from .drying import (
+    DryingAssessment,
+    DryingConditions,
+    DryingRegime,
+    assess_drying,
+    fuller_diffusion_volume,
+    fuller_diffusivity,
+)
 from .spinning import (
     MARK_HOUWINK,
     JetRegime,
@@ -21,7 +29,8 @@ from .spinning import (
 )
 
 __all__ = [
-    "MARK_HOUWINK", "JetRegime", "SpinningAssessment", "SpinningConditions",
-    "assess_jet", "deborah_number", "ohnesorge_number", "overlap_concentration",
-    "rayleigh_time", "zimm_relaxation_time",
+    "DryingAssessment", "DryingConditions", "DryingRegime", "MARK_HOUWINK", "JetRegime", "SpinningAssessment", "SpinningConditions",
+    "assess_drying", "assess_jet", "deborah_number", "ohnesorge_number", "overlap_concentration",
+    "fuller_diffusion_volume", "fuller_diffusivity", "rayleigh_time",
+    "zimm_relaxation_time",
 ]
