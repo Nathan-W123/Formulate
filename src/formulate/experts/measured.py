@@ -227,6 +227,75 @@ def measured_value(prop: str, smiles: str) -> float | None:
 #: its own name with its own measured error, which is where an estimate belongs.
 _ESTIMATED_METHOD = "JOBACK"
 
+#: How far a compiled boiling point may sit from the group estimate before the
+#: pair is treated as a disagreement rather than as scatter, in kelvin.
+#:
+#: Measured over the fifty-four catalogue structures that carry both: median
+#: gap 7.2 K, mean 16.5, ninetieth percentile 35.0. Sixty is comfortably
+#: outside the ordinary spread and catches two compounds, in both of which one
+#: of the two numbers is definitely wrong.
+#:
+#: The case that put it here is 1,6-hexanediol diacrylate, where the
+#: compilation carries 403 K and the group method 584. The compilation is
+#: quoting a boiling point measured under vacuum - the diacrylate distils at
+#: about 130 C at a few millimetres of mercury and near 300 C at one
+#: atmosphere - and nothing in the entry says so. It arrived labelled a normal
+#: boiling point with half a kelvin of uncertainty, passed a hard constraint it
+#: should have failed, and fed a Brock-Bird surface tension that came out four
+#: times too low. Gamma-butyrolactone is the other, and there the compilation
+#: is right and Joback is wrong about a lactone; the check does not claim which
+#: is which, only that they cannot both be true.
+_BOILING_DISAGREEMENT_K = 60.0
+
+#: Mean and spread of Tb/Tc over the reference set: 0.663 with a standard
+#: deviation of 0.034, fifth to ninety-fifth percentile 0.622 to 0.708.
+#:
+#: This is the tiebreaker when the compilation and the group estimate
+#: contradict each other, and it is not arbitrary - the ratio is the reduced
+#: boiling point every corresponding-states correlation is built on, and it is
+#: tightly clustered because it has to be. It settles both of the contradicted
+#: compounds in the set, in opposite directions: for the diacrylate the
+#: compilation's 0.527 is the worst outlier in fifty-eight compounds and the
+#: group estimate's 0.763 is nearer the mean, so the estimate wins; for
+#: gamma-butyrolactone the compilation's 0.654 is dead centre against the
+#: estimate's 0.494, so the compilation wins. Neither outcome was chosen by
+#: hand.
+_REDUCED_BOILING_MEAN = 0.663
+
+
+def _boiling_disagreement(smiles: str, value: float) -> tuple[float, bool] | None:
+    """The gap to the group estimate and whether the compilation still wins.
+
+    Returns ``None`` when the two agree within the ordinary spread. Otherwise
+    the size of the disagreement and a verdict from the reduced boiling point:
+    ``True`` keeps the compiled value, ``False`` says the group estimate is the
+    more plausible of the two and this expert should stand aside.
+
+    With no critical temperature there is nothing to arbitrate with, and the
+    compiled value is kept - it is right more often - but the disagreement is
+    still reported.
+    """
+    try:
+        from chemicals import Tb, Tb_methods, Tc
+
+        cas = resolve_cas(smiles)
+        if cas is None or _ESTIMATED_METHOD not in (Tb_methods(cas) or ()):
+            return None
+        estimate = Tb(cas, method=_ESTIMATED_METHOD)
+        critical = Tc(cas)
+    except Exception:
+        return None
+    if estimate is None:
+        return None
+    gap = abs(float(estimate) - value)
+    if gap <= _BOILING_DISAGREEMENT_K:
+        return None
+    if not critical:
+        return gap, True
+    compiled_ratio = abs(value / critical - _REDUCED_BOILING_MEAN)
+    estimated_ratio = abs(float(estimate) / critical - _REDUCED_BOILING_MEAN)
+    return gap, compiled_ratio <= estimated_ratio
+
 
 def _measured_transition(name: str, cas: str) -> float | None:
     """A melting or boiling point, from a compilation and never from a method."""
@@ -370,6 +439,53 @@ class MeasuredPropertyExpert(Expert):
             )
 
         _, unit, spread, basis = _LOOKUPS[prop]
+        extra: tuple[str, ...] = ()
+        if prop == "normal_boiling_point":
+            contradiction = _boiling_disagreement(smiles, value)
+            if contradiction is not None and not contradiction[1]:
+                return Prediction.unsupported(
+                    prop,
+                    self.id,
+                    f"the compiled boiling point of {value:.0f} K disagrees with the "
+                    f"group estimate by {contradiction[0]:.0f} K, and its reduced "
+                    f"boiling point is the further of the two from the 0.663 that "
+                    "every corresponding-states correlation is built on. A compiled "
+                    "entry this far out is usually a boiling point measured under "
+                    "vacuum and recorded without its pressure, so it is not offered "
+                    "as a measurement",
+                )
+            if contradiction is not None:
+                # The contradiction is settled rather than open: the reduced
+                # boiling point picked this value over the estimate. Widening
+                # it was the obvious move and the wrong one, because prefer()
+                # ranks on spread and the group method quotes a confident
+                # 12.9 K - the compilation lost to the very estimate it had
+                # just beaten. The value keeps its own uncertainty and the
+                # disagreement is carried as a note and a domain warning.
+                gap = contradiction[0]
+                domain = ApplicabilityDomain(
+                    # Full score, not a reduced one. prefer() ranks
+                    # applicability above spread, so a score of 0.7 here handed
+                    # the property straight back to the estimate this value had
+                    # just been chosen over. The contradiction is resolved; what
+                    # is left is a caveat, and a caveat belongs in a warning.
+                    in_domain=True,
+                    score=1.0,
+                    basis=(
+                        f"the compilation and the group estimate disagree by {gap:.0f} K "
+                        f"on this boiling point, against a median of 7 K over the "
+                        f"reference set; this value is the one whose reduced boiling "
+                        f"point is nearer 0.663, so it is kept"
+                    ),
+                    warnings=(
+                        "compiled and estimated boiling points disagree violently",
+                    ),
+                )
+                extra = (
+                    f"the group estimate disagrees by {gap:.0f} K and was rejected: its "
+                    "reduced boiling point is the further of the two from the 0.663 "
+                    "that corresponding states is built on",
+                )
         return self._make(
             prop,
             value,
@@ -379,7 +495,8 @@ class MeasuredPropertyExpert(Expert):
             std=spread,
             kind=UncertaintyKind.ALEATORIC,
             basis=basis,
-            notes=(
+            notes=extra
+            + (
                 "measured, not estimated",
                 f"CAS {resolve_cas(smiles)}",
             ),

@@ -88,3 +88,46 @@ def test_the_polar_term_adds_in_quadrature_not_linearly():
     assert single is not None and double is not None
     # Linear summing would put the diester's polar term above this.
     assert double[1] < single[1]
+
+
+def test_a_vacuum_boiling_point_is_not_offered_as_a_normal_one():
+    """The defect that fed a four-times-low surface tension into a design.
+
+    The compilation carries 403 K for hexanediol diacrylate, which is where it
+    distils under a few millimetres of mercury; at one atmosphere it is near
+    570. Nothing in the entry says so, and it arrived with half a kelvin of
+    stated uncertainty. What catches it is that the group estimate disagrees
+    by 181 K - against a median of 7 over the reference set - and that the
+    compiled value's reduced boiling point is the worst outlier in fifty-eight
+    compounds.
+    """
+    from formulate.experts.measured import _boiling_disagreement
+
+    verdict = _boiling_disagreement("C=CC(=O)OCCCCCCOC(=O)C=C", 403.15)
+    assert verdict is not None
+    gap, compilation_wins = verdict
+    assert gap > 150.0
+    assert not compilation_wins
+
+
+def test_the_tiebreaker_can_also_side_with_the_compilation():
+    """Gamma-butyrolactone, where the group method is the wrong one.
+
+    Both directions matter. A rule that always sided with the estimate would
+    have fixed the diacrylate and broken this, and the reduced boiling point
+    settles them oppositely without either being chosen by hand.
+    """
+    from formulate.experts.measured import _boiling_disagreement
+
+    verdict = _boiling_disagreement("O=C1CCCO1", 477.8)
+    assert verdict is not None
+    gap, compilation_wins = verdict
+    assert gap > 100.0
+    assert compilation_wins
+
+
+def test_agreeing_boiling_points_are_not_flagged_at_all():
+    from formulate.experts.measured import _boiling_disagreement
+
+    assert _boiling_disagreement("CCC(C)=O", 352.75) is None
+    assert _boiling_disagreement("Cc1ccccc1", 383.75) is None
