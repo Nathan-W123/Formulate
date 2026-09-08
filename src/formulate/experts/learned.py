@@ -68,7 +68,42 @@ from formulate.core.quantity import ApplicabilityDomain, UncertaintyKind
 
 from .base import Expert, PredictionRequest
 
-_DATA = pathlib.Path(__file__).resolve().parent.parent / "data" / "boiling_point_measurements.json"
+_DATA_DIRECTORY = pathlib.Path(__file__).resolve().parent.parent / "data"
+
+#: Property -> (data file, unit, what the incumbent manages where it applies).
+#:
+#: Both entries exist for coverage rather than accuracy, and both say so on
+#: every prediction. A melting point is the weaker of the two by some way: it is
+#: governed by crystal packing, which neither a group table nor a descriptor
+#: model represents, and Joback's own figure for it is deliberately inflated to
+#: 40 K for that reason. Learning it does not make it good; it makes it exist
+#: for the structures that would otherwise have nothing.
+LEARNABLE: dict[str, tuple[str, str, str]] = {
+    "normal_boiling_point": (
+        "boiling_point_measurements.json",
+        "K",
+        "Joback is the better estimate wherever it has groups to match, at 14.8 K "
+        "against 23.5 over the calibration set; this expert exists for the "
+        "structures it cannot type at all",
+    ),
+}
+
+#: A melting point was trained and is not shipped, recorded here so the
+#: experiment is not repeated.
+#:
+#: Twenty-six thousand measured melting points, the same forest, the same
+#: gates: held-out mean absolute error 52.0 K against Joback's measured 27.8,
+#: and the spread gate then refused four of five test molecules including
+#: toluene, which Joback answers. A melting point is set by how molecules pack
+#: in a crystal, and neither a group table nor a molecular descriptor sees a
+#: crystal. Coverage is worthless when the covered answers are twice as wrong
+#: as the ones already available and the model declines most of them anyway.
+_MELTING_POINT_REJECTED = (
+    "trained on 26226 measured values, held-out MAE 52.0 K against Joback's 27.8, "
+    "and its own spread gate declined most molecules; not shipped"
+)
+
+_DATA = _DATA_DIRECTORY / LEARNABLE["normal_boiling_point"][0]
 
 #: Trees in the forest. Three hundred is where held-out error stops improving
 #: on this set; more only costs fitting time.
@@ -105,6 +140,11 @@ _MAX_RELATIVE_SPREAD = 0.15
 _DOMAIN_QUANTILE = 0.99
 
 
+#: Largest descriptor magnitude a forest will be shown, comfortably inside the
+#: float32 range scikit-learn casts to.
+_DESCRIPTOR_LIMIT = 1.0e30
+
+
 def sklearn_available() -> bool:
     try:
         import sklearn  # noqa: F401
@@ -138,18 +178,29 @@ def featurise(smiles: str):
         return None
     calculator = MoleculeDescriptors.MolecularDescriptorCalculator(_descriptor_names())
     values = np.array(calculator.CalcDescriptors(mol), dtype=float)
-    return np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+    values = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+    # Some RDKit descriptors are finite and still unusable: Ipc grows roughly
+    # exponentially with molecule size and reaches 1e40 on the larger members of
+    # a twenty-six thousand compound set, which overflows the float32 a forest
+    # fits in. Clipping keeps the descriptor's ordering where it is meaningful
+    # and stops the tail from breaking the fit.
+    return np.clip(values, -_DESCRIPTOR_LIMIT, _DESCRIPTOR_LIMIT)
 
 
-@functools.lru_cache(maxsize=1)
-def boiling_point_model() -> dict[str, Any]:
-    """Fit the forest, or load the cached one. Deterministic given the data."""
+@functools.lru_cache(maxsize=len(LEARNABLE))
+def learned_model(prop: str = "normal_boiling_point") -> dict[str, Any]:
+    """Fit the forest for ``prop``, or load the cached one.
+
+    Deterministic given the data, so the cache key is the data's own digest: a
+    changed dataset refits rather than silently serving a model of the old one.
+    """
     import joblib
     import numpy as np
 
-    document = json.loads(_DATA.read_text())
-    digest = hashlib.sha256(_DATA.read_bytes()).hexdigest()[:16]
-    cached = _cache_directory() / f"boiling_point_{digest}.joblib"
+    path = _DATA_DIRECTORY / LEARNABLE[prop][0]
+    document = json.loads(path.read_text())
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    cached = _cache_directory() / f"{prop}_{digest}.joblib"
     if cached.exists():
         try:
             return joblib.load(cached)
@@ -195,7 +246,7 @@ def boiling_point_model() -> dict[str, Any]:
         "held_out_mae": float(np.mean(residual)),
         "held_out_coverage": float(np.mean(residual <= scale * spread)),
         "n_train": int(len(y_fit)), "n_held_out": int(len(y_test)),
-        "digest": digest,
+        "digest": digest, "property": prop,
     }
     try:
         joblib.dump(model, cached, compress=3)
@@ -204,20 +255,30 @@ def boiling_point_model() -> dict[str, Any]:
     return model
 
 
-class LearnedBoilingPointExpert(Expert):
-    """A boiling point for structures no group table covers."""
+def boiling_point_model() -> dict[str, Any]:
+    """The boiling point model, by its original name."""
+    return learned_model("normal_boiling_point")
 
-    id = "learned_boiling_point"
+
+class _LearnedExpert(Expert):
+    """One fitted property, for structures no group table covers."""
+
+    #: Set by each subclass; the property this expert answers. The base class
+    #: validates supported_properties when the subclass is created, so both are
+    #: declared there rather than derived here.
+    prop: str = ""
     version = "1"
-    method = "random forest over RDKit descriptors, fitted to measured boiling points"
     family = PropertyFamily.THERMAL
     supported_classes = frozenset({MaterialClass.MOLECULE})
-    supported_properties = frozenset({"normal_boiling_point"})
+    supported_properties: frozenset[str] = frozenset()
+
+    def _data_path(self) -> pathlib.Path:
+        return _DATA_DIRECTORY / LEARNABLE[self.prop][0]
 
     def is_available(self) -> bool:
         from formulate import chem
 
-        return sklearn_available() and chem.rdkit_available() and _DATA.exists()
+        return sklearn_available() and chem.rdkit_available() and self._data_path().exists()
 
     def unavailable_reason(self) -> str:
         from formulate import chem
@@ -226,8 +287,8 @@ class LearnedBoilingPointExpert(Expert):
             return "scikit-learn is not installed; install formulate[learned]"
         if not chem.rdkit_available():
             return "RDKit is required to compute descriptors"
-        if not _DATA.exists():
-            return "the measured boiling point data is missing from this installation"
+        if not self._data_path().exists():
+            return f"the measured {self.prop.replace('_', ' ')} data is missing"
         return ""
 
     def _software(self) -> SoftwareEnvironment:
@@ -242,7 +303,7 @@ class LearnedBoilingPointExpert(Expert):
         if features is None:
             return ApplicabilityDomain.outside("this structure could not be parsed")
 
-        model = boiling_point_model()
+        model = learned_model(self.prop)
         distance = self._distance(model, features)
         if distance > model["threshold"]:
             return ApplicabilityDomain.outside(
@@ -272,7 +333,7 @@ class LearnedBoilingPointExpert(Expert):
         if features is None:
             return Prediction.failed(prop, self.id, "this structure could not be parsed")
 
-        model = boiling_point_model()
+        model = learned_model(self.prop)
         row = features.reshape(1, -1)
         value = float(model["forest"].predict(row)[0])
         spread = float(np.std([tree.predict(row)[0] for tree in model["forest"].estimators_]))
@@ -296,7 +357,7 @@ class LearnedBoilingPointExpert(Expert):
         return self._make(
             prop,
             value,
-            "K",
+            LEARNABLE[self.prop][1],
             request,
             domain,
             std=std,
@@ -309,10 +370,18 @@ class LearnedBoilingPointExpert(Expert):
             notes=(
                 f"fitted to {model['n_train']} measured boiling points, tested on "
                 f"{model['n_held_out']} held out",
-                "Joback is the better estimate wherever it has groups to match, at 14.8 K "
-                "against 23.5 over the calibration set; this expert exists for the "
-                "structures it cannot type at all",
+                LEARNABLE[self.prop][2],
                 "training data excludes every value whose source was Joback, and excludes "
                 "the calibration compounds by InChIKey",
             ),
         )
+
+
+class LearnedBoilingPointExpert(_LearnedExpert):
+    """A boiling point for structures no group table covers."""
+
+    id = "learned_boiling_point"
+    prop = "normal_boiling_point"
+    supported_properties = frozenset({"normal_boiling_point"})
+    method = "random forest over RDKit descriptors, fitted to measured boiling points"
+
