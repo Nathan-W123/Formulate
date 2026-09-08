@@ -291,9 +291,10 @@ def build_system(
     params: OplsParameters,
     copies: int = 1,
     *,
-    box_nm: float | None = None,
+    box_nm: float | tuple[float, float, float] | None = None,
     cutoff_nm: float = 1.0,
     constrain_hydrogens: bool = True,
+    dispersion_correction: bool = True,
 ):
     """An OpenMM system for ``copies`` identical molecules under OPLS-AA.
 
@@ -303,29 +304,53 @@ def build_system(
     With no box the system is aperiodic and uncut, for an isolated-molecule
     reference. With a box it is periodic: PME for the charges, a cutoff on van
     der Waals with the analytic long-range correction that a density needs.
+    ``box_nm`` takes a single edge for a cube or three for an orthorhombic
+    cell; the minimum image convention is checked against the shortest of them.
+
+    ``dispersion_correction`` must be turned off for anything that is not a
+    uniform bulk liquid. The analytic correction integrates the tail of the
+    van der Waals interaction assuming the pair distribution has reached its
+    bulk value of one beyond the cutoff and stays there for the whole box. A
+    slab with two liquid-vacuum interfaces violates that everywhere outside
+    the liquid, and the correction then adds an isotropic pressure that is not
+    only wrong in size but, being isotropic, cancels exactly out of the
+    quantity a surface tension is made of - so it corrupts the density it is
+    computed from while leaving no trace in the tension itself.
 
     OPLS-AA mixes van der Waals parameters geometrically, not by the
     Lorentz-Berthelot rule an OpenMM ``NonbondedForce`` implements. ParmEd
     honours that by moving the whole van der Waals part into a
-    ``CustomNonbondedForce``, which is why the returned system carries one.
+    ``CustomNonbondedForce``, which is why the returned system carries one -
+    and why the correction has to be switched off on both force objects.
     """
+    import openmm as mm
     from openmm import app
     from openmm import unit as u
 
-    if box_nm is not None and cutoff_nm * 2.0 >= box_nm:
+    edges_nm: tuple[float, float, float] | None
+    if box_nm is None:
+        edges_nm = None
+    elif isinstance(box_nm, (int, float)):
+        edges_nm = (float(box_nm),) * 3
+    else:
+        edges_nm = tuple(float(edge) for edge in box_nm)
+        if len(edges_nm) != 3:
+            raise ValueError("box_nm takes one edge for a cube or three for a box")
+
+    if edges_nm is not None and cutoff_nm * 2.0 >= min(edges_nm):
         raise ValueError(
-            f"a {cutoff_nm:.2f} nm cutoff does not fit in a {box_nm:.2f} nm box: the "
-            "minimum image convention needs the box to exceed twice the cutoff"
+            f"a {cutoff_nm:.2f} nm cutoff does not fit in a "
+            f"{min(edges_nm):.2f} nm box edge: the minimum image convention needs "
+            "every edge to exceed twice the cutoff"
         )
 
     structure = params.structure * copies if copies != 1 else params.structure
     structure.combining_rule = params.structure.combining_rule
-    if box_nm is not None:
-        edge = box_nm * 10.0
-        structure.box = [edge, edge, edge, 90.0, 90.0, 90.0]
+    if edges_nm is not None:
+        structure.box = [edge * 10.0 for edge in edges_nm] + [90.0, 90.0, 90.0]
 
     constraints = app.HBonds if constrain_hydrogens else None
-    if box_nm is None:
+    if edges_nm is None:
         system = structure.createSystem(
             nonbondedMethod=app.NoCutoff, constraints=constraints, rigidWater=False
         )
@@ -336,4 +361,10 @@ def build_system(
             constraints=constraints,
             rigidWater=False,
         )
+        if not dispersion_correction:
+            for force in system.getForces():
+                if isinstance(force, mm.NonbondedForce):
+                    force.setUseDispersionCorrection(False)
+                elif isinstance(force, mm.CustomNonbondedForce):
+                    force.setUseLongRangeCorrection(False)
     return system, structure

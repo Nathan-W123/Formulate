@@ -723,3 +723,215 @@ def run_self_diffusion(
         wall_seconds=time.perf_counter() - started,
         diagnostics=tuple(diagnostics),
     )
+
+
+# --------------------------------------------------------------------------
+# Shear viscosity
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ViscosityResult:
+    """Shear viscosity from the Green-Kubo integral, and how flat its plateau is."""
+
+    viscosity_pa_s: float
+    #: Spread across the three independent shear components, which are three
+    #: statistically independent estimates of the same number.
+    error_pa_s: float
+    #: Where the running integral was read, picoseconds.
+    plateau_window_ps: tuple[float, float]
+    #: Fractional drift of the running integral across that window. A Green-Kubo
+    #: integral that has converged is flat; one that is still climbing is a
+    #: lower bound, and this says which it was.
+    plateau_drift: float
+    #: Decay time of the stress autocorrelation, picoseconds.
+    correlation_time_ps: float
+    #: Root mean square of the instantaneous shear stress, bar.
+    stress_rms_bar: float
+    sampled_ps: float
+    n_molecules: int
+    wall_seconds: float
+    diagnostics: tuple[str, ...] = ()
+
+
+def _autocorrelation(series: np.ndarray, max_lag: int) -> np.ndarray:
+    """Unbiased autocorrelation of a single stress component, by FFT."""
+    n = series.size
+    padded = np.zeros(2 * n)
+    padded[:n] = series - 0.0  # the mean shear stress is zero by symmetry
+    spectrum = np.fft.rfft(padded)
+    correlation = np.fft.irfft(spectrum * np.conjugate(spectrum))[:max_lag]
+    return correlation / (n - np.arange(max_lag))
+
+
+def run_shear_viscosity(
+    mol,
+    n_molecules: int,
+    temperature_k: float,
+    *,
+    density_g_cm3: float,
+    equilibration_ps: float = 100.0,
+    production_ps: float = 200.0,
+    stress_interval_fs: float = 10.0,
+    correlation_ps: float = 4.0,
+    timestep_fs: float = 2.0,
+    cutoff_nm: float = 1.0,
+    seed: int = 0,
+    platform: str = "CPU",
+    force_field: str = "opls-aa",
+) -> ViscosityResult:
+    """Shear viscosity from the stress autocorrelation of a periodic box.
+
+        eta = (V / kT) * integral over t of <sigma_xy(0) sigma_xy(t)>
+
+    averaged over the three independent off-diagonal components, which
+    :mod:`stress` obtains by finite difference because OpenMM publishes no
+    pressure tensor.
+
+    This is the expensive protocol in the package and the reason is structural
+    rather than incidental. A density needs the volume once a picosecond; a
+    Green-Kubo integral needs the stress every few femtoseconds, because the
+    autocorrelation it integrates loses most of its amplitude within a hundred,
+    and each of those samples costs two single-point energies per component.
+    The finite difference, not the dynamics, is what the wall clock goes on.
+
+    Constant volume: the stress tensor of a box whose volume is being moved by
+    a barostat is not the stress tensor of the liquid at that density.
+    """
+    import time
+
+    import openmm as mm
+    import openmm.unit as u
+
+    from .stress import (
+        KJ_PER_MOL_NM3_IN_PA,
+        SHEARS,
+        centres_of_mass,
+        configurational_stress,
+        molecule_owner,
+    )
+
+    prepared = _prepare(mol, force_field)
+    needed = minimum_molecules(sum(prepared.masses), density_g_cm3, cutoff_nm)
+    if n_molecules < needed:
+        raise ValueError(f"at least {needed} molecules are needed for a {cutoff_nm} nm cutoff")
+
+    steps_per_sample = stress_interval_fs / timestep_fs
+    if abs(steps_per_sample - round(steps_per_sample)) > 1e-9 or steps_per_sample < 1:
+        raise ValueError(
+            f"a {stress_interval_fs:.1f} fs stress interval is not a whole number of "
+            f"{timestep_fs:.1f} fs steps"
+        )
+    steps_per_sample = int(round(steps_per_sample))
+
+    box = pack_box(mol, n_molecules, density_g_cm3, seed=seed, expansion=1.0)
+    system = prepared.system(n_molecules, box_nm=box.edge_nm, cutoff_nm=cutoff_nm)
+    integrator = mm.LangevinMiddleIntegrator(
+        temperature_k * u.kelvin, 1.0 / u.picosecond, timestep_fs * u.femtosecond
+    )
+    integrator.setRandomNumberSeed(seed)
+    context = mm.Context(system, integrator, mm.Platform.getPlatformByName(platform))
+    context.setPositions(box.positions)
+
+    started = time.perf_counter()
+    mm.LocalEnergyMinimizer.minimize(context, tolerance=10.0, maxIterations=2000)
+    context.setVelocitiesToTemperature(temperature_k * u.kelvin, seed)
+    integrator.step(int(equilibration_ps * 1000.0 / timestep_fs))
+
+    masses = np.array(prepared.masses * n_molecules)
+    owner = molecule_owner(n_molecules, prepared.n_atoms)
+    edge = box.edge_nm
+    volume_nm3 = edge**3
+    vectors = np.diag([edge, edge, edge])
+
+    # The kinetic term is dropped from the off-diagonal stress on purpose. Its
+    # correlation decays within a few femtoseconds - it is the free flight of
+    # the molecules between collisions - and at the sampling interval this
+    # protocol can afford it is aliased rather than resolved. For a liquid well
+    # below its critical point it carries under a per cent of the integral;
+    # including it badly sampled is worse than leaving it out knowingly.
+    n_samples = int(production_ps * 1000.0 / stress_interval_fs)
+    stress = np.zeros((n_samples, len(SHEARS)))
+    for index in range(n_samples):
+        integrator.step(steps_per_sample)
+        positions = (
+            context.getState(positions=True, enforcePeriodicBox=False)
+            .getPositions(asNumpy=True)
+            .value_in_unit(u.nanometer)
+        )
+        centres = centres_of_mass(positions, masses, owner, n_molecules)
+        stress[index] = configurational_stress(
+            context, positions, vectors, centres, owner, volume_nm3, SHEARS
+        )
+    stress *= KJ_PER_MOL_NM3_IN_PA  # to pascals
+
+    dt_ps = stress_interval_fs / 1000.0
+    max_lag = max(4, int(correlation_ps / dt_ps))
+    if max_lag > n_samples // 2:
+        max_lag = n_samples // 2
+
+    boltzmann = 1.380649e-23
+    prefactor = (volume_nm3 * 1e-27) / (boltzmann * temperature_k)
+    lags = np.arange(max_lag) * dt_ps
+
+    integrals = []
+    correlations = []
+    for component in range(len(SHEARS)):
+        acf = _autocorrelation(stress[:, component], max_lag)
+        correlations.append(acf)
+        # Trapezoidal running integral, picoseconds to seconds.
+        running = np.concatenate(([0.0], np.cumsum((acf[1:] + acf[:-1]) * 0.5 * dt_ps)))
+        integrals.append(running * prefactor * 1e-12)
+    integrals = np.array(integrals)
+    mean_acf = np.mean(correlations, axis=0)
+
+    # Read the plateau over the last third of the correlation window, which is
+    # far enough out that the fast collisional decay is finished and near
+    # enough in that the tail's own noise has not taken over.
+    plateau = slice(int(max_lag * 2 // 3), max_lag)
+    per_component = integrals[:, plateau].mean(axis=1)
+    viscosity = float(per_component.mean())
+    error = float(per_component.std(ddof=1) / math.sqrt(len(SHEARS)))
+
+    window = integrals.mean(axis=0)[plateau]
+    drift = float(
+        np.polyfit(np.arange(window.size), window, 1)[0] * window.size / max(abs(viscosity), 1e-30)
+    )
+
+    positive = mean_acf > 0
+    decay = float(
+        lags[np.argmax(mean_acf < mean_acf[0] / math.e)] if np.any(~positive) else lags[-1]
+    )
+
+    diagnostics: list[str] = []
+    if abs(drift) > 0.2:
+        diagnostics.append(
+            f"the running integral drifts by {drift * 100:+.0f} per cent across the "
+            "plateau window, so it has not converged and this is a lower bound rather "
+            "than a viscosity"
+        )
+    if error > 0.25 * abs(viscosity):
+        diagnostics.append(
+            f"the three shear components disagree by {error / abs(viscosity) * 100:.0f} "
+            "per cent of the mean; more sampling is needed before a force field error "
+            "can be told from noise"
+        )
+    if decay > correlation_ps / 3.0:
+        diagnostics.append(
+            f"the stress correlation is still {decay:.2f} ps wide against a "
+            f"{correlation_ps:.1f} ps window, so the integral is being cut off before "
+            "the tail has decayed"
+        )
+
+    return ViscosityResult(
+        viscosity_pa_s=viscosity,
+        error_pa_s=error,
+        plateau_window_ps=(float(lags[plateau.start]), float(lags[max_lag - 1])),
+        plateau_drift=drift,
+        correlation_time_ps=decay,
+        stress_rms_bar=float(np.sqrt(np.mean(stress**2)) / 1e5),
+        sampled_ps=production_ps,
+        n_molecules=n_molecules,
+        wall_seconds=time.perf_counter() - started,
+        diagnostics=tuple(diagnostics),
+    )
