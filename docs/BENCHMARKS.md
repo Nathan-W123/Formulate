@@ -206,3 +206,74 @@ more work than intended and the tighter number would be the honest one.
   recovery experiment needs a reference set of polymers or mixtures first.
 - **More than one seed.** Discovery is a stochastic search and 1 of 4 on one
   seed is an observation, not a rate.
+
+---
+
+## QM/MM embedding
+
+`python -m pytest tests/test_qmmm.py` — the physical checks are marked slow and
+need PySCF.
+
+The plumbing is easy to get wrong in ways that still return numbers, so the
+embedding is checked against electrostatics rather than against itself. A
+neutral water molecule (HF/6-31G) with a +1 point charge on its dipole axis:
+
+| what | expected | measured |
+|---|---|---|
+| falls off as a charge–dipole interaction | E(8 Å)/E(16 Å) = 4 | **4.05** |
+| decays toward zero with distance | → 0 | −31.8, −7.8, −1.9, −0.5 kJ/mol at 5, 10, 20, 40 Å |
+| reverses sign with the charge | +1 e negative, −1 e positive | −50.4 and +46.8 kJ/mol at 4 Å |
+| the residue after cancelling sign is induction | always stabilising | −3.60 kJ/mol at 4 Å, −0.71 at 6 Å |
+
+The last row is the sharpest: induction is second order in the field, so it
+survives when the first-order term cancels, and it must be negative at every
+distance and shrink faster than the first-order term. It does.
+
+A worked partition — 1-hexanol with the alcohol end quantum and the hexyl tail
+classical, cutting one C–C single bond:
+
+```
+9 quantum atoms (1 of them capping), 13 classical, electrostatic embedding
+MM net charge +0.0000 e
+  link atom capping the bond from QM atom 4 to MM atom 3,
+  placed at 0.712 of the bond length; -0.1200 e shifted off the frontier atom
+QM/MM HF/sto-3g: E = -152.12894385 Hartree
+electrostatic embedding contributes +1.67 kJ/mol
+```
+
+The MM net charge is zero after the shift, which is the point of shifting
+rather than deleting the frontier charge.
+
+### What is refused
+
+Each of these otherwise returns a number, so all six raise:
+
+| partition | why |
+|---|---|
+| cuts a multiple bond | one hydrogen cannot cap it, and capping it changes the bond order of the atom that keeps it |
+| cuts into an aromatic system | a capping hydrogen does not restore the delocalisation |
+| cuts a ring | needs two link atoms and leaves the ring open in the QM region |
+| cuts a polar bond | a link atom has to imitate a charge distribution it does not reproduce |
+| separates a hydrogen from its heavy atom | the link atom would cap where a hydrogen already was |
+| asks for polarizable embedding | see the blocker below |
+
+The checks run most-specific first. An earlier ordering tested bond order
+before aromaticity, and since RDKit types an aromatic bond as AROMATIC rather
+than SINGLE, every cut into a benzene ring was refused with "one hydrogen
+cannot cap it" — true about the bond order and silent about the thing that
+actually makes the partition wrong.
+
+### The blocker
+
+Polarizable embedding, where the MM region responds to the QM density rather
+than only acting on it, is not implemented and cannot be with what is
+installed. It needs MM polarizabilities — a Drude or AMOEBA-style force field —
+and OPLS-AA, the only force field wired up here, is fixed-charge and has none.
+This PySCF build ships no polarizable-embedding driver either.
+`EmbeddingMode.POLARIZABLE` exists and refuses, naming both halves, rather than
+being silently absent. `QMMMCalculator.capabilities()` reports it too, so a
+caller can check before building a partition.
+
+Gradients are also not implemented: PySCF exposes `qmmm.add_mm_charges_grad`,
+but nothing here consumes QM/MM forces, and an untested gradient path would be
+a capability claim with no evidence behind it.

@@ -9,6 +9,15 @@ integrate established open packages and contribute the candidate preparation,
 protocol, uncertainty and provenance handling around them.
 """
 
+from .qmmm import (
+    EmbeddingMode,
+    LinkAtom,
+    QMMMCalculator,
+    QMMMRegion,
+    QMMMResult,
+    UnsupportedPartition,
+    partition,
+)
 from .backends import (
     BackendCapability,
     BackendKind,
@@ -20,6 +29,8 @@ from .backends import (
 )
 
 __all__ = [
-    "BackendCapability", "BackendKind", "available_backends", "describe",
-    "get_backend_capability", "periodic_backends", "probe_backends",
+    "BackendCapability", "BackendKind", "EmbeddingMode", "LinkAtom", "QMMMCalculator",
+    "QMMMRegion", "QMMMResult", "UnsupportedPartition", "available_backends",
+    "describe", "get_backend_capability", "partition", "periodic_backends",
+    "probe_backends",
 ]

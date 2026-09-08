@@ -177,8 +177,36 @@ complex is relaxed rather than searched — stated on every value.
 
 **Not done.**
 
-- **QM/MM embedding** (section 8). Not started.
 - **The optional minimal Hartree-Fock teaching backend** of section 7.
+- **Polarizable QM/MM embedding**, with a concrete blocker rather than an
+  absence: it needs MM polarizabilities, the only force field wired up here is
+  OPLS-AA, which is fixed-charge and has none, and this PySCF build ships no
+  polarizable-embedding driver. `EmbeddingMode.POLARIZABLE` exists and refuses,
+  naming both halves.
+
+**QM/MM** is done for the two embedding modes that can be done correctly.
+`physics/qmmm.py` partitions a molecule into a quantum region and a classical
+one, caps the bonds the boundary cuts with link atoms placed along the original
+bond vector at the C-H/C-C length ratio, and shifts the frontier MM charge onto
+the remaining classical atoms rather than leaving a full atomic charge a bond
+length under the hydrogen representing it. Charges come from OPLS-AA through
+foyer, which refuses molecules it has no parameters for, so a charge here is a
+published force-field charge rather than one assigned in this repository.
+Electrostatic embedding puts the MM charges into the QM one-electron
+Hamiltonian through PySCF; mechanical embedding does not, and says so rather
+than reporting a shift that did not happen.
+
+Six partitions are refused outright, each of which otherwise returns a number:
+cutting a multiple bond, cutting into an aromatic system, cutting a ring,
+cutting a polar bond, separating a hydrogen from its own heavy atom, and asking
+for polarizable embedding. The refusals are ordered most-specific first, so an
+aromatic cut is refused for the delocalisation rather than for the bond order.
+
+Validated on physics rather than plumbing: a point charge on water's dipole
+axis gives an energy shift that falls as 1/r^2 (measured ratio 4.05 on doubling
+the distance), reverses sign with the charge, and leaves a negative residue
+when the two signs are summed, which is the induction term and is always
+stabilising.
 
 **The section 8 multi-fidelity layer** is done, and measuring it inverted it.
 `physics/potentials.py` wraps MACE-OFF23 behind a model-agnostic interface that
