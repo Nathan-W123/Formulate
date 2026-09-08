@@ -20,6 +20,12 @@ from .learned import LearnedBoilingPointExpert, LearnedRefractiveIndexExpert
 from .lipophilicity import CrippenLipophilicityExpert
 from .measured import MeasuredPropertyExpert
 from .optical import LorentzLorenzExpert
+from .rheology import (
+    CorrespondingStatesViscosityExpert,
+    JobackViscosityExpert,
+    MeasuredViscosityExpert,
+    TroutonExtensionalExpert,
+)
 from .mechanical import PolymerMechanicalExpert
 from .mixture import MixtureExpert
 from .polymer import PolymerDensityExpert, PolymerGlassTransitionExpert
@@ -54,6 +60,10 @@ PHASE4_EXPERTS = (
     LearnedBoilingPointExpert,
     LearnedRefractiveIndexExpert,
     LorentzLorenzExpert,
+    MeasuredViscosityExpert,
+    JobackViscosityExpert,
+    CorrespondingStatesViscosityExpert,
+    TroutonExtensionalExpert,
     DissolutionExpert,
     AdhesionExpert,
     UNIFACActivityExpert,
@@ -76,7 +86,9 @@ def default_registry() -> ExpertRegistry:
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
     "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert",
+    "CorrespondingStatesViscosityExpert", "JobackViscosityExpert",
     "LearnedBoilingPointExpert", "LearnedRefractiveIndexExpert", "LorentzLorenzExpert",
+    "MeasuredViscosityExpert", "TroutonExtensionalExpert",
     "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",

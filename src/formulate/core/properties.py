@@ -228,6 +228,16 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             bounds=(0.0, None),
         ),
         _p(
+            "extensional_viscosity",
+            "Pa*s",
+            _I,
+            "Uniaxial extensional (Trouton) viscosity. For a Newtonian liquid this is "
+            "exactly three times the shear viscosity; for a polymer solution it is a "
+            "function of strain rate and strain history rather than a single number.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
             "cohesive_energy_density",
             "J/m^3",
             _I,

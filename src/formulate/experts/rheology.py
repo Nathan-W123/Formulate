@@ -1,0 +1,519 @@
+"""Shear and extensional viscosity.
+
+``shear_viscosity`` has been in the property registry since Phase 1 with
+nothing behind it, and section 6 records why physics cannot supply it: a
+viscosity comes from a Green-Kubo integral of the stress autocorrelation or
+from non-equilibrium shear, and this system runs neither. That left it
+uncovered from both directions, which is what this module fixes - from the
+correlation side, where it was always reachable.
+
+Three routes to a shear viscosity, in the order they should be believed:
+
+**Measured**, from the DIPPR and VDI compilations already installed. Restricted
+to data methods, for the same reason the density route is: ``thermo`` will drop
+through to Letsou-Stiel or Joback without saying so, and a "measured" expert
+that is quietly an estimator is worse than no measured expert at all.
+
+**Joback group contribution**, which is the better estimator wherever it can
+type a molecule: log10 mean absolute error 0.108 over 195 of 273 compounds with
+a measured viscosity, a typical factor of 1.17 and 93 per cent inside a factor
+of two.
+
+**Letsou-Stiel corresponding states**, which answers everything and is much
+weaker: log10 mean absolute error 0.296 held out, a typical factor of 1.6 and
+66 per cent inside a factor of two.
+
+None of the three has precedence written into it. Each states its own spread
+and ``prefer()`` chooses, exactly as it does between the two refractive index
+routes.
+
+Extensional viscosity is a different kind of claim and is treated as one. For
+an incompressible Newtonian liquid in uniaxial extension the Trouton ratio is
+exactly three - that is a result, not a correlation, and it carries no error of
+its own beyond the shear viscosity it is built from. For a polymer solution it
+is false: the extensional viscosity rises by orders of magnitude as chains
+stretch, depends on strain rate and on strain history, and is not a single
+number. So :class:`TroutonExtensionalExpert` answers for a liquid and refuses
+for a polymer, rather than returning three times something and letting the
+caller assume it means what it says.
+"""
+
+from __future__ import annotations
+
+import math
+
+from formulate.core.candidate import Candidate, MaterialClass
+from formulate.core.prediction import Prediction, PredictionStatus
+from formulate.core.properties import PropertyFamily
+from formulate.core.provenance import ProvenanceKind, ProvenanceRecord
+from formulate.core.quantity import ApplicabilityDomain, Quantity, Uncertainty, UncertaintyKind
+
+from .base import Expert, PredictionRequest
+
+#: Exact for an incompressible Newtonian fluid in uniaxial extension.
+TROUTON_RATIO = 3.0
+
+#: Nothing liquid at ambient conditions sits outside this, and a correlation
+#: evaluated out of range does. ``VISWANATH_NATARAJAN_2E`` returns 7470 Pa s for
+#: 2-butanone, which is seven orders of magnitude high and looks like a number.
+#:
+#: The upper bound is a hundred pascal-seconds. The most viscous pure
+#: small-molecule liquid at ambient is around glycerol at 1.4, so this leaves
+#: nearly two orders of magnitude of headroom and still rejects the 7470 by a
+#: factor of seventy-five. A first attempt used ten thousand, which is a number
+#: a molten polymer can reach and let the bad value straight through - this
+#: expert answers for small-molecule liquids and the bound should say so.
+#: The lower bound sits below any real liquid: pentane and diethyl ether are the
+#: least viscous common ones at about 2e-4.
+_PLAUSIBLE_RANGE = (1e-6, 1e2)
+
+#: ``thermo`` viscosity methods that carry tabulated data or a fitted reference
+#: correlation, as opposed to predicting from structure. The two estimating
+#: methods are deliberately absent: this panel has its own routes to both, and
+#: reaching them through a "measured" expert would hide which one answered.
+_MEASURED_VISCOSITY_METHODS = ("DIPPR_PERRY_8E", "VDI_PPDS")
+
+#: log10 mean absolute error of each estimator against 273 compounds with a
+#: measured liquid viscosity at 298 K, from ``bench/viscosity_routes.py``.
+_JOBACK_LOG10_MAE = 0.108
+_LETSOU_STIEL_LOG10_MAE = 0.296
+
+#: Letsou-Stiel under-predicts these liquids by a consistent factor. The offset
+#: is fitted on half the compounds, split deterministically on a hash of the
+#: structure, and the figure above is measured on the other half. It removes the
+#: bias (-0.352 to -0.028 on the held-out split) and barely touches the spread,
+#: which is the honest summary: the method's problem is scatter, and only its
+#: offset is correctable.
+_LETSOU_STIEL_OFFSET = -0.3243
+
+#: Natural log of ten, for turning a log10 spread into a relative one.
+_LN10 = math.log(10.0)
+
+
+def _multiplicative_uncertainty(
+    value: float, log10_mae: float, basis: str
+) -> Uncertainty:
+    """A spread for a quantity whose error is a factor rather than an amount.
+
+    A viscosity that is wrong by a factor of two is wrong by 0.5 mPa s at one
+    millipascal-second and by 50 Pa s at a hundred, so a single absolute spread
+    describes neither. ``std`` carries the local linear equivalent because the
+    ranking needs one number, and the confidence interval carries the factor
+    itself, which is the honest shape.
+    """
+    sigma_log10 = 1.253 * log10_mae
+    factor = 10.0**sigma_log10
+    return Uncertainty(
+        std=value * _LN10 * sigma_log10,
+        ci_low=value / factor,
+        ci_high=value * factor,
+        kind=UncertaintyKind.EPISTEMIC,
+        basis=(
+            f"{basis}; the error is multiplicative, so one sigma is a factor of "
+            f"{factor:.2f} rather than a fixed amount, and the interval carries that "
+            "while std carries its local linear equivalent"
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# The correlations themselves
+# ---------------------------------------------------------------------------
+
+
+def joback_viscosity(smiles: str, temperature: float) -> float | None:
+    """Liquid viscosity in Pa s from Joback's group contribution, or None."""
+    try:
+        from thermo.group_contribution import Joback
+
+        value = Joback(smiles).mul(temperature)
+    except Exception:
+        return None
+    if value is None or not _PLAUSIBLE_RANGE[0] < value < _PLAUSIBLE_RANGE[1]:
+        return None
+    return float(value)
+
+
+def letsou_stiel_viscosity(
+    temperature: float,
+    molar_mass_g_mol: float,
+    critical_temperature: float,
+    critical_pressure: float,
+    acentric_factor: float,
+    *,
+    corrected: bool = True,
+) -> float | None:
+    """Liquid viscosity in Pa s from Letsou-Stiel corresponding states.
+
+    ``corrected`` applies the fitted offset above. Passing False gives the
+    correlation as published, which is what the benchmark compares against.
+    """
+    from chemicals.viscosity import Letsou_Stiel
+
+    if temperature >= critical_temperature:
+        return None
+    try:
+        value = Letsou_Stiel(
+            temperature,
+            molar_mass_g_mol,
+            critical_temperature,
+            critical_pressure,
+            acentric_factor,
+        )
+    except Exception:
+        return None
+    if value is None or not _PLAUSIBLE_RANGE[0] < value < _PLAUSIBLE_RANGE[1]:
+        return None
+    if corrected:
+        value = value * 10.0 ** (-_LETSOU_STIEL_OFFSET)
+    return float(value)
+
+
+def acentric_factor(
+    boiling_point: float, critical_temperature: float, critical_pressure: float
+) -> float | None:
+    """Lee-Kesler acentric factor from constants the panel already produces."""
+    from chemicals.acentric import LK_omega
+
+    try:
+        value = LK_omega(boiling_point, critical_temperature, critical_pressure)
+    except Exception:
+        return None
+    return None if value is None else float(value)
+
+
+# ---------------------------------------------------------------------------
+# Experts
+# ---------------------------------------------------------------------------
+
+
+class _ViscosityExpert(Expert):
+    """Shared plumbing: a liquid, at a stated temperature, in the liquid range."""
+
+    family = PropertyFamily.INTERFACIAL
+    supported_classes = frozenset({MaterialClass.MOLECULE})
+    supported_properties = frozenset({"shear_viscosity"})
+
+    def is_available(self) -> bool:
+        from formulate import chem
+
+        return chem.rdkit_available()
+
+    def unavailable_reason(self) -> str:
+        return "" if self.is_available() else "RDKit is required to read the structure"
+
+    def _liquid_at(self, request: PredictionRequest) -> tuple[str, float] | Prediction:
+        """The structure and temperature, or the refusal that stands in for them."""
+        prop = "shear_viscosity"
+        if request.candidate.molecule is None:
+            return Prediction.unsupported(prop, self.id, "needs a single molecule")
+        temperature = request.conditions.temperature_k
+        if temperature is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "a liquid viscosity changes by a factor of two over twenty degrees and "
+                "no temperature was given",
+            )
+        smiles = request.candidate.molecule.smiles
+        from .measured import not_liquid_at
+
+        wrong_phase = not_liquid_at(smiles, temperature)
+        if wrong_phase:
+            return Prediction.unsupported(prop, self.id, wrong_phase)
+        return smiles, temperature
+
+    def _emit(
+        self,
+        value: float,
+        uncertainty: Uncertainty,
+        method: str,
+        request: PredictionRequest,
+        domain: ApplicabilityDomain,
+        notes: tuple[str, ...] = (),
+    ) -> Prediction:
+        return Prediction(
+            property="shear_viscosity",
+            quantity=Quantity(value=value, unit="Pa*s"),
+            uncertainty=uncertainty,
+            applicability=domain,
+            status=PredictionStatus.OK,
+            expert_id=self.id,
+            expert_version=self.version,
+            method=method,
+            conditions=request.conditions,
+            provenance=ProvenanceRecord(
+                kind=ProvenanceKind.PREDICTION,
+                producer=self.id,
+                producer_version=self.version,
+                parameters={"temperature_k": request.conditions.temperature_k},
+            ),
+            notes=notes,
+        )
+
+
+class MeasuredViscosityExpert(_ViscosityExpert):
+    """Liquid viscosity from a compilation, where one exists."""
+
+    id = "viscosity_measured"
+    version = "1"
+
+    def _predict_one(self, prop, request, domain) -> Prediction | None:
+        ready = self._liquid_at(request)
+        if isinstance(ready, Prediction):
+            return ready
+        smiles, temperature = ready
+
+        from .hansen import resolve_cas
+
+        cas = resolve_cas(smiles)
+        if cas is None:
+            return Prediction.unsupported(
+                prop, self.id, "no CAS number resolves for this structure"
+            )
+        value = _measured_viscosity(cas, temperature)
+        if value is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "no tabulated viscosity covers this compound at this temperature; the "
+                "estimating routes are separate experts and are not reached from here",
+            )
+        return self._emit(
+            value,
+            Uncertainty(
+                # Compilations of a measured liquid viscosity agree with each
+                # other to a few per cent; the DIPPR and VDI correlations for
+                # 2-butanone differ by 0.2 per cent at 298 K.
+                std=value * 0.03,
+                kind=UncertaintyKind.EPISTEMIC,
+                basis=(
+                    "spread between the DIPPR and VDI compilations for a measured "
+                    "liquid viscosity, about three per cent"
+                ),
+            ),
+            "tabulated liquid viscosity (DIPPR 8E / VDI)",
+            request,
+            domain,
+            notes=("measured, not estimated",),
+        )
+
+
+class JobackViscosityExpert(_ViscosityExpert):
+    """Group contribution, the better estimator where it can type the molecule."""
+
+    id = "viscosity_joback"
+    version = "1"
+
+    def _predict_one(self, prop, request, domain) -> Prediction | None:
+        ready = self._liquid_at(request)
+        if isinstance(ready, Prediction):
+            return ready
+        smiles, temperature = ready
+
+        value = joback_viscosity(smiles, temperature)
+        if value is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "Joback has no viscosity groups matching this structure, or the result "
+                "fell outside the range any liquid occupies",
+            )
+        return self._emit(
+            value,
+            _multiplicative_uncertainty(
+                value,
+                _JOBACK_LOG10_MAE,
+                "Joback group contribution against 195 compounds with a measured "
+                "liquid viscosity at 298 K, log10 mean absolute error 0.108",
+            ),
+            "Joback group contribution",
+            request,
+            domain,
+        )
+
+
+class CorrespondingStatesViscosityExpert(_ViscosityExpert):
+    """Letsou-Stiel, which answers everything and is much weaker."""
+
+    id = "viscosity_corresponding_states"
+    version = "1"
+    dependencies = frozenset(
+        {"critical_temperature", "critical_pressure", "normal_boiling_point", "molar_mass"}
+    )
+
+    def _predict_one(self, prop, request, domain) -> Prediction | None:
+        ready = self._liquid_at(request)
+        if isinstance(ready, Prediction):
+            return ready
+        _, temperature = ready
+
+        needed = {}
+        for name, unit in (
+            ("critical_temperature", "K"),
+            ("critical_pressure", "Pa"),
+            ("normal_boiling_point", "K"),
+            ("molar_mass", "g/mol"),
+        ):
+            upstream = request.dependency(name)
+            if upstream is None or upstream.quantity is None:
+                return Prediction.unsupported(
+                    prop,
+                    self.id,
+                    f"needs {name} from an upstream expert, and none was available",
+                )
+            needed[name] = upstream.quantity.to(unit).value
+
+        omega = acentric_factor(
+            needed["normal_boiling_point"],
+            needed["critical_temperature"],
+            needed["critical_pressure"],
+        )
+        if omega is None:
+            return Prediction.failed(
+                prop, self.id, "the Lee-Kesler acentric factor could not be formed"
+            )
+        value = letsou_stiel_viscosity(
+            temperature,
+            needed["molar_mass"],
+            needed["critical_temperature"],
+            needed["critical_pressure"],
+            omega,
+        )
+        if value is None:
+            return Prediction.failed(
+                prop,
+                self.id,
+                "Letsou-Stiel returned nothing usable at this temperature",
+            )
+        return self._emit(
+            value,
+            _multiplicative_uncertainty(
+                value,
+                _LETSOU_STIEL_LOG10_MAE,
+                "Letsou-Stiel with a fitted offset, measured on 131 compounds held out "
+                "of that fit, log10 mean absolute error 0.296",
+            ),
+            "Letsou-Stiel corresponding states with a fitted offset",
+            request,
+            domain,
+            notes=(
+                f"the published correlation under-predicts these liquids by a factor of "
+                f"{10 ** -_LETSOU_STIEL_OFFSET:.2f}, and that offset is corrected here; "
+                "the offset was fitted on half the compounds and the stated error "
+                "measured on the other half",
+                "corresponding states, so it answers for structures no group table "
+                "covers and is the weaker route wherever one does",
+            ),
+        )
+
+
+class TroutonExtensionalExpert(Expert):
+    """Extensional viscosity where it is a single number, and a refusal where it is not."""
+
+    id = "trouton"
+    version = "1"
+    family = PropertyFamily.INTERFACIAL
+    supported_classes = frozenset({MaterialClass.MOLECULE})
+    supported_properties = frozenset({"extensional_viscosity"})
+    dependencies = frozenset({"shear_viscosity"})
+
+    def is_available(self) -> bool:
+        return True
+
+    def assess_domain(self, candidate: Candidate) -> ApplicabilityDomain:
+        return ApplicabilityDomain(
+            score=1.0,
+            in_domain=True,
+            basis=(
+                "the Trouton ratio of three is exact for an incompressible Newtonian "
+                "liquid in uniaxial extension; the domain question is whether the "
+                "liquid is Newtonian, which is why a polymer is refused rather than "
+                "scored down"
+            ),
+        )
+
+    def _predict_one(self, prop, request, domain) -> Prediction | None:
+        if request.candidate.material_class is not MaterialClass.MOLECULE:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "the Trouton ratio is three only for a Newtonian liquid. A polymer "
+                "solution or melt strain-hardens: its extensional viscosity rises by "
+                "orders of magnitude as chains stretch and depends on strain rate and "
+                "on strain history, so it is not one number and three times the shear "
+                "viscosity is not an approximation to it",
+            )
+        upstream = request.dependency("shear_viscosity")
+        if upstream is None or upstream.quantity is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "needs shear_viscosity from an upstream expert, and none was available",
+            )
+
+        shear = upstream.quantity.to("Pa*s").value
+        value = TROUTON_RATIO * shear
+        shear_std = upstream.uncertainty.converted(upstream.quantity.unit, "Pa*s").std
+        return Prediction(
+            property=prop,
+            quantity=Quantity(value=value, unit="Pa*s"),
+            uncertainty=Uncertainty(
+                # Exactly three, so the whole spread is the shear viscosity's,
+                # scaled. Nothing is added here because nothing is approximated
+                # here.
+                std=None if shear_std is None else TROUTON_RATIO * shear_std,
+                ci_low=None
+                if upstream.uncertainty.ci_low is None
+                else TROUTON_RATIO * upstream.uncertainty.ci_low,
+                ci_high=None
+                if upstream.uncertainty.ci_high is None
+                else TROUTON_RATIO * upstream.uncertainty.ci_high,
+                kind=upstream.uncertainty.kind,
+                basis=(
+                    "three times the shear viscosity's own spread; the Trouton ratio is "
+                    "exact for a Newtonian liquid and contributes no error of its own. "
+                    f"The shear viscosity came from {upstream.expert_id}: "
+                    f"{upstream.uncertainty.basis}"
+                ),
+            ),
+            applicability=domain,
+            status=PredictionStatus.OK,
+            expert_id=self.id,
+            expert_version=self.version,
+            method="Trouton ratio of three, exact for a Newtonian liquid",
+            conditions=request.conditions,
+            provenance=ProvenanceRecord(
+                kind=ProvenanceKind.PREDICTION,
+                producer=self.id,
+                producer_version=self.version,
+            ),
+            notes=(
+                f"derived from shear_viscosity via {upstream.expert_id}",
+                "a Newtonian result: it says nothing about a polymer solution, which is "
+                "what a spinning dope is",
+            ),
+        )
+
+
+def _measured_viscosity(cas: str, temperature: float) -> float | None:
+    """Tabulated liquid viscosity in Pa s, from a data method only."""
+    try:
+        from thermo import ViscosityLiquid
+    except Exception:
+        return None
+    try:
+        obj = ViscosityLiquid(CASRN=cas)
+        for method in _MEASURED_VISCOSITY_METHODS:
+            if method not in obj.all_methods:
+                continue
+            obj.method = method
+            value = obj.T_dependent_property(temperature)
+            if value is None:
+                continue
+            value = float(value)
+            if _PLAUSIBLE_RANGE[0] < value < _PLAUSIBLE_RANGE[1]:
+                return value
+    except Exception:
+        return None
+    return None

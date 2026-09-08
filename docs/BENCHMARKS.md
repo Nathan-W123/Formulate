@@ -535,3 +535,115 @@ is a generative model over molecular fragments that proposes *structures* for
 the expert panel to evaluate, and it never produces a value that reaches a
 prediction. Every prediction in a completed run is asserted to name a method
 and an expert.
+
+---
+
+## Shear viscosity: three routes to a property that had none
+
+`python bench/viscosity_routes.py`
+
+`shear_viscosity` had been in the property registry since Phase 1 with nothing
+behind it, and section 6 records why physics could not supply it — a viscosity
+comes from a Green–Kubo integral or non-equilibrium shear, and this system runs
+neither. It was reachable from the correlation side the whole time.
+
+Against 273 compounds with a measured liquid viscosity at 298 K, restricted to
+where the DIPPR correlation is validated:
+
+| route | answers | MAE (log₁₀) | median factor | bias | within 2× |
+|---|---|---|---|---|---|
+| Joback group contribution | 195/273 | **0.108** | 1.17× | −0.053 | 93% |
+| Letsou–Stiel as published | 273/273 | 0.358 | 1.64× | −0.337 | 60% |
+| Letsou–Stiel + fitted offset, held out | 131/131 | 0.296 | 1.63× | −0.028 | 66% |
+
+Error is judged on log₁₀ because viscosity spans orders of magnitude: putting
+1 mPa·s at 3 is the same error as putting 100 at 300, and an absolute spread in
+Pa·s would say otherwise. Joback wins 81% of the 195 both answer.
+
+**The inputs were not the problem this time.** Letsou–Stiel fed *measured*
+critical constants scores 0.351; fed Joback-estimated ones it scores 0.358. That
+is the opposite of the refractive index result, where the equation was fine and
+the density was the whole error — so the check is worth running rather than
+assuming either way.
+
+The published correlation under-predicts these liquids by a consistent factor of
+2.11. The offset is fitted on half the compounds, split on a hash of the
+structure, and the figure above is measured on the other half. It removes the
+bias (−0.352 → −0.028 held out) and barely touches the spread: the method's
+problem is scatter, and only its offset is correctable.
+
+A measured route sits above both, restricted to DIPPR and VDI data methods for
+the same reason the density route is. `VISWANATH_NATARAJAN_2E` is in the same
+table and returns **7470 Pa·s for 2-butanone** — seven orders of magnitude high,
+and it looks exactly like a number. A plausibility bound of 100 Pa·s catches it;
+a first attempt used 10⁴ Pa·s, which a molten polymer can reach, and let it
+straight through.
+
+On seven common solvents the panel lands at factor 1.00–1.04 via the measured
+route, and `prefer()` orders the three correctly by stated spread without any
+precedence rule: measured (±3%), Joback (±31%), corresponding states (±85%).
+
+### Extensional viscosity, and what it refuses
+
+For an incompressible Newtonian liquid in uniaxial extension the Trouton ratio
+is exactly three. That is a result, not a correlation, so `TroutonExtensionalExpert`
+adds no error of its own — the whole spread is the shear viscosity's, scaled.
+
+For a polymer solution it is false, and the expert refuses rather than returning
+three times something. A spinning dope strain-hardens: its extensional viscosity
+rises by orders of magnitude as chains stretch and depends on strain rate and
+strain history, so it is not one number and 3η is not an approximation to it.
+
+---
+
+## Does the jet become a fibre?
+
+`python bench/web_shooter_jet.py`
+
+A Newtonian jet always breaks up — surface tension amplifies any disturbance
+longer than the circumference, on the Rayleigh scale √(ρR³/σ). A polymer
+solution can resist: once the thinning rate exceeds the inverse chain relaxation
+time the chains stretch instead of relaxing, and the elastic stress holds the
+filament together. The competition is a ratio of those two times, the Deborah
+number, and the transition sits near De ≈ 1.
+
+Polystyrene in 2-butanone, with μ, ρ and σ from the panel (0.395 mPa·s,
+799 kg/m³, 24.0 mN/m — viscosity via the measured route):
+
+| M (kDa) | c (wt%) | c/c* | λ (ms) | De @ 0.3 mm | verdict |
+|---|---|---|---|---|---|
+| 150 | 10 | 3.2 | 0.038 | 0.11 | spray, not entangled |
+| 150 | 20 | 6.6 | 0.645 | 1.88 | **filament** at 0.3 mm, marginal at 0.5, spray at 1.0 |
+| 150 | 30 | 10.1 | 3.50 | 10.1 | filament at every nozzle |
+| 500 | 10 | 6.5 | 4.00 | 11.8 | filament at every nozzle |
+| 2000 | 20 | 29.6 | 14093 | 41000 | filament — but a gel, not pumpable |
+
+**Molar mass is the strong lever, not concentration.** Going 150 → 500 kDa at
+fixed 10 wt% moves De from 0.11 to 11.8 and turns a spray into a filament;
+tripling the concentration at 150 kDa is needed to achieve the same. The
+practical window is **≥500 kDa polystyrene at ≥10 wt%**, or 150 kDa at ≥20 wt%
+through a nozzle no wider than 0.3 mm.
+
+At 2 MDa the relaxation time exceeds a minute. The Deborah number is then
+enormous and means nothing about break-up: the dope is a rubbery gel that will
+melt-fracture at the nozzle rather than flow, and the assessment says so instead
+of reporting a clean filament.
+
+### What this does not decide
+
+It is a regime, not a fibre, and every assessment carries that on it:
+
+- **Whether the filament draws down to a good fibre.** Surviving capillary
+  break-up is necessary, not sufficient; draw ratio and chain alignment decide
+  the strength and neither is here.
+- **The concentrated-solution relaxation time** is a reptation scaling from the
+  dilute Zimm value, not a measurement. A factor of two moves De by the same
+  factor — which matters only near the threshold, and the marginal band exists
+  for that reason.
+- **Solvent leaving the filament.** Nothing here models drying, so it does not
+  say whether the thread solidifies before it lands. That was the original
+  question about a web shooter and it remains unanswered.
+- **Mark–Houwink constants** are tabulated per polymer, solvent and temperature.
+  An untabulated pair is refused, because the exponent carries solvent quality
+  and borrowing one across solvents changes the intrinsic viscosity threefold at
+  high molar mass.
