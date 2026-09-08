@@ -205,3 +205,56 @@ def test_a_polystyrene_melt_cannot_be_shot_through_a_fine_nozzle():
     assert slow / 1e5 > 1000
     # Slower extrusion with draw-down is the only route that gets close.
     assert fast / slow == pytest.approx(40.0)
+
+
+# -- the thick ballistic jet -----------------------------------------------
+
+
+def test_a_thin_fast_jet_of_a_thin_liquid_is_turbulent_and_atomises():
+    """Which is why a fire hose makes spray rather than a rod of water."""
+    from formulate.processing import breakup_length, reynolds_number
+
+    assert reynolds_number(1050.0, 20.0, 4.2e-3, 2e-3) > 2000
+    assert breakup_length(1050.0, 20.0, 4.2e-3, 0.030, 2e-3) is None
+
+
+def test_enough_viscosity_makes_the_same_jet_laminar_and_coherent():
+    from formulate.processing import breakup_length, reynolds_number
+
+    assert reynolds_number(1050.0, 20.0, 4.2e-3, 50e-3) < 2000
+    length = breakup_length(1050.0, 20.0, 4.2e-3, 0.030, 50e-3)
+    assert length is not None
+    assert length > 10.0, "it has to outlast a ten metre shot"
+
+
+def test_a_thicker_faster_jet_carries_further_before_breaking_up():
+    from formulate.processing import breakup_length
+
+    slow = breakup_length(1050.0, 10.0, 4.2e-3, 0.030, 100e-3)
+    fast = breakup_length(1050.0, 20.0, 4.2e-3, 0.030, 100e-3)
+    thin = breakup_length(1050.0, 20.0, 2.0e-3, 0.030, 100e-3)
+    assert fast > slow
+    assert fast > thin
+
+
+def test_the_weber_number_of_a_thick_fast_jet_is_enormous():
+    """Which is the whole reason it carries: inertia swamps capillarity."""
+    from formulate.processing import weber_number
+
+    assert weber_number(1050.0, 20.0, 4.2e-3, 0.030) > 10000
+
+
+def test_a_thick_nozzle_makes_the_shot_affordable():
+    """The number that reopened the question.
+
+    A polymer melt through half a millimetre needs about 10^5 bar. A resin of
+    a hundredth the viscosity through a nozzle eight times wider needs under a
+    bar, because pressure carries viscosity linearly and the radius squared.
+    """
+    from formulate.processing import extrusion_pressure
+
+    melt = extrusion_pressure(377.0, 2.5e-4, 20.0, 0.01)
+    resin = extrusion_pressure(100e-3, 2.1e-3, 20.0, 0.02)
+    assert melt / 1e5 > 10000        # bar
+    assert resin / 1e5 < 1.0         # bar
+    assert melt / resin > 1e4

@@ -200,6 +200,51 @@ def deborah_number(relaxation: float, rayleigh: float) -> float:
     return relaxation / rayleigh
 
 
+def reynolds_number(
+    density: float, velocity: float, diameter: float, viscosity: float
+) -> float:
+    """Inertia against viscosity in the nozzle. Above about 2000 the jet is
+    turbulent when it leaves, and a turbulent jet atomises immediately rather
+    than breaking up in an orderly way further downstream."""
+    return density * velocity * diameter / viscosity
+
+
+def weber_number(
+    density: float, velocity: float, diameter: float, surface_tension: float
+) -> float:
+    """Inertia against surface tension. Large means the jet carries far before
+    capillarity can gather it into drops."""
+    return density * velocity**2 * diameter / surface_tension
+
+
+def breakup_length(
+    density: float,
+    velocity: float,
+    diameter: float,
+    surface_tension: float,
+    viscosity: float,
+) -> float | None:
+    """How far a coherent laminar jet travels before it becomes drops, m.
+
+    Grant and Middleman's correlation for the laminar Rayleigh regime,
+    ``L/d = 19.5 We^0.5 (1 + 3 Oh)^0.85``. Returns None above the laminar
+    limit, where the jet atomises at the orifice and a break-up *length* is not
+    the right description of what happens to it.
+
+    This is a different question from the one :func:`assess_jet` answers. That
+    one is about a thin filament being drawn down, where what matters is
+    whether elasticity outruns capillary thinning. This one is about a thick
+    jet flying ballistically, where what matters is how far it gets before
+    capillarity closes on it - and a thick fast jet gets a long way, because
+    the Weber number is enormous.
+    """
+    if reynolds_number(density, velocity, diameter, viscosity) > 2000.0:
+        return None
+    weber = weber_number(density, velocity, diameter, surface_tension)
+    ohnesorge = viscosity / math.sqrt(density * surface_tension * diameter)
+    return diameter * 19.5 * math.sqrt(weber) * (1.0 + 3.0 * ohnesorge) ** 0.85
+
+
 def extrusion_pressure(
     viscosity: float, radius: float, velocity: float, length: float
 ) -> float:

@@ -791,3 +791,76 @@ nothing else: no melting point, no heat of fusion, no crystallisation half-time
 for the semicrystalline polymers where Avrami kinetics would apply. There is
 nothing to fit and nothing to validate against, so an Avrami model here would
 be a fabricated capability rather than an approximate one.
+
+---
+
+## Keeping the shot
+
+`python bench/ballistic_jet.py`
+
+The melt route died at 96,512 bar. Both halves of that number were wrong for
+this problem: it forced a *polymer melt* through a *half-millimetre* nozzle,
+and the load calculation had already established that the strand has to be
+4.2 mm. Pressure carries viscosity linearly and the radius squared, so both
+choices were expensive and neither was required.
+
+A thick jet is also a different break-up problem. `assess_jet` asks whether a
+thin filament being drawn down resists capillary thinning, which is about
+elasticity. A thick jet flying ballistically is asked something else: how far
+it gets before capillarity closes on it. The Weber number of a 4.2 mm jet at
+20 m/s is 59,000, and the answer is "a long way" — provided it leaves the
+nozzle laminar.
+
+**Viscosity decides that, and there is a floor:**
+
+| µ (mPa·s) | Re | regime | break-up length | pressure to shoot |
+|---|---|---|---|---|
+| 2 | 44,100 | turbulent | **atomises** | — |
+| 30 | 2,940 | turbulent | **atomises** | — |
+| 50 | 1,764 | laminar | 27 m | **0.36 bar** |
+| 100 | 882 | laminar | 33 m | 0.73 bar |
+| 500 | 176 | laminar | 80 m | 3.63 bar |
+| 2000 | 44 | laminar | 226 m | 14.5 bar |
+
+Below about 40 mPa·s the jet is turbulent when it leaves and atomises at the
+orifice — which is why a fire hose makes spray rather than a rod of water. Above
+it, the jet is coherent for tens of metres and the pressure is under a bar.
+
+**0.36 bar against 96,512.** A factor of 270,000, from two changes that cost
+nothing: a thicker nozzle, which the load requirement already demanded, and a
+resin instead of a melt.
+
+### What a shot costs
+
+277 mL/s. A 10 m shot lasts 0.50 s, uses **139 mL and 145 g** of resin, and
+produces **5.8 N of thrust** while it fires — noticeable, not staggering.
+
+### Why the cure has to be chemical
+
+| mechanism | time to set a 4.2 mm strand |
+|---|---|
+| drying (solvent out) | 21 hours |
+| cooling (heat out) | 7.6 s |
+| **chemical reaction** | **radius-independent** |
+
+Both physical mechanisms are diffusion in a cylinder, so both scale as R², and
+a strand thick enough to hold a person is thick enough to defeat them. A
+polymerisation is not: it proceeds through the volume at once, so a 4.2 mm
+strand cures in the same time as a 5 µm one. That is the only setting mechanism
+in this whole analysis whose rate does not depend on how thick the thing is.
+
+So the shootable configuration is a **reactive resin of 50–500 mPa·s through a
+4 mm nozzle**, cured chemically rather than by drying or cooling.
+
+### What is still not established
+
+- **No cure chemistry has been chosen or modelled.** Nothing in this repository
+  predicts a cure rate, a pot life or an exotherm, and a two-part system mixed
+  at the nozzle has a mixing problem this says nothing about. The claim here is
+  only that the *mechanism* has the right scaling, not that a specific resin
+  exists that does it in the time available.
+- **The break-up correlation is Grant and Middleman's laminar one**, and the
+  50 mPa·s row sits at Re 1764, close enough to the 2000 limit that the
+  transition is not sharply resolved there.
+- **Nothing has been said about what 145 g of curing resin does on landing**,
+  or to a bystander, or to the person carrying 5.8 N of thrust on one wrist.

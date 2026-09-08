@@ -21,8 +21,11 @@ from .spinning import (
     SpinningAssessment,
     SpinningConditions,
     assess_jet,
+    breakup_length,
     deborah_number,
     extrusion_pressure,
+    reynolds_number,
+    weber_number,
     ohnesorge_number,
     overlap_concentration,
     rayleigh_time,
@@ -31,8 +34,8 @@ from .spinning import (
 
 __all__ = [
     "DryingAssessment", "DryingConditions", "DryingRegime", "MARK_HOUWINK", "JetRegime", "SpinningAssessment", "SpinningConditions",
-    "assess_drying", "assess_jet",
-    "extrusion_pressure", "deborah_number", "ohnesorge_number", "overlap_concentration",
+    "assess_drying", "assess_jet", "breakup_length",
+    "extrusion_pressure", "reynolds_number", "weber_number", "deborah_number", "ohnesorge_number", "overlap_concentration",
     "fuller_diffusion_volume", "fuller_diffusivity", "rayleigh_time",
     "zimm_relaxation_time",
 ]
