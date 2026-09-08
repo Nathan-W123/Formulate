@@ -15,6 +15,7 @@ from .feasibility import SynthesisFeasibilityExpert
 from .hansen import HansenSolubilityExpert
 from .interfacial import InterfacialCorrelationExpert
 from .joback import JobackThermalExpert
+from .learned import LearnedBoilingPointExpert
 from .lipophilicity import CrippenLipophilicityExpert
 from .measured import MeasuredPropertyExpert
 from .mechanical import PolymerMechanicalExpert
@@ -47,6 +48,7 @@ PHASE1_EXPERTS = (
 #: forbids answering for the bulk polymer with the monomer's properties.
 PHASE4_EXPERTS = (
     MixtureExpert,
+    LearnedBoilingPointExpert,
     DissolutionExpert,
     AdhesionExpert,
     UNIFACActivityExpert,
@@ -68,7 +70,7 @@ def default_registry() -> ExpertRegistry:
 
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
-    "AdhesionExpert", "DissolutionExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
+    "AdhesionExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",

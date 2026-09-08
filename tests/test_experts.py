@@ -31,10 +31,14 @@ def _request(smiles, expert, conditions=None):
 
 def test_registry_reports_coverage_and_gaps(registry):
     coverage = registry.coverage(["normal_boiling_point", "logp"], MaterialClass.MOLECULE)
-    # Two experts cover the boiling point: a group-contribution estimate and a
-    # compiled measurement. Coverage lists both; which one answers is decided
-    # per candidate by the evaluation engine, not here.
-    assert coverage["normal_boiling_point"] == ["joback", "measured"]
+    # Three experts cover the boiling point: a compiled measurement, a
+    # group-contribution estimate, and a fitted model for the structures group
+    # contribution has no groups to match. Coverage lists all three; which one
+    # answers is decided per candidate by the evaluation engine, not here, and
+    # they are deliberately ordered worst-to-best rather than by preference.
+    assert coverage["normal_boiling_point"] == [
+        "joback", "learned_boiling_point", "measured",
+    ]
     assert coverage["logp"] == ["crippen"]
     assert registry.uncovered(
         ["normal_boiling_point"], MaterialClass.POLYMER

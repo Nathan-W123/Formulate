@@ -43,6 +43,11 @@ physics = ["pyscf>=2.3", "ase>=3.22", "xtb>=22.1"]
 # `opls.py`; nothing in the installed package is edited.
 opls = ["foyer==0.7.6", "parmed>=4.0", "lark", "networkx", "lxml"]
 
+# The learned boiling point, for structures group contribution cannot type.
+# Joback wins wherever it has groups to match; this covers what it refuses,
+# which is most of what a discovery run actually generates.
+learned = ["scikit-learn>=1.3", "joblib>=1.3"]
+
 dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4"]
 
 [project.scripts]
