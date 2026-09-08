@@ -48,6 +48,12 @@ opls = ["foyer==0.7.6", "parmed>=4.0", "lark", "networkx", "lxml"]
 # which is most of what a discovery run actually generates.
 learned = ["scikit-learn>=1.3", "joblib>=1.3"]
 
+# Generative exploration. SAFE-GPT is a pretrained transformer over a fragment
+# representation (Apache-2.0) and needs torch; selfies alone gives the
+# guaranteed-valid mutation heuristic, which is not a model and is labelled as
+# one nowhere. Either is enough for the explorer to run; neither is required.
+generative = ["selfies>=2.1", "safe-mol>=0.2", "torch>=2.0"]
+
 dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.4"]
 
 [project.scripts]

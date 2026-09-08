@@ -625,6 +625,7 @@ def default_adaptive_coordinator(
     from formulate.exploration.bayesopt import BayesOptExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
+    from formulate.exploration.generative import GenerativeExplorer
     from formulate.exploration.mixtures import MixtureSeedExplorer
 
     return AdaptiveCoordinator(
@@ -632,6 +633,7 @@ def default_adaptive_coordinator(
             ReferenceDatabaseExplorer(),
             MixtureSeedExplorer(),
             EvolutionaryExplorer(),
+            GenerativeExplorer(),
             BayesOptExplorer(),
         ],
         config=config or RunConfig(),
