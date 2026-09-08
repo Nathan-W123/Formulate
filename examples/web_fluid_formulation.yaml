@@ -1,0 +1,67 @@
+name: web fluid v6 - the full formulation
+notes: >
+  The recipe the five earlier runs converge on, written down as a formulation
+  rather than as a list of components each chosen against a different target.
+  Two parts, mixed at the nozzle, because the initiator and the accelerator
+  cannot share a cartridge.
+
+    1,6-hexanediol diacrylate      96.6 wt%   base; gels in 0.064 s
+    polystyrene, 500 kDa            1.5 wt%   thickener, to about 100 mPa s
+    dibenzoyl peroxide              1.2 wt%   initiator, part A only
+    N,N-dimethyl-p-toluidine        0.67 wt%  accelerator, part B only
+
+  Fired as seven filaments of 1.0 mm radius at 20 m/s: Reynolds 404, laminar,
+  break-up at 11.5 m against a gel at 0.064 s, peak temperature 32 C, and
+  0.8 bar at the nozzle. Seven of them carry eighty kilograms at forty
+  megapascals.
+
+  2-butanone is gone. It was chosen to dissolve polystyrene for the
+  solvent-cast route, and that route died on the drying calculation; in a
+  reactive jet a solvent is something that still has to leave.
+
+  One number here is softer than the rest and it is the thickener loading.
+  The panel holds no Mark-Houwink constants for polystyrene in a diacrylate
+  and refuses to borrow them from another solvent, so the requirement is
+  stated as the coil overlap parameter, c[eta] = 1.81, which is exact and
+  independent of them. Splitting that into a weight per cent needs the
+  intrinsic viscosity: across the three measured polystyrene pairs and molar
+  masses from 300 kDa to 1 MDa it runs from 0.7 to 3.1 wt%, and 1.5 is the
+  middle of that. It is the one figure in the recipe to settle on a bench
+  rather than to trust.
+
+  This spec re-checks the base against the requirements the whole chain
+  imposes, now that they are all known at once.
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  processing: ["redox-peroxide-amine"]
+requirements:
+  - property: cure_time
+    direction: minimize
+    lower: 0 s
+    upper: 2 s
+    hard: true
+    weight: 4.0
+    rationale: ten metres at twenty metres per second is half a second in the air
+  - property: normal_boiling_point
+    direction: maximize
+    lower: 60 degC
+    upper: 300 degC
+    hard: true
+    rationale: liquid in the cartridge, and meant to stay in the strand
+  # The base's own viscosity, before the thickener. Too thick and the nozzle
+  # pressure climbs as the inverse square of the radius; the thickener then
+  # takes it the rest of the way to the hundred millipascal seconds the jet
+  # needs to stay laminar.
+  - property: shear_viscosity
+    direction: minimize
+    lower: 0 Pa*s
+    upper: 0.01 Pa*s
+    weight: 2.0
+    rationale: the thickener supplies the rest, so the base must start thin
+  - property: liquid_density
+    direction: minimize
+    lower: 700 kg/m^3
+    upper: 1200 kg/m^3
+    weight: 1.0
+    rationale: the strand carries its own weight first

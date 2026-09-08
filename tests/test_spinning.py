@@ -258,3 +258,48 @@ def test_a_thick_nozzle_makes_the_shot_affordable():
     assert melt / 1e5 > 10000        # bar
     assert resin / 1e5 < 1.0         # bar
     assert melt / resin > 1e4
+
+
+def test_solution_viscosity_inverts_its_own_target():
+    """The formulation is specified by c[eta], so the round trip has to hold."""
+    from formulate.processing.spinning import overlap_for_viscosity, solution_viscosity
+
+    for base in (1.0e-3, 4.25e-3, 2.0e-2):
+        for target in (2.0e-3, 1.0e-1, 1.0):
+            if target <= base:
+                continue
+            overlap = overlap_for_viscosity(target, base)
+            assert solution_viscosity(1.0, overlap, base) == pytest.approx(target, rel=1e-9)
+
+
+def test_the_two_regimes_join_at_the_overlap_concentration():
+    """Huggins below, entanglement above, and no step between them."""
+    from formulate.processing.spinning import solution_viscosity
+
+    base = 4.25e-3
+    below = solution_viscosity(1.0, 1.0 - 1e-9, base)
+    above = solution_viscosity(1.0, 1.0 + 1e-9, base)
+    assert below == pytest.approx(above, rel=1e-6)
+
+
+def test_only_the_product_of_concentration_and_intrinsic_viscosity_matters():
+    """Why a ratio can be quoted without Mark-Houwink constants.
+
+    Halving the intrinsic viscosity and doubling the concentration is the same
+    solution as far as this model is concerned, which is what lets the recipe
+    fix c[eta] and leave the split to whoever knows the polymer.
+    """
+    from formulate.processing.spinning import solution_viscosity
+
+    base = 4.25e-3
+    assert solution_viscosity(80.0, 0.0226, base) == pytest.approx(
+        solution_viscosity(160.0, 0.0113, base), rel=1e-9
+    )
+
+
+def test_more_polymer_is_always_thicker():
+    from formulate.processing.spinning import solution_viscosity
+
+    base = 4.25e-3
+    values = [solution_viscosity(1.0, c, base) for c in (0.1, 0.5, 0.9, 1.5, 3.0, 6.0)]
+    assert values == sorted(values)

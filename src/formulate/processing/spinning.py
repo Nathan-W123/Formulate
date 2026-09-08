@@ -163,6 +163,64 @@ def overlap_concentration(intrinsic: float) -> float:
     return 1.0 / intrinsic
 
 
+#: Huggins coefficient for a flexible coil in a good solvent. It varies from
+#: about 0.3 to 0.5 and only matters below the overlap concentration, where
+#: the term it multiplies is small.
+_HUGGINS = 0.35
+
+#: Exponent for the viscosity of an entangled semi-dilute solution in a good
+#: solvent, ``eta/eta_s ~ (c[eta])^n``. Reptation with excluded volume gives
+#: 3.9; a theta solvent gives 4.7. The lower value is used because a thickener
+#: is only worth adding in a solvent that dissolves it well, and it is the
+#: conservative choice: a smaller exponent needs *more* polymer to reach a
+#: target viscosity, so a formulation sized on it is not short of thickener.
+_ENTANGLED_EXPONENT = 3.9
+
+
+def solution_viscosity(
+    intrinsic: float, concentration: float, solvent_viscosity: float
+) -> float:
+    """Viscosity of a polymer solution, Pa s, from ``c`` in g/cm^3.
+
+    Two regimes joined at the overlap concentration, because one expression
+    does not cover both and using either alone is wrong by orders of
+    magnitude at the other end. Below overlap the coils are separate and
+    Huggins applies, ``eta_sp = c[eta] + k (c[eta])^2``. Above it they
+    interpenetrate and entangle, and the viscosity climbs as a power of the
+    same product.
+
+    The whole dependence is on ``c[eta]``, the coil overlap parameter, which
+    is what makes a formulation quotable without knowing the polymer's
+    Mark-Houwink constants in the particular solvent: the *product* is fixed
+    by the target viscosity, and only the split between concentration and
+    intrinsic viscosity needs the constants.
+    """
+    overlap = concentration * intrinsic
+    if overlap <= 1.0:
+        relative = 1.0 + overlap + _HUGGINS * overlap**2
+    else:
+        # Continuous at the crossover: Huggins evaluated at c[eta] = 1.
+        relative = (1.0 + 1.0 + _HUGGINS) * overlap**_ENTANGLED_EXPONENT
+    return solvent_viscosity * relative
+
+
+def overlap_for_viscosity(target: float, solvent_viscosity: float) -> float:
+    """The ``c[eta]`` a solution needs to reach ``target`` viscosity, Pa s.
+
+    The inverse of :func:`solution_viscosity`, and the quantity a formulation
+    is actually specified by. Turning it into a weight per cent needs the
+    intrinsic viscosity, which needs Mark-Houwink constants for that exact
+    polymer in that exact solvent; leaving the answer here is what lets a
+    recipe be stated when those do not exist.
+    """
+    relative = target / solvent_viscosity
+    if relative <= 2.0 + _HUGGINS:
+        # Huggins branch: solve k x^2 + x + 1 - relative = 0 for x.
+        discriminant = 1.0 + 4.0 * _HUGGINS * (relative - 1.0)
+        return (-1.0 + math.sqrt(max(discriminant, 0.0))) / (2.0 * _HUGGINS)
+    return (relative / (2.0 + _HUGGINS)) ** (1.0 / _ENTANGLED_EXPONENT)
+
+
 def zimm_relaxation_time(
     intrinsic: float, molar_mass: float, solvent_viscosity: float, temperature: float
 ) -> float:
