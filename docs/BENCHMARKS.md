@@ -720,3 +720,74 @@ enough to dry.
   "evaporation is not the problem" is safe.
 - **Nothing models the moving boundary.** A real drying filament has a
   concentration profile and a shrinking radius, not a single diffusion time.
+
+---
+
+## Melt viscosity, and why the hot-melt route also fails as a direct shot
+
+`python -m pytest tests/test_rheology.py -k melt`
+
+The drying calculation showed that setting by cooling beats setting by drying
+by four orders of magnitude in diffusivity, so the obvious move is a hot melt
+with no solvent at all. `MeltViscosityExpert` was built to test that, and it
+does not survive contact with the nozzle.
+
+**The construction.** WLF anchored at 10¹² Pa·s at the glass transition, which
+is the rheological definition of Tg rather than a fitted parameter, with
+measured WLF constants per polymer and the polymer's own Tg from the panel.
+
+**Universal constants are not good enough, by three orders of magnitude.**
+Anchored at Tg, the universal pair (17.44, 51.6) puts polystyrene at 3 Pa·s at
+200 °C against a real melt viscosity of order 10³–10⁴. The polymer-specific pair
+(13.7, 50.0) puts it at 740. So the table carries measured constants for three
+polymers and an untabulated one is **refused** rather than answered with the
+universal pair.
+
+This is the weakest expert in the panel and says so on every prediction: one
+order of magnitude, three polymers, a 120 K window above Tg, and zero-shear, so
+it is an upper bound on what a spinning flow actually sees.
+
+### Pressure at the nozzle
+
+Hagen–Poiseuille through a 0.5 mm nozzle with a 10 mm land, polystyrene melt
+from the panel:
+
+| T (°C) | η (Pa·s) | at 0.5 m/s | at 20 m/s |
+|---|---|---|---|
+| 130 | 6.9 × 10⁶ | 4.4 × 10⁷ bar | 1.8 × 10⁹ bar |
+| 170 | 1.0 × 10⁴ | 6.4 × 10⁴ bar | 2.6 × 10⁶ bar |
+| 190 | 1.5 × 10³ | 9,819 bar | 3.9 × 10⁵ bar |
+| 210 | 377 | **2,410 bar** | 96,417 bar |
+
+A hydraulic hand tool reaches about 700 bar; a grease gun about 100. At 210 °C —
+already near where polystyrene begins to degrade — a direct 20 m/s shot needs
+**96,000 bar**. Shear-thinning at spinning rates is worth one to two orders of
+magnitude, which closes the slow column and not the fast one.
+
+**So the melt cannot be shot. It can only be extruded slowly and drawn down** —
+which is melt-blowing, and is what the rest of the numbers had been pointing at:
+
+| filament | vitrifies in | flight needed |
+|---|---|---|
+| 5 µm | 10.8 µs | 0.22 mm |
+| 20 µm | 173 µs | 3.5 mm |
+| 100 µm | 4.3 ms | 86 mm |
+
+A melt-blown filament sets essentially instantly, and melt-blowing produces
+1–10 µm fibres — the same diameter the drying calculation demanded and the same
+diameter as spider dragline silk. Holding 800 N then needs **700,000 filaments
+at 5 µm**, or 44,000 at 20 µm.
+
+Which is the same conclusion the drying calculation reached by a different
+route: the thing that works is a bundle of many fine fibres formed by
+aerodynamic draw-down, not one thick strand from one orifice.
+
+### Crystallisation kinetics: not added, and not for want of trying
+
+The polymers in play — polystyrene, PMMA, poly(vinyl acetate) — are **amorphous**.
+They do not crystallise; they vitrify, which is the thermal calculation above.
+The bundled reference set carries amorphous density and glass transition and
+nothing else: no melting point, no heat of fusion, no crystallisation half-time
+for the semicrystalline polymers where Avrami kinetics would apply. There is
+nothing to fit and nothing to validate against, so an Avrami model here would
+be a fabricated capability rather than an approximate one.

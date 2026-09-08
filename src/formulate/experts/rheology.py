@@ -40,6 +40,7 @@ caller assume it means what it says.
 
 from __future__ import annotations
 
+import functools
 import math
 
 from formulate.core.candidate import Candidate, MaterialClass
@@ -406,6 +407,193 @@ class CorrespondingStatesViscosityExpert(_ViscosityExpert):
                 "covers and is the weaker route wherever one does",
             ),
         )
+
+
+#: Williams-Landel-Ferry constants referenced to each polymer's own glass
+#: transition, from Ferry, Viscoelastic Properties of Polymers. Keyed by
+#: canonical repeat unit, because a PolymerSpec carries no name.
+#:
+#: The universal pair (17.44, 51.6) is deliberately absent. Anchored at Tg it
+#: puts polystyrene at 3 Pa s at 200 degrees, against a real melt viscosity of
+#: order 10^3 to 10^4 - three to four orders of magnitude out, because the
+#: universal constants were never meant to be carried a hundred kelvin above
+#: Tg. The polymer-specific pair puts it at 740, which is within the order of
+#: magnitude this construction is worth. So an untabulated polymer is refused
+#: rather than answered with the universal pair.
+WLF_CONSTANTS: dict[str, tuple[float, float]] = {
+    "[*]CC([*])c1ccccc1": (13.7, 50.0),          # polystyrene
+    "[*]CC([*])OC(C)=O": (15.6, 46.8),           # poly(vinyl acetate)
+    "[*]CC([*])(C)C(=O)OC": (34.0, 80.0),        # poly(methyl methacrylate)
+}
+
+#: Viscosity at the glass transition, Pa s. This is the rheological definition
+#: of Tg rather than a fitted parameter: the transition is where a glass-former
+#: reaches about 10^12 Pa s.
+_VISCOSITY_AT_TG = 1.0e12
+
+#: What the whole construction is worth. An order of magnitude, because that is
+#: the spread between the polymer-specific WLF result and a measured melt
+#: viscosity, and claiming better would be claiming the table is a measurement.
+_MELT_LOG10_MAE = 0.8
+
+#: WLF is a fit over the range it was measured in, roughly Tg to Tg + 100 K.
+#: Beyond that it is an extrapolation of a divergent function and the answer
+#: falls apart quietly, so it is bounded rather than trusted.
+_WLF_RANGE_K = 120.0
+
+
+def wlf_melt_viscosity(
+    temperature: float, glass_transition: float, c1: float, c2: float
+) -> float | None:
+    """Zero-shear melt viscosity in Pa s, anchored at 10^12 Pa s at Tg."""
+    shift = temperature - glass_transition
+    if shift < 0.0 or shift > _WLF_RANGE_K:
+        return None
+    exponent = math.log10(_VISCOSITY_AT_TG) - c1 * shift / (c2 + shift)
+    return 10.0**exponent
+
+
+class MeltViscosityExpert(Expert):
+    """Melt viscosity of an amorphous polymer, by WLF from its own Tg.
+
+    The weakest expert in the panel and labelled as such: one order of
+    magnitude, on three tabulated polymers, over a hundred-kelvin window above
+    the glass transition. It exists because the alternative for a melt-spinning
+    question was no number at all, and because being wrong by a factor of ten
+    still settles a question whose answer differs by ten thousand.
+    """
+
+    id = "melt_wlf"
+    version = "1"
+    family = PropertyFamily.INTERFACIAL
+    supported_classes = frozenset({MaterialClass.POLYMER})
+    supported_properties = frozenset({"shear_viscosity"})
+    dependencies = frozenset({"glass_transition_temperature"})
+
+    def is_available(self) -> bool:
+        from formulate import chem
+
+        return chem.rdkit_available()
+
+    def unavailable_reason(self) -> str:
+        return "" if self.is_available() else "RDKit is required to read the repeat unit"
+
+    def assess_domain(self, candidate: Candidate) -> ApplicabilityDomain:
+        unit = _repeat_unit(candidate)
+        if unit is None or unit not in _canonical_wlf():
+            return ApplicabilityDomain.outside(
+                "no measured WLF constants for this repeat unit, and the universal pair "
+                "is three orders of magnitude out a hundred kelvin above Tg",
+                basis=f"{len(WLF_CONSTANTS)} tabulated polymers",
+            )
+        return ApplicabilityDomain(
+            basis="measured WLF constants for this polymer, referenced to its own Tg"
+        )
+
+    def _predict_one(self, prop, request, domain) -> Prediction | None:
+        unit = _repeat_unit(request.candidate)
+        if unit is None:
+            return Prediction.unsupported(
+                prop, self.id, "needs a single-repeat-unit polymer"
+            )
+        constants = _canonical_wlf().get(unit)
+        if constants is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                f"no measured WLF constants for {unit}. The universal pair puts "
+                "polystyrene three orders of magnitude out at a processing "
+                "temperature, so it is not substituted here; the table covers "
+                f"{sorted(WLF_CONSTANTS)}",
+            )
+        temperature = request.conditions.temperature_k
+        if temperature is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "a melt viscosity changes by orders of magnitude over the processing "
+                "window and no temperature was given",
+            )
+        upstream = request.dependency("glass_transition_temperature")
+        if upstream is None or upstream.quantity is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "needs glass_transition_temperature from an upstream expert, and none "
+                "was available",
+            )
+        glass_transition = upstream.quantity.to("K").value
+        value = wlf_melt_viscosity(temperature, glass_transition, *constants)
+        if value is None:
+            shift = temperature - glass_transition
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                f"the requested temperature is {shift:+.0f} K from the glass transition "
+                f"and WLF is a fit over roughly 0 to {_WLF_RANGE_K:.0f} K above it; "
+                "outside that it is an extrapolation of a divergent function"
+                if shift > 0
+                else "below the glass transition there is no melt to have a viscosity",
+            )
+        return Prediction(
+            property=prop,
+            quantity=Quantity(value=value, unit="Pa*s"),
+            uncertainty=_multiplicative_uncertainty(
+                value,
+                _MELT_LOG10_MAE,
+                "WLF anchored at 10^12 Pa s at the glass transition with measured "
+                "constants; the construction is worth about an order of magnitude and "
+                "has not been validated against melt viscosities in this repository",
+            ),
+            applicability=domain,
+            status=PredictionStatus.OK,
+            expert_id=self.id,
+            expert_version=self.version,
+            method="Williams-Landel-Ferry from the glass transition",
+            conditions=request.conditions,
+            provenance=ProvenanceRecord(
+                kind=ProvenanceKind.PREDICTION,
+                producer=self.id,
+                producer_version=self.version,
+                parameters={"c1": constants[0], "c2": constants[1]},
+            ),
+            notes=(
+                f"{temperature - glass_transition:+.0f} K above the glass transition",
+                "zero-shear: a melt shear-thins hard at spinning rates, so this is an "
+                "upper bound on what the flow actually sees",
+                "the weakest expert in this panel; it settles questions whose answers "
+                "differ by orders of magnitude and should not be used for finer ones",
+            ),
+        )
+
+
+@functools.lru_cache(maxsize=1)
+def _canonical_wlf() -> dict[str, tuple[float, float]]:
+    """WLF_CONSTANTS re-keyed on canonical SMILES.
+
+    The table is written with explicit attachment points because that is how a
+    repeat unit is read; RDKit canonicalises ``[*]`` to ``*``, so a lookup
+    against the table as written silently misses every polymer in it.
+    """
+    from formulate import chem
+
+    if not chem.rdkit_available():
+        return dict(WLF_CONSTANTS)
+    out: dict[str, tuple[float, float]] = {}
+    for unit, constants in WLF_CONSTANTS.items():
+        out[chem.canonical_smiles(unit) or unit] = constants
+    return out
+
+
+def _repeat_unit(candidate: Candidate) -> str | None:
+    """The canonical repeat unit of a single-monomer polymer, or None."""
+    polymer = candidate.polymer
+    if polymer is None or len(polymer.monomers) != 1:
+        return None
+    from formulate import chem
+
+    smiles = polymer.monomers[0].smiles
+    return chem.canonical_smiles(smiles) if chem.rdkit_available() else smiles
 
 
 class TroutonExtensionalExpert(Expert):

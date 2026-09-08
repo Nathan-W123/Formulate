@@ -200,6 +200,24 @@ def deborah_number(relaxation: float, rayleigh: float) -> float:
     return relaxation / rayleigh
 
 
+def extrusion_pressure(
+    viscosity: float, radius: float, velocity: float, length: float
+) -> float:
+    """Pressure to drive a melt or dope down a nozzle, Pa.
+
+    Hagen-Poiseuille for a Newtonian fluid in a round channel, written in terms
+    of the mean velocity rather than the volumetric flow. It scales as the
+    inverse square of the radius, which is why a fine nozzle is expensive: at
+    fixed velocity, halving the radius quadruples the pressure.
+
+    A melt shear-thins hard, so feeding it a zero-shear viscosity gives an upper
+    bound rather than an estimate. That is the useful direction here - if the
+    bound is achievable the design is safe, and if it is absurd by four orders
+    of magnitude the shear-thinning will not rescue it.
+    """
+    return 8.0 * viscosity * length * velocity / radius**2
+
+
 def assess_jet(conditions: SpinningConditions) -> SpinningAssessment:
     """Which regime this dope and nozzle fall in."""
     intrinsic = intrinsic_viscosity(

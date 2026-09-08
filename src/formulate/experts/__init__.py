@@ -24,6 +24,7 @@ from .rheology import (
     CorrespondingStatesViscosityExpert,
     JobackViscosityExpert,
     MeasuredViscosityExpert,
+    MeltViscosityExpert,
     TroutonExtensionalExpert,
 )
 from .mechanical import PolymerMechanicalExpert
@@ -63,6 +64,7 @@ PHASE4_EXPERTS = (
     MeasuredViscosityExpert,
     JobackViscosityExpert,
     CorrespondingStatesViscosityExpert,
+    MeltViscosityExpert,
     TroutonExtensionalExpert,
     DissolutionExpert,
     AdhesionExpert,
@@ -88,7 +90,7 @@ __all__ = [
     "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert",
     "CorrespondingStatesViscosityExpert", "JobackViscosityExpert",
     "LearnedBoilingPointExpert", "LearnedRefractiveIndexExpert", "LorentzLorenzExpert",
-    "MeasuredViscosityExpert", "TroutonExtensionalExpert",
+    "MeasuredViscosityExpert", "MeltViscosityExpert", "TroutonExtensionalExpert",
     "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",

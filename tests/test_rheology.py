@@ -302,3 +302,126 @@ def test_the_extensional_result_says_it_is_newtonian_only():
     notes = " ".join(context["extensional_viscosity"].notes)
     assert "Newtonian" in notes
     assert "spinning dope" in notes
+
+
+# -- melt viscosity --------------------------------------------------------
+
+
+def _polymer(unit="[*]CC([*])c1ccccc1", temperature=453.15):
+    from formulate.core.candidate import Candidate, MonomerUnit, PolymerSpec
+
+    return Candidate(
+        material_class=MaterialClass.POLYMER,
+        polymer=PolymerSpec(
+            monomers=(MonomerUnit(smiles=unit, fraction=1.0),),
+            number_average_molar_mass=Quantity(value=500000.0, unit="g/mol"),
+        ),
+        conditions=Conditions(
+            temperature=Quantity(value=temperature, unit="K"),
+            pressure=Quantity(value=101325.0, unit="Pa"),
+        ),
+    )
+
+
+def _melt(unit="[*]CC([*])c1ccccc1", temperature=453.15):
+    registry = default_registry()
+    wanted = frozenset({"glass_transition_temperature", "shear_viscosity"})
+    candidate = _polymer(unit, temperature)
+    context: dict = {}
+    for expert in registry.resolution_order(
+        registry.experts_for(wanted, MaterialClass.POLYMER)
+    ):
+        request = PredictionRequest(
+            candidate=candidate, properties=wanted,
+            conditions=candidate.conditions, context=dict(context),
+        )
+        for prediction in expert.predict(request):
+            if not prediction.is_usable:
+                continue
+            incumbent = context.get(prediction.property)
+            if incumbent is None or prefer(prediction, incumbent):
+                context[prediction.property] = prediction
+    return context
+
+
+def test_wlf_reaches_the_glass_transition_viscosity_at_the_glass_transition():
+    """10^12 Pa s at Tg is the rheological definition of Tg, not a fit."""
+    from formulate.experts.rheology import wlf_melt_viscosity
+
+    assert wlf_melt_viscosity(373.15, 373.15, 13.7, 50.0) == pytest.approx(1e12, rel=1e-9)
+
+
+def test_the_melt_thins_steeply_with_temperature():
+    from formulate.experts.rheology import wlf_melt_viscosity
+
+    hot = wlf_melt_viscosity(473.15, 373.15, 13.7, 50.0)
+    warm = wlf_melt_viscosity(423.15, 373.15, 13.7, 50.0)
+    assert hot < warm
+    # Fifty degrees is worth more than two orders of magnitude near Tg.
+    assert warm / hot > 100
+
+
+def test_polystyrene_at_two_hundred_degrees_is_in_the_right_decade():
+    """A melt viscosity anyone can check: of order 10^3 Pa s.
+
+    The universal WLF pair gives 3 Pa s here, three orders low, which is why
+    the table carries measured constants and refuses without them.
+    """
+    from formulate.experts.rheology import wlf_melt_viscosity
+
+    value = wlf_melt_viscosity(473.15, 373.15, 13.7, 50.0)
+    assert 100.0 < value < 10000.0
+
+
+def test_below_the_glass_transition_there_is_no_melt():
+    from formulate.experts.rheology import wlf_melt_viscosity
+
+    assert wlf_melt_viscosity(350.0, 373.15, 13.7, 50.0) is None
+
+
+def test_far_above_the_glass_transition_wlf_is_not_extrapolated():
+    from formulate.experts.rheology import _WLF_RANGE_K, wlf_melt_viscosity
+
+    assert wlf_melt_viscosity(373.15 + _WLF_RANGE_K + 1, 373.15, 13.7, 50.0) is None
+
+
+@requires_rdkit
+def test_the_panel_answers_a_melt_viscosity_for_a_tabulated_polymer():
+    context = _melt()
+    viscosity = context.get("shear_viscosity")
+    assert viscosity is not None
+    assert viscosity.expert_id == "melt_wlf"
+    assert viscosity.quantity.to("Pa*s").value > 1.0
+
+
+@requires_rdkit
+def test_an_untabulated_polymer_is_refused_rather_than_given_universal_constants():
+    from formulate.experts.rheology import MeltViscosityExpert
+
+    prediction = MeltViscosityExpert().predict(
+        PredictionRequest(
+            candidate=_polymer(unit="[*]CC([*])Cl"),  # PVC, not in the table
+            properties=frozenset({"shear_viscosity"}),
+            conditions=_polymer().conditions,
+        )
+    )[0]
+    assert prediction.quantity is None
+    assert "no measured WLF constants" in prediction.notes[0]
+
+
+@requires_rdkit
+def test_the_table_is_keyed_so_a_canonical_lookup_actually_hits_it():
+    """RDKit canonicalises [*] to *, so a lookup on the table as written misses
+    every polymer in it."""
+    from formulate.experts.rheology import WLF_CONSTANTS, _canonical_wlf
+
+    assert len(_canonical_wlf()) == len(WLF_CONSTANTS)
+    assert _melt().get("shear_viscosity") is not None
+
+
+@requires_rdkit
+def test_the_melt_result_says_it_is_the_weakest_expert_and_an_upper_bound():
+    notes = " ".join(_melt()["shear_viscosity"].notes)
+    assert "zero-shear" in notes
+    assert "upper bound" in notes
+    assert "weakest expert" in notes

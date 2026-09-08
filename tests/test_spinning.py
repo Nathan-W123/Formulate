@@ -168,3 +168,40 @@ def test_the_description_carries_the_numbers_behind_the_verdict():
     text = assess_jet(_dope()).describe()
     for token in ("Deborah", "Ohnesorge", "c/c*", "[eta]"):
         assert token in text
+
+
+# -- pushing it through the nozzle -----------------------------------------
+
+
+def test_extrusion_pressure_is_hagen_poiseuille():
+    from formulate.processing import extrusion_pressure
+
+    assert extrusion_pressure(1.0, 2.5e-4, 20.0, 0.01) == pytest.approx(
+        8.0 * 1.0 * 0.01 * 20.0 / 2.5e-4**2
+    )
+
+
+def test_halving_the_nozzle_quadruples_the_pressure():
+    from formulate.processing import extrusion_pressure
+
+    wide = extrusion_pressure(1.0, 5e-4, 20.0, 0.01)
+    narrow = extrusion_pressure(1.0, 2.5e-4, 20.0, 0.01)
+    assert narrow == pytest.approx(4 * wide)
+
+
+def test_a_polystyrene_melt_cannot_be_shot_through_a_fine_nozzle():
+    """The result that rules out a hot-melt web shooter as a direct shot.
+
+    At 210 C - already near where polystyrene starts to degrade - the
+    zero-shear pressure to drive it through a 0.5 mm nozzle at 20 m/s is
+    around 10^5 bar. A hydraulic hand tool reaches about 700.
+    """
+    from formulate.processing import extrusion_pressure
+
+    melt_viscosity = 377.0  # Pa s at 210 C, from the panel
+    fast = extrusion_pressure(melt_viscosity, 2.5e-4, 20.0, 0.01)
+    slow = extrusion_pressure(melt_viscosity, 2.5e-4, 0.5, 0.01)
+    assert fast / 1e5 > 10000  # bar
+    assert slow / 1e5 > 1000
+    # Slower extrusion with draw-down is the only route that gets close.
+    assert fast / slow == pytest.approx(40.0)
