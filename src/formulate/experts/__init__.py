@@ -20,6 +20,7 @@ from .learned import LearnedBoilingPointExpert, LearnedRefractiveIndexExpert
 from .lipophilicity import CrippenLipophilicityExpert
 from .measured import MeasuredPropertyExpert
 from .optical import LorentzLorenzExpert
+from .kinetics import FreeRadicalCureExpert, PropagationExpert
 from .rheology import (
     CorrespondingStatesViscosityExpert,
     JobackViscosityExpert,
@@ -72,6 +73,11 @@ PHASE4_EXPERTS = (
     PolymerGlassTransitionExpert,
     PolymerDensityExpert,
     PolymerMechanicalExpert,
+    # Reaction kinetics. Everything above predicts what a material *is*; these
+    # two predict how fast it changes, which is what a material chosen to
+    # solidify in place has to be selected on.
+    PropagationExpert,
+    FreeRadicalCureExpert,
 )
 
 
@@ -91,6 +97,7 @@ __all__ = [
     "CorrespondingStatesViscosityExpert", "JobackViscosityExpert",
     "LearnedBoilingPointExpert", "LearnedRefractiveIndexExpert", "LorentzLorenzExpert",
     "MeasuredViscosityExpert", "MeltViscosityExpert", "TroutonExtensionalExpert",
+    "PropagationExpert", "FreeRadicalCureExpert",
     "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",

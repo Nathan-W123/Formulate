@@ -1,0 +1,61 @@
+name: web fluid v3 - the reactive base, chosen on a rate rather than a state
+notes: >
+  Runs 1 and 2 chose a solvent and a fibre-former, and the drying calculation
+  then ruled out the whole mechanism: a strand thick enough to carry a person
+  cannot lose its solvent in flight by three orders of magnitude. The route
+  that survives replaces drying with reaction - fire a mostly unreacted liquid
+  and let it polymerise on the way - and that makes the majority component of
+  the material something no previous run could search for, because it is
+  chosen on how fast it reacts and the registry held no rate.
+
+  This run exists to test a choice that was made by hand. The reactive base
+  was specified as "a monomer that cures in flight" and never selected; the
+  only number the engine contributed was the ceiling, fifteen per cent
+  reactive fraction before the exotherm takes the strand past seventy degrees.
+  Here the requirement is stated properly and put to the panel.
+
+  The initiation regime is named in the conditions rather than defaulted,
+  because a cure time is a property of the recipe and not of the monomer, and
+  the initiation rate moves the answer more than anything else in it. Redox
+  is the regime a wrist-mounted device could actually carry: a thermal
+  initiator at ambient temperature has a half life of months, and a
+  photoinitiator needs a lamp.
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  processing: ["redox-peroxide-amine"]
+requirements:
+  # The whole point. A ten metre shot at twenty metres per second is half a
+  # second in the air; allowing a factor of four for a strand that can finish
+  # setting after it lands still puts the ceiling at two seconds.
+  - property: cure_time
+    direction: minimize
+    lower: 0 s
+    upper: 2 s
+    hard: true
+    weight: 4.0
+    rationale: it has to stop flowing before or shortly after it arrives
+  # A cure that produces a rubber is not a cure for this purpose. The kinetics
+  # expert refuses those outright on the homopolymer glass transition, but the
+  # requirement is stated anyway so that the refusal is visible as a miss
+  # rather than as an absence.
+  - property: normal_boiling_point
+    direction: in_range
+    lower: 60 degC
+    upper: 200 degC
+    hard: true
+    rationale: liquid in the cartridge, not volatile enough to flash off the jet
+  # Thin enough to extrude at the pressures the cure route was costed at.
+  - property: shear_viscosity
+    direction: minimize
+    lower: 0 Pa*s
+    upper: 0.01 Pa*s
+    weight: 2.0
+    rationale: the 0.36 bar extrusion figure assumed a thin liquid
+  # Denser is worse: the strand has to hold its own weight as well as a load.
+  - property: liquid_density
+    direction: minimize
+    lower: 700 kg/m^3
+    upper: 1200 kg/m^3
+    weight: 1.0
+    rationale: the strand carries its own weight first

@@ -356,6 +356,32 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "separates into two phases.",
             condition_dependent=True,
         ),
+        # Reaction kinetics. The registry had none, and the gap was not
+        # cosmetic: a material that has to solidify in flight is chosen on how
+        # fast it reacts, so a design whose deciding property is a rate could
+        # not be searched at all. Both of these are chain-growth quantities;
+        # a step-growth or ring-opening cure would need its own.
+        _p(
+            "propagation_rate_constant",
+            "m^3/mol/s",
+            _C,
+            "Propagation rate coefficient of a chain-growth polymerisation, k_p. "
+            "How fast one radical adds one monomer.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "cure_time",
+            "s",
+            _C,
+            "Time for a reacting liquid to stop flowing under a stated initiation "
+            "system, taken as the time to reach half conversion. Not a gel time in "
+            "the Flory-Stockmayer sense: that needs a crosslinker and a functionality, "
+            "and this is the linear chain-growth case where solidification is "
+            "vitrification rather than network formation.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
         _p(
             "hansen_dispersion",
             "Pa^0.5",

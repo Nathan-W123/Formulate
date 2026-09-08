@@ -35,6 +35,48 @@ def load_reference_compounds() -> tuple[dict[str, Any], ...]:
 
 
 @lru_cache(maxsize=1)
+def load_monomers() -> tuple[dict[str, Any], ...]:
+    """The polymerisable monomers, kept in a file of their own.
+
+    They are catalogue entries and not calibration data, and the separation is
+    load-bearing rather than tidy. ``reference_compounds.json`` is the held-out
+    set that every measured uncertainty in this repository was calibrated
+    against - "mean absolute error over the fifty reference compounds" appears
+    in a dozen expert docstrings - so adding structures to it silently
+    invalidates all of them without recomputing any. These are proposed to the
+    search and never scored against.
+
+    The catalogue had one monomer in it, styrene, which meant a target selected
+    on a polymerisation rate could not be answered by anything: the property
+    existed, the expert existed, and the pool had nothing to apply them to.
+    """
+    text = (
+        resources.files("formulate.data")
+        .joinpath("monomers.json")
+        .read_text(encoding="utf-8")
+    )
+    return tuple(json.loads(text)["compounds"])
+
+
+@lru_cache(maxsize=1)
+def catalogue() -> tuple[dict[str, Any], ...]:
+    """Everything the search may propose, reference compounds first.
+
+    Deduplicated on structure: styrene is a solvent in one file and a monomer
+    in the other, and it is one candidate.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for record in load_reference_compounds() + load_monomers():
+        key = _canonical(record["smiles"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(record)
+    return tuple(out)
+
+
+@lru_cache(maxsize=1)
 def reference_provenance_note() -> str:
     text = (
         resources.files("formulate.data")
@@ -76,7 +118,7 @@ class ReferenceDatabaseExplorer(Explorer):
 
         seen = {c.structure_id for c in scored}
         out: list[Candidate] = []
-        for record in load_reference_compounds():
+        for record in catalogue():
             if len(out) >= count:
                 break
             if _canonical(record["smiles"]) in self._excluded:

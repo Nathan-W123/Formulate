@@ -1,0 +1,87 @@
+{
+  "compounds": [
+    {
+      "boiling_point_c": 146.6,
+      "cas": "141-32-2",
+      "critical_pressure_pa": 2760000.0,
+      "critical_temperature_k": 597.4,
+      "critical_volume_m3_mol": 0.000445,
+      "enthalpy_fusion_j_mol": 16975.0,
+      "melting_point_c": -64.3,
+      "name": "butyl acrylate",
+      "smiles": "C=CC(=O)OCCCC"
+    },
+    {
+      "boiling_point_c": 163.7,
+      "cas": "97-88-1",
+      "critical_pressure_pa": 2630000.0,
+      "critical_temperature_k": 619.0,
+      "critical_volume_m3_mol": 0.000481,
+      "enthalpy_fusion_j_mol": 18255.0,
+      "melting_point_c": -75.0,
+      "name": "butyl methacrylate",
+      "smiles": "C=C(C)C(=O)OCCCC"
+    },
+    {
+      "boiling_point_c": 98.9,
+      "cas": "140-88-5",
+      "critical_pressure_pa": 3749025.0,
+      "critical_temperature_k": 552.0,
+      "critical_volume_m3_mol": 0.00032,
+      "enthalpy_fusion_j_mol": 11795.0,
+      "melting_point_c": -71.0,
+      "name": "ethyl acrylate",
+      "smiles": "C=CC(=O)OCC"
+    },
+    {
+      "boiling_point_c": 80.1,
+      "cas": "96-33-3",
+      "critical_pressure_pa": 4249570.0,
+      "critical_temperature_k": 536.0,
+      "critical_volume_m3_mol": 0.00027,
+      "density_25c": 0.948735,
+      "enthalpy_fusion_j_mol": 9205.0,
+      "melting_point_c": -75.0,
+      "name": "methyl acrylate",
+      "smiles": "C=CC(=O)OC"
+    },
+    {
+      "boiling_point_c": 100.6,
+      "cas": "80-62-6",
+      "critical_pressure_pa": 2970000.0,
+      "critical_temperature_k": 540.3,
+      "critical_volume_m3_mol": 0.00032,
+      "density_25c": 0.937979,
+      "enthalpy_fusion_j_mol": 14400.0,
+      "melting_point_c": -48.0,
+      "name": "methyl methacrylate",
+      "smiles": "C=C(C)C(=O)OC"
+    },
+    {
+      "boiling_point_c": 145.3,
+      "cas": "100-42-5",
+      "critical_pressure_pa": 3900000.0,
+      "critical_temperature_k": 635.0,
+      "critical_volume_m3_mol": 0.000357,
+      "density_25c": 0.900425,
+      "enthalpy_fusion_j_mol": 10900.0,
+      "melting_point_c": -31.0,
+      "name": "styrene",
+      "smiles": "C=Cc1ccccc1",
+      "surface_tension_25c": 31.875409
+    },
+    {
+      "boiling_point_c": 72.6,
+      "cas": "108-05-4",
+      "critical_pressure_pa": 4185000.0,
+      "critical_temperature_k": 519.2,
+      "critical_volume_m3_mol": 0.000269,
+      "density_25c": 0.926202,
+      "enthalpy_fusion_j_mol": 9205.0,
+      "melting_point_c": -96.6,
+      "name": "vinyl acetate",
+      "smiles": "C=COC(C)=O"
+    }
+  ],
+  "provenance": "The seven monomers whose propagation rate coefficients the IUPAC Working Party on Modeling of Polymerization Kinetics and Processes established by pulsed-laser polymerisation. Property values from the 'chemicals' compilation, resolved by name and checked against the structure's molar mass - resolving these by SMILES returns the wrong compound silently, which is how the check came to be here. Fields the compilation does not cover are omitted rather than estimated. Deliberately kept out of reference_compounds.json: that file is the held-out set every measured uncertainty in this repository was calibrated against, and growing it would invalidate a dozen stated figures without recomputing any of them."
+}
