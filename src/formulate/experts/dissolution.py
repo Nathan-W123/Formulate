@@ -141,6 +141,14 @@ class DissolutionExpert(Expert):
     family = PropertyFamily.CHEMICAL
     supported_classes = frozenset({MaterialClass.MOLECULE})
     supported_properties = frozenset({"solubility_red"})
+    #: Taken from the panel rather than looked up directly, so that a solvent
+    #: the compilation has never heard of can still be placed against a
+    #: polymer's sphere. Every component of a designed formulation tends to be
+    #: such a solvent, and going straight to the compilation meant the only
+    #: candidates that could be scored were the ones already in a handbook.
+    dependencies = frozenset(
+        {"hansen_dispersion", "hansen_polar", "hansen_hydrogen_bonding"}
+    )
 
     def is_available(self) -> bool:
         from formulate import chem
@@ -158,9 +166,17 @@ class DissolutionExpert(Expert):
         if candidate.molecule is None:
             return ApplicabilityDomain.outside("candidate carries no molecule")
         if hansen_triple(candidate.molecule.smiles) is None:
-            return ApplicabilityDomain.outside(
-                "this structure has no compiled Hansen parameters",
-                basis="solvents present in the Hansen compilation",
+            return ApplicabilityDomain(
+                in_domain=True,
+                score=0.6,
+                basis=(
+                    "no compiled Hansen parameters for this structure, so its triple "
+                    "has to come from the panel; a group estimate carries about one "
+                    "MPa^0.5 per component against the compilation's half"
+                ),
+                warnings=(
+                    "the solvent's Hansen triple is estimated rather than tabulated",
+                ),
             )
         return ApplicabilityDomain(
             basis="a solvent with compiled Hansen parameters, against a polymer with a "
@@ -200,10 +216,36 @@ class DissolutionExpert(Expert):
 
         smiles = request.candidate.molecule.smiles  # type: ignore[union-attr]
         triple = hansen_triple(smiles)
+        estimated = False
         if triple is None:
-            return Prediction.unsupported(
-                prop, self.id, "this structure has no compiled Hansen parameters"
+            # Fall back to whatever the panel resolved, which may be a group
+            # estimate. The sphere's own radius is uncertain by about a tenth,
+            # so a triple good to a MPa^0.5 is not the limiting term.
+            components = tuple(
+                request.dependency_value(f"hansen_{axis}", "MPa^0.5")
+                for axis in ("dispersion", "polar", "hydrogen_bonding")
             )
+            if any(value is None for value in components):
+                missing = [
+                    axis
+                    for axis, value in zip(
+                        ("dispersion", "polar", "hydrogen_bonding"), components
+                    )
+                    if value is None
+                ]
+                return Prediction.unsupported(
+                    prop,
+                    self.id,
+                    "this structure has no compiled Hansen parameters and the panel "
+                    f"supplied no estimate for {', '.join(missing)} either",
+                )
+            # The panel reports in MPa^0.5 and this function takes Pa^0.5,
+            # which differ by a thousand rather than a million: a square root
+            # halves the exponent.
+            triple = tuple(
+                value * _PA_ROOT_PER_MPA_ROOT for value in components  # type: ignore[misc]
+            )
+            estimated = True
 
         red = relative_energy_difference(triple, sphere)
         verdict = (
@@ -230,6 +272,11 @@ class DissolutionExpert(Expert):
                 "larger than any error in the solvent's own Hansen parameters"
             ),
             notes=(
+                (
+                    "the solvent's Hansen triple is a group estimate, not tabulated"
+                    if estimated
+                    else "the solvent's Hansen triple is tabulated"
+                ),
                 f"{key}: centre ({sphere.dispersion}, {sphere.polar}, "
                 f"{sphere.hydrogen_bonding}) MPa^0.5, radius {sphere.radius}",
                 f"RED {red:.2f}, {verdict}",

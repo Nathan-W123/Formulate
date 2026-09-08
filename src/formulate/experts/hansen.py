@@ -21,6 +21,7 @@ underdetermined guess dressed as a measurement.
 from __future__ import annotations
 
 import functools
+import math
 
 from formulate.core.candidate import Candidate, MaterialClass
 from formulate.core.prediction import Prediction
@@ -202,4 +203,222 @@ class HansenSolubilityExpert(Expert):
                 "measured and tabulated rather than estimated",
                 f"CAS {resolve_cas(smiles)}",
             ),
+        )
+
+
+# --------------------------------------------------------------------------
+# Estimating a Hansen triple where the compilation has none
+# --------------------------------------------------------------------------
+
+#: Hoftyzer-Van Krevelen group contributions: (SMARTS, Fd, Fp, Eh).
+#:
+#: ``Fd`` and ``Fp`` are in (MJ/m^3)^0.5 cm^3/mol and ``Eh`` in J/mol, from
+#: Van Krevelen's table. The triple follows as
+#:
+#:     delta_D = sum(Fd) / V
+#:     delta_P = sqrt(sum(Fp^2)) / V
+#:     delta_H = sqrt(sum(Eh) / V)
+#:
+#: The dispersion term adds linearly, the polar term **in quadrature**, and
+#: the hydrogen bonding term as an energy. Getting the middle one wrong is
+#: easy and quiet: summing Fp linearly instead put the mean absolute error on
+#: the polar component at 2.42 MPa^0.5 against the 0.87 it should be, and
+#: nothing about the answers looked unusual.
+#:
+#: The table is deliberately short. Every group here is one whose value was
+#: checked against the compilation over the reference set; a molecule
+#: containing anything else is refused rather than estimated from a partial
+#: sum, because a missing group does not add noise, it removes a contribution
+#: and leaves an ordinary looking number. Dimethyl sulfoxide with no
+#: sulfoxide group comes back at 11.8 against a measured 18.4.
+_HVK_GROUPS: tuple[tuple[str, float, float, float], ...] = (
+    ("[CX4H3]", 420.0, 0.0, 0.0),
+    ("[CX4H2]", 270.0, 0.0, 0.0),
+    ("[CX4H1]", 80.0, 0.0, 0.0),
+    ("[CX4H0]", -70.0, 0.0, 0.0),
+    ("[CX3H2]=[CX3]", 400.0, 0.0, 0.0),
+    ("[CX3H1](=[CX3])", 200.0, 0.0, 0.0),
+    ("[CX3H0;$([CX3]=[CX3])]", 70.0, 0.0, 0.0),
+    ("[cX3]", 238.0, 18.0, 0.0),
+    # The ester oxygen must not itself be bonded to oxygen, or a peroxyester
+    # matches and a peroxide is typed as two esters. Every atom is covered
+    # in that case, so the unmatched-atom refusal cannot see it: benzoyl
+    # peroxide came back as an ordinary 18.2 / 3.5 / 8.4.
+    ("[CX3](=[OX1])[OX2;!$([OX2][OX2])]", 390.0, 490.0, 7000.0),
+    ("[CX3;$([CX3]([#6])[#6])]=[OX1]", 290.0, 770.0, 2000.0),
+    ("[OX2;$([OX2]([#6])[#6]);!$([OX2][CX3]=O)]", 100.0, 400.0, 3000.0),
+    ("[OX2H]", 210.0, 500.0, 20000.0),
+    ("[NX3;H2]", 280.0, 0.0, 8400.0),
+    ("[NX3;H0;!$(NC=O)]", 20.0, 800.0, 5000.0),
+    ("[Cl]", 450.0, 550.0, 400.0),
+    ("[CX2]#[NX1]", 430.0, 1100.0, 2500.0),
+)
+
+#: A carbon carrying two or more halogens. The ``-Cl`` contribution is
+#: calibrated for an isolated substituent and does not survive being stacked:
+#: with it, carbon tetrachloride comes out at a polar 11.3 against a measured
+#: zero. Refused rather than corrected, since one compound is no basis for a
+#: correction.
+_POLYHALOGENATED = "[#6](-[F,Cl,Br,I])-[F,Cl,Br,I]"
+
+#: One-sigma spreads, as 1.253 times the mean absolute error measured against
+#: the compilation over the forty reference structures this method accepts.
+HVK_SIGMA: dict[str, float] = {
+    "hansen_dispersion": 1.12,
+    "hansen_polar": 1.09,
+    "hansen_hydrogen_bonding": 1.48,
+}
+
+
+@functools.lru_cache(maxsize=1)
+def _hvk_compiled():
+    from rdkit import Chem
+
+    return (
+        tuple((Chem.MolFromSmarts(s), fd, fp, eh) for s, fd, fp, eh in _HVK_GROUPS),
+        Chem.MolFromSmarts(_POLYHALOGENATED),
+    )
+
+
+def hoftyzer_van_krevelen(smiles: str, molar_volume_cm3: float) -> tuple[float, float, float] | None:
+    """A Hansen triple in MPa^0.5, or None if any atom is left uncovered."""
+    from rdkit import Chem
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None or molar_volume_cm3 <= 0.0:
+        return None
+    groups, polyhalogen = _hvk_compiled()
+    if mol.HasSubstructMatch(polyhalogen):
+        return None
+
+    used: set[int] = set()
+    dispersion = polar_squared = bonding = 0.0
+    for pattern, fd, fp, eh in groups:
+        for match in mol.GetSubstructMatches(pattern):
+            if any(atom in used for atom in match):
+                continue
+            used.update(match)
+            dispersion += fd
+            polar_squared += fp * fp
+            bonding += eh
+    if {atom.GetIdx() for atom in mol.GetAtoms()} - used:
+        return None
+    return (
+        dispersion / molar_volume_cm3,
+        math.sqrt(polar_squared) / molar_volume_cm3,
+        math.sqrt(bonding / molar_volume_cm3),
+    )
+
+
+class GroupContributionHansenExpert(Expert):
+    """A Hansen triple by Hoftyzer-Van Krevelen, where no compilation has one.
+
+    The compilation covers ordinary solvents and stops there. Every component
+    of a designed formulation tends to fall outside it - a specialty monomer,
+    an initiator, an accelerator - and the mixture layer needs all three
+    components of every one of them, so a single gap takes out the whole
+    blend. Asked for the four components of a cured jet, the lookup expert
+    reported four of four missing and the mixture expert then had nothing to
+    average.
+
+    The estimate is worth having only because it declines. It refuses on any
+    atom no group covers, on a polyhalogenated carbon, and on a missing molar
+    volume, because each of those failure modes produces a plausible number
+    rather than an obvious one.
+    """
+
+    id = "hansen_group_contribution"
+    version = "1"
+    method = (
+        "Hoftyzer-Van Krevelen group contribution (Van Krevelen, Properties of "
+        "Polymers, 4th ed., table 7.9)"
+    )
+    family = PropertyFamily.INTERFACIAL
+    supported_properties = frozenset(
+        {"hansen_dispersion", "hansen_polar", "hansen_hydrogen_bonding"}
+    )
+    supported_classes = frozenset({MaterialClass.MOLECULE})
+    #: The triple is an energy density, so every component divides by the
+    #: molar volume; without one there is no estimate at all.
+    dependencies = frozenset({"liquid_density"})
+
+    def assess_domain(self, candidate: Candidate) -> ApplicabilityDomain:
+        smiles = candidate.primary_smiles
+        if smiles is None:
+            return ApplicabilityDomain(in_domain=False, score=0.0, basis="no structure")
+        return ApplicabilityDomain(
+            in_domain=True,
+            score=1.0,
+            basis=(
+                "measured against the compilation over the forty reference structures "
+                "this method accepts: mean absolute error 0.89, 0.87 and 1.18 MPa^0.5 "
+                "on the dispersion, polar and hydrogen bonding components"
+            ),
+        )
+
+    def _predict_one(self, prop, request, domain) -> Prediction | None:
+        smiles = request.candidate.primary_smiles
+        if smiles is None:
+            return Prediction.unsupported(prop, self.id, "the candidate carries no structure")
+
+        density = request.dependency_value("liquid_density", "kg/m^3")
+        if density is None or density <= 0.0:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "a Hansen component is an energy per unit volume and no liquid density "
+                "reached this expert, so there is no volume to divide by",
+            )
+        from rdkit import Chem
+        from rdkit.Chem import Descriptors
+
+        molecule = Chem.MolFromSmiles(smiles)
+        if molecule is None:
+            return Prediction.unsupported(prop, self.id, "the structure could not be parsed")
+        molar_volume = float(Descriptors.MolWt(molecule)) / (density / 1000.0)
+
+        triple = hoftyzer_van_krevelen(smiles, molar_volume)
+        if triple is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "this structure contains a group the table does not cover, or a carbon "
+                "carrying more than one halogen. A partial sum silently drops a "
+                "contribution and returns an ordinary looking number, so it is refused",
+            )
+        index = {
+            "hansen_dispersion": 0,
+            "hansen_polar": 1,
+            "hansen_hydrogen_bonding": 2,
+        }[prop]
+        value = triple[index]
+
+        # The group method's own spread, plus whatever the molar volume brings:
+        # every component goes as one over V, so the density's relative error
+        # passes straight through.
+        incumbent = request.dependency("liquid_density")
+        relative_volume = 0.0
+        if incumbent is not None and incumbent.uncertainty.std and incumbent.quantity:
+            relative_volume = abs(incumbent.uncertainty.std / incumbent.quantity.value)
+        std = math.hypot(HVK_SIGMA[prop], value * relative_volume)
+
+        return self._make(
+            prop,
+            value,
+            "MPa^0.5",
+            request,
+            domain,
+            std=std,
+            kind=UncertaintyKind.EPISTEMIC,
+            basis=(
+                f"1.253 times the mean absolute error of this group method against the "
+                f"compilation ({HVK_SIGMA[prop]:.2f} MPa^0.5), with the molar volume's "
+                f"own {relative_volume * 100:.0f} per cent carried through"
+            ),
+            notes=(
+                f"molar volume {molar_volume:.1f} cm^3/mol, from the liquid density this "
+                "expert was given rather than from a group estimate of its own",
+                "estimated, not tabulated: the compilation has no entry for this structure",
+            ),
+            molar_volume_cm3=round(molar_volume, 3),
         )

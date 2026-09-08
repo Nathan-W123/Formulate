@@ -13,7 +13,7 @@ from .base import Expert, PredictionRequest
 from .critical import AtomicCriticalExpert
 from .dissolution import DissolutionExpert
 from .feasibility import SynthesisFeasibilityExpert
-from .hansen import HansenSolubilityExpert
+from .hansen import GroupContributionHansenExpert, HansenSolubilityExpert
 from .interfacial import InterfacialCorrelationExpert
 from .joback import JobackThermalExpert
 from .learned import LearnedBoilingPointExpert, LearnedRefractiveIndexExpert
@@ -49,6 +49,11 @@ PHASE1_EXPERTS = (
     StructuralDescriptorExpert,
     HansenSolubilityExpert,
     MeasuredPropertyExpert,
+    # Estimates a Hansen triple where the compilation has none, which is
+    # every component of a designed formulation that is not an ordinary
+    # solvent. It belongs in the molecule-only panel because that is the
+    # panel a mixture expert runs over its own components.
+    GroupContributionHansenExpert,
 )
 
 #: Phase 4 adds formulation and polymer coverage. A mixture expert delegates
@@ -97,7 +102,7 @@ __all__ = [
     "CorrespondingStatesViscosityExpert", "JobackViscosityExpert",
     "LearnedBoilingPointExpert", "LearnedRefractiveIndexExpert", "LorentzLorenzExpert",
     "MeasuredViscosityExpert", "MeltViscosityExpert", "TroutonExtensionalExpert",
-    "PropagationExpert", "FreeRadicalCureExpert",
+    "PropagationExpert", "FreeRadicalCureExpert", "GroupContributionHansenExpert",
     "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",

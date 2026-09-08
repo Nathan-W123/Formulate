@@ -134,6 +134,7 @@ class MixtureExpert(Expert):
         smiles = smiles_list[0] if smiles_list else ""
 
         molar_mass = density = None
+        triple = hansen_triple(smiles) if smiles else None
         if isinstance(payload, MoleculeSpec) and smiles:
             sub = molecule_candidate(smiles, conditions=request.conditions)
             registry = self.registry()
@@ -145,6 +146,9 @@ class MixtureExpert(Expert):
                     "critical_pressure",
                     "critical_volume",
                     "normal_boiling_point",
+                    "hansen_dispersion",
+                    "hansen_polar",
+                    "hansen_hydrogen_bonding",
                 }
             )
             context: dict[str, Prediction] = {}
@@ -168,13 +172,26 @@ class MixtureExpert(Expert):
             if rho is not None and rho.quantity is not None:
                 density = rho.quantity.to("kg/m^3").value
 
+            # Whatever the component panel resolved, which may be a group
+            # estimate. Going straight to the compilation instead meant a
+            # blend was scoreable only when every component was already in a
+            # handbook, and a designed formulation is mostly things that are
+            # not: a specialty monomer, an initiator, an accelerator. One gap
+            # took out the whole mixture.
+            axes = tuple(
+                context.get(f"hansen_{axis}")
+                for axis in ("dispersion", "polar", "hydrogen_bonding")
+            )
+            if all(a is not None and a.quantity is not None for a in axes):
+                triple = tuple(a.quantity.to("Pa^0.5").value for a in axes)  # type: ignore[union-attr]
+
         return ComponentProperties(
             smiles=smiles,
             role=component.role.value,
             fraction=component.fraction,
             molar_mass_g_mol=molar_mass,
             density_kg_m3=density,
-            hansen=hansen_triple(smiles) if smiles else None,
+            hansen=triple,
         )
 
     def volume_fractions(

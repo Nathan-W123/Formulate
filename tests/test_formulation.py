@@ -230,14 +230,37 @@ def test_no_relative_energy_difference_is_invented_without_an_interaction_radius
 
 @hansen_only
 def test_a_component_without_hansen_data_blocks_the_blend_average():
-    """Averaging over a partial set would describe a different formulation."""
+    """Averaging over a partial set would describe a different formulation.
+
+    The example is benzoyl peroxide, and it had to change: this used to be a
+    hindered amine, which the group-contribution route now covers. A component
+    is only uncoverable if nothing can place it at all, and a peroxide is -
+    there is no -O-O- group in the table and it is refused rather than summed
+    without one.
+    """
     expert = MixtureExpert()
     result = _predict(
         expert,
-        _blend([("Cc1ccccc1", 0.5), ("CC(C)(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)N1CCCCC1", 0.5)]),
+        _blend([("Cc1ccccc1", 0.5), ("O=C(OOC(=O)c1ccccc1)c1ccccc1", 0.5)]),
         ["hansen_dispersion"],
     )["hansen_dispersion"]
     assert not result.is_usable
+
+
+def test_an_estimated_component_no_longer_blocks_the_blend():
+    """The counterpart: a structure off the compilation is placeable now.
+
+    Hexanediol diacrylate is in no Hansen compilation, and before the group
+    route existed a blend containing it lost all three components at once.
+    """
+    expert = MixtureExpert()
+    result = _predict(
+        expert,
+        _blend([("Cc1ccccc1", 0.5), ("C=CC(=O)OCCCCCCOC(=O)C=C", 0.5)]),
+        ["hansen_dispersion"],
+    )["hansen_dispersion"]
+    assert result.is_usable
+    assert 15.0 < result.quantity.to("MPa^0.5").value < 22.0
 
 
 @hansen_only
