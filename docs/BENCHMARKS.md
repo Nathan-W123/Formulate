@@ -277,3 +277,76 @@ caller can check before building a partition.
 Gradients are also not implemented: PySCF exposes `qmmm.add_mm_charges_grad`,
 but nothing here consumes QM/MM forces, and an untested gradient path would be
 a capability claim with no evidence behind it.
+
+---
+
+## The educational Hartree–Fock backend
+
+`python -m pytest tests/test_minimal_hf.py`
+
+Section 7 asks for an optional minimal implementation exposing "basis
+functions, SCF, energies, density, gradients, and the origin of nuclear
+forces". Each of those is a visible object in `physics/qm/minimal_hf.py` rather
+than a number returned by a library. It is labelled educational everywhere:
+`production = False`, a warning on every result, and `backend_for()` refuses to
+return a non-production backend for any method other than the one it teaches.
+
+**Its boundary.** s-type contracted Gaussians only, which in STO-3G means
+hydrogen and helium exactly and nothing else. Lithium onwards needs p
+functions, which are a different piece of mathematics (the Obara–Saika
+recursions) rather than a longer version of this one. Carbon is refused,
+because s-only integrals for carbon would silently drop its 2p shell and return
+a number that looks like an energy.
+
+**Checked against PySCF**, since a teaching implementation that is subtly wrong
+teaches the wrong thing:
+
+| quantity | agreement with PySCF/STO-3G |
+|---|---|
+| H₂ at 0.74 Å | −1.1167593074 vs −1.1167593074 Ha (1.2e-12) |
+| H₂ at 1.20 Å | −1.0051067066 vs −1.0051067066 Ha (1.2e-11) |
+| He atom | −2.8077839575 vs −2.8077839575 Ha (1.8e-15) |
+| orbital energies (H₂) | −0.57855386, +0.67114349 — exact match |
+| overlap, core Hamiltonian, two-electron integrals | < 1e-7 |
+| tr(PS) | 2.0000000000 |
+
+The 1e-7 on the integrals is the stored STO-3G contraction coefficients being
+the published eight-figure values rather than PySCF's internal ones; the test
+suite checks the stored table against `pyscf.gto.basis.load` so a transcription
+error cannot survive.
+
+### Where nuclear forces come from
+
+The pedagogical payload. For H₂ at 0.74 Å:
+
+| | force on atom 0, z (Hartree/Bohr) |
+|---|---|
+| total (central differences) | **+0.027680** |
+| PySCF analytic gradient | +0.0276796 |
+| Hellmann–Feynman part | −0.050516 |
+| Pulay remainder | +0.078195 |
+
+The Hellmann–Feynman force — the classical electrostatic force on each nucleus
+from the converged density and the other nuclei — is not merely inaccurate
+here, it has **the wrong sign**. It is the whole force only for an exact
+wavefunction in a complete basis; here the basis functions ride on the nuclei,
+so moving one changes the basis itself, and what is left over is the Pulay
+force. In this minimal basis the leftover is nearly three times the total.
+
+The analytic Hellmann–Feynman term is checked against its own definition —
+displace the point charge while holding the density *and* the basis-function
+centres fixed — at three bond lengths, agreeing to 1e-10. That check caught a
+dropped minus sign: the energy contains Σ P_ij V_ij and the force is minus its
+derivative, and without the outer sign the electron density pushed the nuclei
+apart instead of pulling them together, making the term 36× the total force. It
+looked like a dramatic illustration of the Pulay effect. It was a bug.
+
+### What it does not do
+
+Geometry optimisation (declined explicitly), open-shell systems (restricted HF
+doubly occupies orbitals, so an odd electron count is refused rather than
+rounded), any basis but STO-3G, and any element but H and He. The total force
+is a central difference rather than an analytic gradient — the analytic Pulay
+term needs derivatives of every integral with respect to the basis-function
+centres, which is more machinery than a module written to be read should carry,
+and a finite difference demonstrates the point without asserting it.

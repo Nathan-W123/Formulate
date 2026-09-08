@@ -177,12 +177,29 @@ complex is relaxed rather than searched — stated on every value.
 
 **Not done.**
 
-- **The optional minimal Hartree-Fock teaching backend** of section 7.
 - **Polarizable QM/MM embedding**, with a concrete blocker rather than an
   absence: it needs MM polarizabilities, the only force field wired up here is
   OPLS-AA, which is fixed-charge and has none, and this PySCF build ships no
   polarizable-embedding driver. `EmbeddingMode.POLARIZABLE` exists and refuses,
   naming both halves.
+
+**The optional minimal Hartree-Fock teaching backend** of section 7 is done.
+`physics/qm/minimal_hf.py` exposes basis functions as callable objects, the
+overlap, kinetic, nuclear-attraction and two-electron integrals in closed form,
+the SCF iteration with its convergence history, the density matrix, and the
+decomposition of a nuclear force into its Hellmann-Feynman and Pulay parts. It
+covers hydrogen and helium exactly and refuses everything else: STO-3G is
+s-only for those two, and s-only integrals for carbon would drop its 2p shell
+and return a number that looks like an energy.
+
+Every number is checked against PySCF, because a teaching implementation that
+is subtly wrong teaches the wrong thing: H2 and He energies agree to 1e-12
+Hartree, orbital energies exactly, and the total force to six significant
+figures against PySCF's analytic gradient. The Hellmann-Feynman force at H2's
+equilibrium has the wrong sign, and that is the lesson rather than a defect -
+in a finite basis the Pulay remainder is nearly three times the total force.
+`production = False`, and `backend_for()` will not return a non-production
+backend for any method other than the one it teaches.
 
 **QM/MM** is done for the two embedding modes that can be done correctly.
 `physics/qmmm.py` partitions a molecule into a quantum region and a classical
