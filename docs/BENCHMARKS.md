@@ -1034,6 +1034,7 @@ temperature. 4.5 hours of contended CPU.
 | liquid density | 0.8077 ± 0.0005 g/cm³ | 0.7995 | **+1.0 %** |
 | Hildebrand parameter | 19.63 ± 0.13 MPa^0.5 | 19.05 | **+3.0 %** |
 | enthalpy of vaporisation | 36.9 kJ/mol | 34.8 | +6 % |
+| **surface tension** | **23.69 ± 2.97 mN/m** | **23.96** | **−1.1 %** |
 
 That is OPLS-AA's known record (1.2 % on density, 3.7 % on vaporisation over
 five other liquids), from a force field that saw none of these numbers. The run
@@ -1043,9 +1044,25 @@ nearer the drift. The Hildebrand parameter is the number that matters — it is
 the total behind the Hansen sphere the solvent selection ran on, and MD
 reproduces it independently from cohesive energy.
 
-The surface tension slab was still running when this was written. 2-butanone
-has since left the recipe (below), so these validate the engine rather than the
-material; they are the first MD-validated numbers in the chain regardless.
+The surface tension is the row that retires a refusal. `python
+bench/web_shooter_md.py tension`: 350 molecules in a 3.2 × 3.2 × 11.1 nm slab,
+5.1 nm of liquid, 400 ps of production, 6.1 hours on two contended cores. The
+kinetic anisotropy was 0.6 bar — the term assumed to cancel out of the tension
+did — and the cell dipole along the normal 0.39 e·nm, small enough that
+three-dimensional Ewald on a slab is not the error. The sampling error is
+12.5 %, so this is agreement rather than a measurement of the force field's
+bias, and `surface_tension` stays in `UNMEASURED_SYSTEMATIC` saying so.
+
+The same run measured the boiling-point refusal. A slab is a liquid–vapour
+coexistence, so in principle it gives the saturated vapour pressure; in practice
+it held **0.73 molecules** in the gap on average, implying 49 kPa against a real
+12.6 — because a count under one is not a statistic. That is now the stated
+reason `normal_boiling_point` is refused, with the number, in place of the old
+assertion about free energies.
+
+2-butanone has since left the recipe (below), so these validate the engine
+rather than the material; they are the first MD-validated numbers in the chain
+regardless.
 
 ### The base could not be searched for, because no rate existed
 

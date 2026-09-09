@@ -125,8 +125,10 @@ is worth writing down precisely: a vague one cannot be found to be false.
 What is still refused says what it would take. A normal boiling point needs a
 saturated vapour, and the slab that measures a surface tension is a
 liquid-vapour coexistence — but at 298 K a compound of ordinary volatility puts
-well under one molecule in the vacuum gap, so the refusal is now a counted
-number rather than an assertion. Rather than returning a value from a box too
+well under one molecule in the vacuum gap. Measured on 2-butanone: 0.73
+molecules on average over 400 ps, implying a vapour pressure four times the
+real one, because a count under one is not a statistic. The refusal is a
+counted number rather than an assertion. Rather than returning a value from a box too
 small to hold the phenomenon — the error would be systematic, so an error bar
 would not rescue it — the run refuses and estimates what an adequate
 calculation would cost.

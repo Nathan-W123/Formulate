@@ -160,13 +160,15 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
     # density it will then be held at. A Green-Kubo integral needs the stress
     # every ten femtoseconds rather than the volume every picosecond, and each
     # of those samples is six single-point energies, so the finite difference
-    # rather than the dynamics sets the cost. These two are *estimated* from
-    # the density run's measured rate on this installation - the slab was
-    # still running when this was written and the viscosity had not started -
-    # and they are deliberately generous. A wrong guess here refuses a run it
-    # could have afforded, which costs a validation; the other direction runs
-    # something it cannot finish, which costs the whole stage.
-    "surface_tension": 19800.0,
+    # rather than the dynamics sets the cost. The slab was measured: 350
+    # molecules of 2-butanone, 150 ps equilibration and 400 ps production,
+    # 6.12 hours on two of this installation's four cores while a second run
+    # shared the machine - so this figure is what a contended run costs, which
+    # is the honest one to budget. The viscosity is still an estimate from
+    # the density run's rate, deliberately generous: a wrong guess here refuses
+    # a run it could have afforded, which costs a validation; the other
+    # direction runs something it cannot finish, which costs the whole stage.
+    "surface_tension": 22000.0,
     "shear_viscosity": 9000.0,
 }
 
@@ -199,11 +201,14 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
 #: and a coefficient that spans orders of magnitude is not a place to
 #: interpolate a systematic error from a density. Runs of it say so instead.
 #: Surface tension and shear viscosity are absent for the same reason and not
-#: for a weaker one: they are new, they have been measured on one compound, and
-#: one compound is a calibration set of size one. Borrowing the density's 1.2
-#: per cent for them would be worse than admitting the gap - a tension is a
-#: small difference between two large pressures and has no reason to inherit a
-#: density's accuracy. See UNMEASURED_SYSTEMATIC below.
+#: for a weaker one. The tension has been run once, on 2-butanone: 23.69 mN/m
+#: against a measured 23.96, a deviation of 1.1 per cent inside a sampling
+#: error of 12.5. That is agreement, and it is not a measurement of the
+#: systematic error - a bias of five per cent would have been invisible under
+#: that noise. Borrowing the density's 1.2 per cent would be worse than
+#: admitting the gap: a tension is a small difference between two large
+#: pressures and has no reason to inherit a density's accuracy. See
+#: UNMEASURED_SYSTEMATIC below.
 CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
     "opls-aa": {
         "liquid_density": 0.012,
@@ -299,9 +304,14 @@ NOT_VALIDATABLE_REASONS: dict[str, str] = {
         "and a cross-candidate objective is not such a difference"
     ),
     "normal_boiling_point": (
-        "a boiling point is a phase-equilibrium property requiring free energies of "
-        "two coexisting phases, which neither a single-molecule calculation nor a "
-        "short classical trajectory provides"
+        "a boiling point needs the saturated vapour pressure, and the slab that measures "
+        "a surface tension is a liquid-vapour coexistence that could in principle supply "
+        "it - but at 298 K an ordinary solvent puts less than one molecule in the vacuum "
+        "gap. Measured on 2-butanone: 0.73 molecules on average across 400 ps, implying "
+        "49 kPa against a real 12.6, because a count under one is not a statistic. "
+        "Reaching one per cent on the pressure would need of order ten thousand "
+        "molecules in the gap, which is a box a hundred times this one or a run a "
+        "hundred times longer"
     ),
     "melting_point": (
         "a melting point requires the free-energy difference between a crystal and a "
