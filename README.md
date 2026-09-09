@@ -188,6 +188,7 @@ where they exist:
 | `toughness_proxy` | mechanical | polymer | elongation at break by network/glassy/rubbery classification, leave-one-out to a factor of 1.40 among rubbers and 6.64 among glasses |
 | `polymer_architecture` | structural | polymer | crosslink density, read off the specification and refused for a network that states none |
 | `hazard_ghs` | specialized | molecule, polymer, mixture | skin sensitisation, acute toxicity and carcinogenicity, by curated lookup only; refuses any structure not in the table |
+| `tack_dahlquist` | mechanical | polymer | whether a polymer sticks on contact, from the Dahlquist modulus criterion; refuses inside the criterion's own band |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation
@@ -195,6 +196,15 @@ set: ten polymers withheld from the fit and from the choice of descriptors,
 against which the glass transition comes out at 22 K RMSE and the density at
 3.7%. In-sample agreement is not reported as evidence, because a fitted model
 reproduces what it was fitted to by construction.
+
+`tack_dahlquist` and `adhesion` sit beside each other answering different
+questions, and the pairing is the point. Owens–Wendt says whether a liquid
+*wets*; it does not say whether a solid *sticks*, and a poly(tetrafluoroethylene)
+film and a poly(tetrafluoroethylene) grease share a surface chemistry while only
+one of them is an adhesive. What separates them is stiffness, so the tack expert
+reads a modulus rather than a surface tension — and the consequence is a
+contradiction rather than a trade-off: a load-bearing filament is a glass at
+~10⁹ Pa and tack needs ~10⁵, so no single material does both.
 
 `hazard_ghs` is the one expert in the panel that never estimates. Every value is
 a lookup in a curated GHS table and a structure outside it is refused by name,

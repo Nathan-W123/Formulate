@@ -1,0 +1,113 @@
+name: web fluid v8 - the tip material, because one material cannot both hold and stick
+notes: >
+  Run 7 selected a copolyamide hot melt as a load-bearing filament and left
+  one thing unanswered that a web needs more than any of the properties it
+  did rank on: the strand has to stick to what it hits. An ordinary
+  nylon-like copolyamide does not. It is a good filament and a poor adhesive,
+  and no amount of choosing between polyamides fixes that.
+
+  The reason it cannot be fixed by choosing is a contradiction rather than a
+  trade-off, and the panel can now state it as one. Pressure-sensitive tack
+  has a rheological precondition - Dahlquist's criterion, a storage modulus
+  below about 1e5 to 3e5 Pa at one hertz - because a stiffer material cannot
+  deform into the asperities of a real surface in the second it is pressed
+  there. A filament that carries eighty kilograms is a glass, and a glass is
+  of order 1e9 Pa. The copolyamide's shear modulus at 25 C is 1.06 GPa,
+  which is three and a half thousand times the ceiling.
+
+  So the two functions want moduli three and a half orders of magnitude
+  apart, and no single material occupies both. Separating them into two
+  materials is not a preference between architectures; it is the only
+  available one. This specification is for the second material - whatever
+  sits at the tip, or as a thin exterior layer, and does the sticking.
+
+  It is deliberately NOT a specification for an adhesive's strength. The
+  panel cannot predict a peel force or a lap shear: bond strength is
+  dominated by viscoelastic dissipation during separation, which exceeds the
+  thermodynamic work of adhesion by two to three orders of magnitude and is
+  computed nowhere here. What this run can do is screen on the precondition
+  without which no bond strength is collectable at all, and refuse the rest.
+
+  Two requirements are carried over from the filament run unchanged and for
+  the same reasons. It must be a thermoplastic, because the tip material is
+  delivered through the same heated nozzle as the filament and a network
+  cannot be. And it must not be a skin sensitiser, because the tip material
+  is the part of the device that touches things.
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+
+material_classes: [polymer]
+
+requirements:
+  # The whole point of the run. One means the Dahlquist criterion is met with
+  # the modulus and its own spread clear of the criterion's band; a material
+  # inside that band is refused rather than counted either way, so a pass here
+  # is a pass on a number that was not close.
+  - property: tack
+    direction: in_range
+    lower: 1
+    upper: 1
+    hard: true
+    weight: 4.0
+    rationale: a strand that does not stick to the wall is a rope on the floor
+
+  # Tack needs the chains mobile at use temperature, which means a transition
+  # well below it. This is the same statement as the modulus requirement from
+  # the other side, and it is here because it is checkable for the candidates
+  # whose modulus is not.
+  - property: glass_transition_temperature
+    direction: in_range
+    lower: -120 degC
+    upper: 10 degC
+    hard: true
+    rationale: chains have to be mobile at 25 C or nothing deforms into the surface
+
+  # Carried over from the filament run: same nozzle, same heat, same reason.
+  - property: crosslink_density
+    direction: in_range
+    lower: 0 mol/m^3
+    upper: 0 mol/m^3
+    hard: true
+    rationale: delivered through a heated nozzle, so it has to melt
+
+  # Carried over: this is the part of the device that touches things.
+  - property: skin_sensitiser
+    direction: in_range
+    lower: 0
+    upper: 0
+    hard: true
+    rationale: the tip is what contacts skin and surfaces
+
+  # Softest requirement, and the same one the filament run ended on.
+  - property: amorphous_density
+    direction: minimize
+    lower: 800 kg/m^3
+    upper: 1500 kg/m^3
+    weight: 1.0
+    rationale: mass carried on the wrist
+
+assumptions:
+  - statement: >-
+      Tack was read as the Dahlquist modulus criterion rather than as a
+      measured probe-tack or loop-tack force. The panel can predict neither
+      force, and the criterion is the precondition without which neither is
+      collectable; a pass here is not a bond strength.
+    source: inferred
+    made_by: operator
+    affects: [tack]
+  - statement: >-
+      Adhesion was NOT read as a work of separation. The Owens-Wendt expert in
+      the panel is molecule-only and answers whether a liquid wets, which is a
+      different question from whether a solid sticks - a poly(tetrafluoroethylene)
+      film and a poly(tetrafluoroethylene) grease share a surface chemistry and
+      only one of them is an adhesive.
+    source: stated
+    made_by: operator
+    affects: [tack]
+  - statement: >-
+      Nothing here specifies how the tip material and the filament are joined,
+      or in what geometry. A tip bead, a coaxial sheath and a surface treatment
+      are three different products and this run does not choose between them.
+    source: stated
+    made_by: operator

@@ -1391,10 +1391,8 @@ in crystals. Polypropylene is the worst because the rubbery modulus goes as
 polyethylene's 948. The panel is answering correctly for the amorphous polymer,
 which is a different material with the same repeat unit.
 
-**Adhesion has no route at any fidelity.** `AdhesionExpert` is Owens–Wendt from
-tabulated liquid surface energies and is declared molecule-only; nothing in the
-panel produces a `work_of_separation` for a polymer. For a strand meant to stick
-to what it hits, that is a larger gap than any of the above.
+**Adhesion had no route at any fidelity**, and closing it turned out not to be
+a surface-chemistry problem at all. That is the next section.
 
 **The hazard screen screens out and cannot screen in.** Skin sensitisation,
 acute toxicity and carcinogenicity, from a 76-row curated table covering every
@@ -1419,3 +1417,100 @@ route is being asked for at all — but a specification stating
 `material_classes: [polymer]` cannot see it, because a cure time belongs to a
 monomer and a monomer is not a polymer. The two halves of the argument still do
 not meet inside one run.
+
+---
+
+## Tack: why the strand cannot also be the glue
+
+```
+python -m formulate.cli.main run examples/web_fluid_tip.yaml
+python -m pytest tests/test_adhesion.py -q
+```
+
+Run 7 selected a load-bearing filament and left the thing a web needs most
+unanswered: the strand has to stick to what it hits, and an ordinary
+nylon-like copolyamide does not. The obvious move was to extend the
+Owens–Wendt expert to polymers. That would have answered the wrong question.
+
+**Surface energy decides whether a liquid wets. It does not decide whether a
+solid sticks.** A poly(tetrafluoroethylene) film and a poly(tetrafluoroethylene)
+grease have identical surface chemistry and only one of them is an adhesive.
+What separates them is stiffness: Dahlquist's criterion puts pressure-sensitive
+tack behind a storage modulus below about **10⁵–3 × 10⁵ Pa** at 1 Hz, because a
+stiffer material cannot deform into the asperities of a real surface in the
+second it is pressed there.
+
+### The contradiction, in numbers the panel already had
+
+| | shear modulus at 298 K | vs the 3 × 10⁵ Pa ceiling |
+|---|---|---|
+| copolyamide 6/66/12 | 1.06 GPa | **3,531× too stiff** |
+| PA6, PET, PBT, PS, PMMA, PLA, PA12, TPU, PVAc | 1.06 GPa | 3,531× too stiff |
+| HDPE / LDPE, amorphous phase | 2.23 MPa | 7.4× too stiff |
+| polypropylene, amorphous phase | 0.35 MPa | **1.2× — inside the band** |
+
+A filament that carries 80 kg is a glass and a glass is ~10⁹ Pa; tack needs
+10⁵. **The two functions want moduli three and a half orders of magnitude
+apart, so no single material occupies both.** Separating them into two
+materials is not a preference between architectures — it is the only available
+one, and it is now a result the panel states rather than an assertion in a
+notes block. Surface treatment of the filament does not escape it either:
+coating a 1 GPa strand leaves a 1 GPa strand.
+
+### The band is the uncertainty, and inside it the expert declines
+
+The criterion is quoted as 10⁵ Pa as often as 3 × 10⁵, and that is not sloppy
+citation — "sticks" depends on how rough the surface is, how hard it was
+pressed and for how long. Both ends are carried, the modulus's own spread is
+read as a **factor** rather than an amount (a rubbery modulus carries a
+relative spread of one, so a plus-or-minus would reach zero and call every
+rubber tacky), and a material whose interval straddles the band is **refused**.
+
+Amorphous polypropylene is the standing case: 3.5 × 10⁵ Pa, factor of two
+either way, so 1.75 × 10⁵ to 7 × 10⁵ — the whole band. It is refused, and it is
+the *highest-ranked* candidate in the run. The nearest thing to an answer is
+precisely the material the expert declines to classify, which is the correct
+outcome: inside the band the decision turns on the difference between the
+storage modulus at 1 Hz the criterion states and the static plateau this panel
+produces, and that difference is not modelled.
+
+### Run 8: nothing is tacky
+
+`examples/web_fluid_tip.yaml` asks for the second material — tacky,
+thermoplastic, not a sensitiser, transition below ambient. **0 feasible of 17.**
+`tack` eliminated every candidate: twelve confidently too stiff, one straddling
+the band, four with no modulus at all.
+
+| outcome | count | which |
+|---|---|---|
+| confidently **not** tacky | 12 | every glass, plus both polyethylenes |
+| refused, straddles the band | 1 | polypropylene (amorphous phase) |
+| refused, no modulus available | 4 | EVA-18, EVA-40, PCL, cured poly(HDDA) |
+| **tacky** | **0** | — |
+
+**The two most useful candidates are the two that cannot be scored.** EVA at
+both vinyl-acetate levels is the classic hot-melt tackifier base, and neither
+can be given a modulus at all: `polymer_mechanical` needs a tabulated chain
+dimension and there is none for a copolymer repeat unit.
+
+### What this does not establish, and it is most of it
+
+**This is a precondition, not a measurement.** A probe-tack or loop-tack test
+reports a force; this reports whether the material could collect one. Bond
+strength is dominated by viscoelastic dissipation during separation and exceeds
+the thermodynamic work of adhesion by two to three orders of magnitude —
+nothing in this panel computes it, and the Owens–Wendt expert beside this one
+would not have either.
+
+**The tackifier is outside what the panel can score, not merely absent from the
+catalogue.** A real tackifying resin — a rosin ester, a hydrocarbon resin — is a
+low-molar-mass oligomer, not an entangled polymer, and every modulus model here
+is the high-polymer limit: a glassy plateau fitted on nine amorphous polymers,
+or `3ρRT/M_e` for a rubber. Adding tackifier rows to the catalogue would
+produce more refusals, not more answers. Reaching them needs a modulus model
+below the entanglement limit, which does not exist here.
+
+**Nothing here specifies the architecture.** A tip bead, a coaxial sheath and a
+surface treatment are three different products, and the run chooses between
+none of them. Nor is there anything about how the two materials bond to each
+other, which for a polyamide/polyolefin pair is its own hard problem.

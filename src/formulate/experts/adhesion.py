@@ -43,6 +43,14 @@ What it does NOT produce is practical adhesion: peel strength, lap shear, or
 anything a test method reports. Those exceed the thermodynamic work by one to
 three orders of magnitude, because almost all the energy in peeling a real
 joint goes into deforming the adherends rather than into creating surface.
+
+For the same reason it does not answer whether something is *tacky*, and that
+question turns out not to be a surface-chemical one at all.
+:class:`DahlquistTackExpert`, at the bottom of this module, answers it from a
+modulus: a material only sticks on contact if it is soft enough to deform into
+the asperities of a real surface while it is pressed there, and no surface
+energy substitutes for that. The two experts here therefore answer different
+questions and neither is a refinement of the other.
 Section 13 puts them outside what this system may claim, and the two are not
 related by a constant that could be applied here.
 """
@@ -308,4 +316,168 @@ class AdhesionExpert(Expert):
             ),
             notes=tuple(notes),
             substrate=name,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tack, which is a rheological question and not a surface-chemical one
+# ---------------------------------------------------------------------------
+
+#: The Dahlquist criterion, in Pa: the storage modulus at 1 Hz and use
+#: temperature below which a material wets a rough surface under thumb pressure
+#: in the contact time available.
+#:
+#: It is quoted as 1e5 Pa as often as 3e5, and the disagreement is not sloppy
+#: citation - it is the criterion having a soft edge, because "sticks" depends
+#: on how rough the surface is, how hard it was pressed and for how long. Both
+#: ends are carried rather than one, and a material inside the band is refused
+#: instead of being called tacky or not: the width IS the uncertainty, and
+#: collapsing it to a single threshold would manufacture a decision the
+#: criterion does not support.
+DAHLQUIST_LOW = 1.0e5
+DAHLQUIST_HIGH = 3.0e5
+
+
+class DahlquistTackExpert(Expert):
+    """Whether a polymer sticks on contact, from its modulus alone.
+
+    The module above computes a thermodynamic work of adhesion, and this expert
+    exists because that quantity does not answer the question people ask it.
+    Surface energy decides whether a liquid *wets*; it does not decide whether
+    a solid *sticks*, and the gap between the two is the whole of pressure
+    sensitive adhesion. A poly(tetrafluoroethylene) film and a
+    poly(tetrafluoroethylene) grease have identical surface chemistry and only
+    one of them is an adhesive.
+
+    What decides it is stiffness. Dahlquist's observation is that a material
+    only adheres on contact if its storage modulus is below about 10^5 to
+    3x10^5 Pa at 1 Hz, because a stiffer material cannot deform into the
+    asperities of a real surface in the second or so it is pressed there. No
+    amount of favourable surface energy substitutes for that, which is why this
+    expert reads a modulus and not a surface tension.
+
+    The consequence for a load-bearing strand is a contradiction rather than a
+    trade-off, and it is the reason this expert was built. A filament that
+    carries load is a glass, and a glass is of order 10^9 Pa. Tack needs 10^5.
+    Those are three and a half orders of magnitude apart and no single material
+    occupies both, so a design that needs to both hold and stick has to put the
+    two functions in two materials. That is not a preference between
+    architectures; it is the only available one.
+
+    **Three things this does not do.** It does not measure tack - a probe-tack
+    or loop-tack test reports a force, and this reports whether the
+    precondition for one is met. It does not predict bond strength, which is
+    dominated by viscoelastic dissipation during separation and routinely
+    exceeds the thermodynamic work by two to three orders of magnitude. And it
+    reads a static plateau modulus where the criterion is stated for the
+    storage modulus at 1 Hz; for a glass three thousand times over the line
+    that substitution changes nothing, and near the line it decides the answer,
+    which is why near the line the expert declines.
+    """
+
+    id = "tack_dahlquist"
+    version = "1"
+    method = "Dahlquist modulus criterion for pressure-sensitive tack"
+    family = PropertyFamily.MECHANICAL
+    supported_classes = frozenset({MaterialClass.POLYMER})
+    supported_properties = frozenset({"tack"})
+    dependencies = frozenset({"shear_modulus"})
+
+    def assess_domain(self, candidate: Candidate) -> ApplicabilityDomain:
+        basis = (
+            f"a modulus ceiling of {DAHLQUIST_LOW:.0e} to {DAHLQUIST_HIGH:.0e} Pa, which "
+            "is a criterion rather than a correlation"
+        )
+        if candidate.polymer is None:
+            return ApplicabilityDomain.outside("candidate carries no polymer", basis=basis)
+        return ApplicabilityDomain(basis=basis)
+
+    def _predict_one(self, prop, request, domain) -> Prediction | None:
+        upstream = request.dependency("shear_modulus")
+        if upstream is None or upstream.quantity is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "tack is a statement about a modulus and no upstream expert supplied "
+                "one; surface energy does not substitute for it, which is the whole "
+                "point of this expert sitting beside the Owens-Wendt one",
+            )
+        modulus = upstream.quantity.to("Pa").value
+        std = upstream.uncertainty.converted(upstream.quantity.unit, "Pa").std
+
+        # The modulus is registered as a multiplicative-error property, so its
+        # spread is a factor rather than an amount and the interval has to be
+        # built that way: a plus-or-minus on a rubbery modulus whose relative
+        # spread is one would otherwise reach zero.
+        factor = 1.0 + (std / modulus if std and modulus > 0 else 0.0)
+        low, high = modulus / factor, modulus * factor
+
+        temperature = request.conditions.temperature_k
+        where = "" if temperature is None else f" at {temperature:.0f} K"
+        interval = (
+            f"the shear modulus{where} is {modulus:.3g} Pa, a factor of {factor:.2f} "
+            f"either way, so {low:.3g} to {high:.3g} Pa"
+        )
+
+        if high < DAHLQUIST_LOW:
+            value, verdict = 1.0, (
+                f"clear of the criterion's lower edge of {DAHLQUIST_LOW:.0e} Pa: soft "
+                "enough to wet a rough surface under thumb pressure"
+            )
+        elif low > DAHLQUIST_HIGH:
+            value, verdict = 0.0, (
+                f"clear of the criterion's upper edge of {DAHLQUIST_HIGH:.0e} Pa by a "
+                f"factor of {low / DAHLQUIST_HIGH:.3g}: too stiff to deform into the "
+                "asperities of a real surface in the time it is pressed there"
+            )
+        else:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                f"{interval}, which straddles the criterion's own "
+                f"{DAHLQUIST_LOW:.0e} to {DAHLQUIST_HIGH:.0e} Pa band. Inside that band "
+                "the answer is decided by the difference between the storage modulus at "
+                "1 Hz that Dahlquist states and the static plateau this panel produces, "
+                "and by how rough the surface is and how hard it was pressed - none of "
+                "which is modelled here. Calling it tacky or not would be inventing the "
+                "decision rather than making it",
+            )
+
+        notes = [
+            interval,
+            verdict,
+            f"modulus via {upstream.expert_id}",
+            "a precondition, not a measurement: a probe-tack test reports a force, and "
+            "bond strength is dominated by viscoelastic dissipation during separation, "
+            "which exceeds the thermodynamic work of adhesion by two to three orders of "
+            "magnitude and is not computed anywhere in this panel",
+            "Dahlquist states the storage modulus at 1 Hz and this is a static plateau; "
+            "the substitution is harmless this far from the band and would not be near it",
+        ]
+        if value == 0.0 and modulus > 1.0e8:
+            notes.append(
+                "this is the contradiction rather than a near miss: a load-bearing "
+                "filament is a glass at about 10^9 Pa and tack needs 10^5, so no single "
+                "material does both and the two functions have to sit in two materials"
+            )
+
+        return self._make(
+            prop,
+            value,
+            "",
+            request,
+            domain,
+            # Zero because the classification is only issued once the modulus
+            # and its own spread sit clear of the criterion's band; inside it
+            # nothing is issued at all. The zero is that construction, not a
+            # claim that tack is a certain thing.
+            std=0.0,
+            kind=UncertaintyKind.EPISTEMIC,
+            basis=(
+                "issued only when the modulus interval clears the criterion's own "
+                f"{DAHLQUIST_LOW:.0e}-{DAHLQUIST_HIGH:.0e} Pa band; inside the band the "
+                "expert refuses rather than reporting a zero or a one"
+            ),
+            notes=tuple(notes),
+            shear_modulus_pa=round(modulus, 3),
         )

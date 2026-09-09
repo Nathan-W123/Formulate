@@ -8,7 +8,7 @@ candidates; they only predict.
 from __future__ import annotations
 
 from .activity import UNIFACActivityExpert
-from .adhesion import AdhesionExpert
+from .adhesion import AdhesionExpert, DahlquistTackExpert
 from .base import Expert, PredictionRequest
 from .critical import AtomicCriticalExpert
 from .dissolution import DissolutionExpert
@@ -80,6 +80,11 @@ PHASE4_EXPERTS = (
     TroutonExtensionalExpert,
     DissolutionExpert,
     AdhesionExpert,
+    # Whether a material sticks on contact, which the Owens-Wendt expert beside
+    # it cannot answer: tack is a ceiling on a modulus, not a match of surface
+    # energies, and the two functions a strand needs - hold and stick - want
+    # moduli three and a half orders of magnitude apart.
+    DahlquistTackExpert,
     UNIFACActivityExpert,
     PolymerGlassTransitionExpert,
     PolymerDensityExpert,
@@ -112,7 +117,8 @@ def default_registry() -> ExpertRegistry:
 
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
-    "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert",
+    "AdhesionExpert", "AtomicCriticalExpert", "DahlquistTackExpert",
+    "DissolutionExpert",
     "CorrespondingStatesViscosityExpert", "JobackViscosityExpert",
     "LearnedBoilingPointExpert", "LearnedRefractiveIndexExpert", "LorentzLorenzExpert",
     "MeasuredViscosityExpert", "MeltViscosityExpert", "TroutonExtensionalExpert",

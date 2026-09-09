@@ -433,6 +433,23 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             # material - exactly the failure the flag exists to prevent.
             multiplicative_error=True,
         ),
+        # Whether a material sticks on contact, which is a bulk rheological
+        # question rather than a surface-chemical one. It sits in the mechanical
+        # family for that reason: the Dahlquist criterion is a ceiling on a
+        # modulus, and a material stiffer than it does not stick however well
+        # matched its surface energy is.
+        _p(
+            "tack",
+            "",
+            _M,
+            "One if the material meets the Dahlquist criterion for pressure-sensitive "
+            "tack - a storage modulus low enough to wet a rough surface under thumb "
+            "pressure in the contact time available - and zero if it does not. Not a "
+            "peel strength and not a work of adhesion: it is the rheological "
+            "precondition without which neither of those can be collected.",
+            condition_dependent=True,
+            bounds=(0.0, 1.0),
+        ),
         _p(
             "crosslink_density",
             "mol/m^3",
