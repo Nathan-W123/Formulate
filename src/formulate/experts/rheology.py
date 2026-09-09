@@ -441,6 +441,30 @@ _MELT_LOG10_MAE = 0.8
 #: falls apart quietly, so it is bounded rather than trusted.
 _WLF_RANGE_K = 120.0
 
+#: A floor below which the answer is not a polymer melt, Pa s.
+#:
+#: Staying inside the 120 K window is not enough on its own, and a run over the
+#: polymer catalogue is what showed it. Asked for poly(methyl methacrylate) at
+#: 180 C, which is 75 K above its transition and well inside the window, the
+#: tabulated pair (34.0, 80.0) returns 3.4e-5 Pa s - thinner than water by a
+#: factor of thirty, for a polymer whose real melt viscosity there is of order
+#: 10^4. It came first in a design run on that number.
+#:
+#: The defect is in the constant pair rather than in the arithmetic. ``c1`` is
+#: the number of decades the viscosity falls between the reference temperature
+#: and the high-temperature asymptote, so a pair referenced to Tg cannot have a
+#: ``c1`` that puts the asymptote below any liquid that exists: 13.7 leaves
+#: polystyrene asymptotic to 0.02 Pa s, and 34.0 leaves this one asymptotic to
+#: 10^-22, which is not a viscosity. That pair is very likely quoted against a
+#: reference temperature of its own rather than against the transition, and the
+#: table cannot tell.
+#:
+#: So the floor is set at the viscosity of water, which nothing entangled has
+#: ever been under, and the expert refuses rather than reporting a number it
+#: can prove is wrong. Refusing loses poly(methyl methacrylate) as an answer;
+#: reporting it wins the run with a lie.
+_MELT_VISCOSITY_FLOOR = 1.0e-3
+
 
 def wlf_melt_viscosity(
     temperature: float, glass_transition: float, c1: float, c2: float
@@ -524,6 +548,19 @@ class MeltViscosityExpert(Expert):
             )
         glass_transition = upstream.quantity.to("K").value
         value = wlf_melt_viscosity(temperature, glass_transition, *constants)
+        if value is not None and value < _MELT_VISCOSITY_FLOOR:
+            asymptote = math.log10(_VISCOSITY_AT_TG) - constants[0]
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                f"the tabulated pair returns {value:.3g} Pa s at {temperature:.0f} K, "
+                f"below the {_MELT_VISCOSITY_FLOOR:g} Pa s of water, which no entangled "
+                f"melt reaches. Its c1 of {constants[0]:.1f} puts the high-temperature "
+                f"asymptote at 10^{asymptote:.0f} Pa s, so the pair cannot be referenced "
+                "to this polymer's glass transition even though the table applies it as "
+                "though it were. Refusing rather than reporting a number that is "
+                "demonstrably wrong",
+            )
         if value is None:
             shift = temperature - glass_transition
             return Prediction.unsupported(

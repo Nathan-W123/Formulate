@@ -410,6 +410,53 @@ def test_an_untabulated_polymer_is_refused_rather_than_given_universal_constants
 
 
 @requires_rdkit
+def test_a_melt_thinner_than_water_is_refused_rather_than_reported():
+    """Staying inside the 120 K window is not enough on its own.
+
+    A design run over the polymer catalogue put poly(methyl methacrylate)
+    first on 3.4e-5 Pa s at 180 C - thinner than water by a factor of thirty,
+    for a polymer whose real melt viscosity there is of order 10^4, and 75 K
+    above its transition so well inside the fitted window. The defect is in the
+    constant pair: c1 is the number of decades between the reference
+    temperature and the high-temperature asymptote, and 34.0 puts that
+    asymptote at 10^-22 Pa s, which is not a viscosity. The pair cannot be
+    referenced to the glass transition, and the table cannot tell.
+    """
+    from formulate.experts.rheology import MeltViscosityExpert, wlf_melt_viscosity
+
+    # The arithmetic is unchanged; it is the expert that declines to report it.
+    assert wlf_melt_viscosity(453.15, 378.0, 34.0, 80.0) == pytest.approx(3.4e-5, rel=0.05)
+
+    context = _melt(unit="[*]CC([*])(C)C(=O)OC")
+    assert context.get("shear_viscosity") is None
+
+    transition = context["glass_transition_temperature"]
+    prediction = MeltViscosityExpert().predict(
+        PredictionRequest(
+            candidate=_polymer(unit="[*]CC([*])(C)C(=O)OC"),
+            properties=frozenset({"shear_viscosity"}),
+            conditions=_polymer().conditions,
+            context={"glass_transition_temperature": transition},
+        )
+    )[0]
+    assert prediction.quantity is None
+    reason = " ".join(prediction.notes)
+    assert "below the 0.001 Pa s of water" in reason
+    assert "cannot be referenced to this polymer's glass transition" in reason
+
+
+@requires_rdkit
+def test_the_floor_does_not_touch_the_polymer_the_expert_was_built_for():
+    """Polystyrene at 180 C comes out at 3.7e3 Pa s and is unaffected: the
+    guard removes a demonstrably wrong answer, not a merely uncertain one."""
+    from formulate.experts.rheology import _MELT_VISCOSITY_FLOOR
+
+    value = _melt()["shear_viscosity"].quantity.to("Pa*s").value
+    assert value > 1.0e3
+    assert value > _MELT_VISCOSITY_FLOOR
+
+
+@requires_rdkit
 def test_the_table_is_keyed_so_a_canonical_lookup_actually_hits_it():
     """RDKit canonicalises [*] to *, so a lookup on the table as written misses
     every polymer in it."""
