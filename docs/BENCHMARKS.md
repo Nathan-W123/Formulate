@@ -1327,27 +1327,74 @@ candidates is therefore the wrong requirement, correctly applied. It is exactly
 why polyamide 12 lost by 3 K and why both EVA grades and the polyethylenes lost
 at all — a hot melt is *designed* to have a low transition.
 
+**A gate that refused three properties for needing a number they never read.**
+`polymer_mechanical` required a tabulated chain dimension before answering
+anything, and for the modulus below the glass transition that requirement is
+spurious: the glassy branch returns a constant fitted across nine measured
+amorphous polymers and never consults the entanglement mass, and the strength
+bound is a tenth of that modulus. The chain dimension is tabulated for nine
+repeat units, none of them a polyamide or a polyester — so the gate was
+declining exactly the materials in this run's feasible set, for a calculation
+that would not have used it. It now gates the entanglement mass and the rubbery
+branch only, which is where the number is actually read.
+
+The ranking is unchanged by the fix — the top four are the same four in the
+same order, because all of them gain the same value — but the column is no
+longer empty:
+
+| | E (GPa) | G (GPa) | flaw-free bound |
+|---|---|---|---|
+| copolyamide, PA6, PA12, PET, PBT, PS, PMMA, PLA, TPU | **2.86 ± 0.50** | **1.06 ± 0.19** | **286 ± 143 MPa** |
+
+**That is one number, not nine.** Every polymer above is a glass at ambient and
+the glassy plateau barely depends on structure — 2.0 to 3.5 GPa across the nine
+measured polymers behind it, which is less scatter than there is between
+compilations for one polymer. The modulus therefore does not discriminate
+between any of these candidates and did not contribute to the ranking. What
+separates them is the elongation, which is exactly what the run ranked on.
+
+**What is still refused is the thing that decides brittle from tough.** The
+entanglement molar mass needs the chain dimension, so `is_tough` cannot run for
+any polyamide or polyester, and every one of those predictions carries a note
+saying so: *"no tabulated chain dimension for this repeat unit, so whether the
+chains entangle into a load-bearing network is unknown; that, not the modulus,
+is what decides brittle from tough."* A modulus is not a strength.
+
 **No degree of crystallinity either, and it costs a number that can be shown.**
-The catalogue's measured tensile column is the first data in this repository
-able to check what `theoretical_strength` is worth rather than restate it:
+With the gate corrected, the catalogue's measured tensile column can now check
+what `theoretical_strength` is worth against twelve polymers rather than five:
 
 | polymer | measured tensile | flaw-free bound | delivered |
 |---|---|---|---|
+| copolyamide 6/66/12 | 28 MPa | 286 MPa | **9.9%** |
+| thermoplastic polyurethane | 39 MPa | 286 MPa | **14%** |
 | polystyrene | 44 MPa | 286 MPa | **15%** |
+| polyamide 12 | 47 MPa | 286 MPa | **16%** |
+| poly(butylene terephthalate) | 55 MPa | 286 MPa | **19%** |
+| polylactide | 59 MPa | 286 MPa | **21%** |
+| poly(ethylene terephthalate) | 60 MPa | 286 MPa | **21%** |
 | poly(methyl methacrylate) | 60 MPa | 286 MPa | **21%** |
+| polyamide 6 | 77 MPa | 286 MPa | **27%** |
 | low-density polyethylene | 12 MPa | 0.7 MPa | **17×over** |
 | high-density polyethylene | 26 MPa | 0.7 MPa | **39×over** |
 | polypropylene | 36 MPa | 0.1 MPa | **339×over** |
 
-The bound holds for the two glasses, at the one-to-three-orders-below the
-mechanical module claims. It is *broken* by every semicrystalline polymer, and
-not because the bound is wrong: those three are above their glass transitions at
-ambient, so the panel computes a rubber-elastic modulus — `3ρRT/M_e`, about a
-megapascal — for materials that carry their load in crystals. Polypropylene is
-the worst of the three because the rubbery modulus goes as `1/M_e` and the panel
-puts its entanglement mass at 6,014 g/mol against polyethylene's 948. The panel
-is answering correctly for the amorphous polymer, which is a different material
-with the same repeat unit.
+The bound holds for all nine glasses, at the one-to-three-orders-below the
+mechanical module claims, and the spread across them — 9.9% to 27% — is the
+real content: it is a measure of how much of the possible each material
+delivers, which is what the bound was introduced to say. It is *broken* by every
+semicrystalline polymer, and not because the bound is wrong: those three are
+above their glass transitions at ambient, so the panel computes a rubber-elastic
+modulus — `3ρRT/M_e`, about a megapascal — for materials that carry their load
+in crystals. Polypropylene is the worst because the rubbery modulus goes as
+`1/M_e` and the panel puts its entanglement mass at 6,014 g/mol against
+polyethylene's 948. The panel is answering correctly for the amorphous polymer,
+which is a different material with the same repeat unit.
+
+**Adhesion has no route at any fidelity.** `AdhesionExpert` is Owens–Wendt from
+tabulated liquid surface energies and is declared molecule-only; nothing in the
+panel produces a `work_of_separation` for a polymer. For a strand meant to stick
+to what it hits, that is a larger gap than any of the above.
 
 **The hazard screen screens out and cannot screen in.** Skin sensitisation,
 acute toxicity and carcinogenicity, from a 76-row curated table covering every

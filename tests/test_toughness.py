@@ -469,47 +469,73 @@ def test_a_network_with_no_stated_density_is_refused_rather_than_called_zero():
 
 
 def _strength_bounds() -> dict[str, float]:
-    """The panel's flaw-free bound for every catalogue polymer it can reach."""
-    from formulate.experts.mechanical import PolymerMechanicalExpert
+    """The panel's flaw-free bound for every catalogue polymer it can reach.
 
-    expert = PolymerMechanicalExpert()
-    table = MeasuredPolymerExpert()
+    The upstream transition and density come from whichever expert ``prefer``
+    ranks first, exactly as they would in a run, so the catalogue answers where
+    it has a measurement and the correlations answer where it does not.
+    """
+    from formulate.core.prediction import prefer
+    from formulate.experts.mechanical import PolymerMechanicalExpert
+    from formulate.experts.polymer import (
+        PolymerDensityExpert,
+        PolymerGlassTransitionExpert,
+    )
+
+    upstream = (
+        MeasuredPolymerExpert(),
+        PolymerGlassTransitionExpert(),
+        PolymerDensityExpert(),
+    )
     bounds: dict[str, float] = {}
     for record in polymer_records():
         candidate = _candidate(record.abbreviation)
-        density = _predict(table, candidate, "amorphous_density")
-        transition = _predict(table, candidate, "glass_transition_temperature")
-        if not density.is_usable or not transition.is_usable:
+        context: dict = {}
+        for expert in upstream:
+            for prop in ("glass_transition_temperature", "amorphous_density"):
+                if prop not in expert.supported_properties:
+                    continue
+                prediction = _predict(expert, candidate, prop)
+                if prediction.is_usable and (
+                    prop not in context or prefer(prediction, context[prop])
+                ):
+                    context[prop] = prediction
+        if len(context) < 2:
             continue
         prediction = _predict(
-            expert,
-            candidate,
-            "theoretical_strength",
-            context={
-                "amorphous_density": density,
-                "glass_transition_temperature": transition,
-            },
+            PolymerMechanicalExpert(), candidate, "theoretical_strength", context=context
         )
         if prediction.is_usable:
             bounds[record.abbreviation] = prediction.quantity.to("Pa").value
     return bounds
 
 
-def test_the_strength_bound_holds_for_the_glasses_it_was_argued_for():
+#: Every catalogue polymer that is a glass at ambient and carries a measured
+#: tensile strength, so the flaw-free bound can be checked against it.
+GLASSES_AT_AMBIENT = {"coPA", "TPU", "PS", "PA12", "PBT", "PLA", "PET", "PMMA", "PA6"}
+
+
+def test_the_strength_bound_holds_for_every_glass_it_can_be_checked_against():
     """``theoretical_strength`` is introduced as a flaw-free bound that a real
     specimen never reaches, and this is the first data in the repository that
     can check that claim rather than restate it.
 
-    Polystyrene delivers 15 per cent of it and poly(methyl methacrylate) 21,
-    which is the order of magnitude the module claims: a moulded bar fails at
-    its largest flaw, one to three orders below the flawless solid.
+    Nine glassy polymers deliver between 10 and 27 per cent of their bound -
+    the copolyamide lowest at 9.9, polyamide 6 highest at 27 - which is the
+    order of magnitude the mechanical module claims: a moulded bar fails at its
+    largest flaw, well below the flawless solid.
+
+    All nine share one bound, 286 MPa, because the glassy modulus is a constant
+    fitted across nine measured amorphous polymers and the bound is a tenth of
+    it.  So this checks that the bound is the right SIZE; it says nothing about
+    the bound discriminating between materials, which it does not do at all.
     """
     utilisation = strength_utilisation(_strength_bounds())
-    glasses = {
-        name: ratio for name, ratio in utilisation.items() if name in ("PS", "PMMA")
-    }
-    assert set(glasses) == {"PS", "PMMA"}
+    glasses = {n: r for n, r in utilisation.items() if n in GLASSES_AT_AMBIENT}
+    assert set(glasses) == GLASSES_AT_AMBIENT, sorted(set(utilisation))
     assert all(0.05 < ratio < 0.5 for ratio in glasses.values()), glasses
+    assert min(glasses, key=glasses.get) == "coPA"
+    assert max(glasses, key=glasses.get) == "PA6"
 
 
 def test_the_bound_is_broken_by_every_semicrystalline_polymer_and_says_why():

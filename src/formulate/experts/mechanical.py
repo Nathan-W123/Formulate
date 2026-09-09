@@ -287,12 +287,22 @@ class PolymerMechanicalExpert(Expert):
         if spec is None:
             return ApplicabilityDomain.outside("candidate carries no polymer", basis=basis)
         if self._chain(candidate) is None:
-            return ApplicabilityDomain.outside(
-                "no chain dimension is tabulated for this repeat unit. The mean-square "
-                "end-to-end distance per unit mass comes from scattering or from a "
-                "rotational-isomeric-state calculation, and cannot be read off the "
-                "structure here",
-                basis=basis,
+            # Partly in domain, and the score says so.  The glassy plateau rests
+            # on nine measured amorphous polymers and this is an amorphous
+            # polymer, so a modulus below the transition is squarely inside it;
+            # the entanglement mass and the rubbery branch are not, and refuse
+            # themselves further down. Declaring the whole candidate outside
+            # would penalise a prediction that is not extrapolating anything.
+            return ApplicabilityDomain(
+                in_domain=True,
+                score=0.5,
+                basis=(
+                    basis
+                    + ". No chain dimension is tabulated for this repeat unit - it comes "
+                    "from scattering or a rotational-isomeric-state calculation and "
+                    "cannot be read off the structure - so the entanglement mass and the "
+                    "rubbery branch are refused, and only the glassy plateau is offered"
+                ),
             )
         return ApplicabilityDomain(basis=basis)
 
@@ -302,13 +312,22 @@ class PolymerMechanicalExpert(Expert):
         if spec is None:
             return Prediction.unsupported(prop, self.id, "candidate carries no polymer")
 
+        # The chain dimension gates the entanglement mass and the rubbery
+        # branch, and nothing else.  It used to gate everything, which refused
+        # three properties for needing a number they never read: below the
+        # transition the modulus is the glassy plateau, which is a constant
+        # fitted across nine measured polymers and does not consult M_e, and
+        # the strength bound is a tenth of that modulus.  Every polyamide and
+        # every polyester in the catalogue is glassy at ambient, so the gate
+        # was declining exactly the materials it could have answered for.
         chain = self._chain(candidate)
-        if chain is None:
+        if chain is None and prop == "entanglement_molar_mass":
             return Prediction.unsupported(
                 prop,
                 self.id,
-                "no tabulated chain dimension for this repeat unit; it is a measured "
-                "quantity, not one derivable from the structure here",
+                "no tabulated chain dimension for this repeat unit; it comes from "
+                "scattering or a rotational-isomeric-state calculation and is not "
+                "derivable from the structure here",
             )
 
         density = request.dependency_value("amorphous_density", "g/cm^3")
@@ -318,7 +337,9 @@ class PolymerMechanicalExpert(Expert):
             )
 
         model = entanglement_model()
-        entanglement = model.entanglement(chain.r2_per_mass, density)
+        entanglement = (
+            None if chain is None else model.entanglement(chain.r2_per_mass, density)
+        )
 
         if prop == "entanglement_molar_mass":
             return self._make(
@@ -358,9 +379,19 @@ class PolymerMechanicalExpert(Expert):
                 "available; guessing the branch is a factor of two thousand",
             )
 
+        if temperature >= glass_transition and entanglement is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                f"{temperature:.0f} K is at or above the transition at "
+                f"{glass_transition:.0f} K, so this is the entangled network and needs "
+                "the entanglement molar mass, which needs a tabulated chain dimension "
+                "this repeat unit has none of. Below the transition the glassy plateau "
+                "would not have needed one",
+            )
         try:
             modulus, branch = youngs_modulus(temperature, glass_transition, density, entanglement)
-        except ValueError as exc:
+        except ValueError as exc:  # pragma: no cover - guarded above
             return Prediction.unsupported(prop, self.id, str(exc))
 
         if branch == "glassy":
@@ -406,10 +437,15 @@ class PolymerMechanicalExpert(Expert):
                 "carry load"
             )
         elif tough is None:
+            missing = (
+                "no tabulated chain dimension for this repeat unit"
+                if chain is None
+                else "no number-average molar mass was stated"
+            )
             notes.append(
-                "no number-average molar mass was stated, so whether the chains entangle "
-                "into a load-bearing network is unknown; that, not the modulus, is what "
-                "decides brittle from tough"
+                f"{missing}, so whether the chains entangle into a load-bearing network "
+                "is unknown; that, not the modulus, is what decides brittle from tough. "
+                "This modulus is what the material is worth if it does not snap first"
             )
 
         if prop == "theoretical_strength":

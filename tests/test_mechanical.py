@@ -119,13 +119,90 @@ def test_the_entanglement_constant_transfers_to_withheld_polymers():
     assert model.validation_spread < 2.0
 
 
-def test_a_repeat_unit_with_no_measured_chain_dimension_is_refused():
-    """It comes from scattering or an RIS calculation, not from the structure."""
+def test_a_repeat_unit_with_no_measured_chain_dimension_loses_only_what_needs_one():
+    """It comes from scattering or an RIS calculation, not from the structure.
+
+    What it gates is the entanglement mass and the rubbery branch. It used to
+    gate everything, which refused three properties for needing a number they
+    never read: below the transition the modulus is the glassy plateau, a
+    constant fitted across nine measured polymers that does not consult M_e,
+    and the strength bound is a tenth of it. Every polyamide and polyester in
+    the catalogue is glassy at ambient, so the gate was declining exactly the
+    materials it could have answered for.
+    """
     from formulate.experts.mechanical import PolymerMechanicalExpert
 
     expert = PolymerMechanicalExpert()
-    domain = expert.assess_domain(polymer_candidate("[*]CC(Cl)[*]"))  # PVC, untabulated
-    assert not domain.in_domain
+    pvc = polymer_candidate("[*]CC(Cl)[*]")  # untabulated
+    domain = expert.assess_domain(pvc)
+    # In domain for the glassy plateau, and scored down for what it cannot reach.
+    assert domain.in_domain
+    assert domain.score < 1.0
+    assert "only the glassy plateau is offered" in domain.basis
+
+    def predict(prop, temperature):
+        """Run the expert with the upstream panel's own answers as context."""
+        from formulate.experts.base import PredictionRequest
+        from formulate.experts.polymer import (
+            PolymerDensityExpert,
+            PolymerGlassTransitionExpert,
+        )
+
+        conditions = Conditions(
+            temperature=Quantity(value=temperature, unit="K"),
+            pressure=Quantity(value=1.0, unit="atm"),
+        )
+        room = Conditions(
+            temperature=Quantity(value=298.15, unit="K"),
+            pressure=Quantity(value=1.0, unit="atm"),
+        )
+        context = {}
+        for upstream in (PolymerGlassTransitionExpert(), PolymerDensityExpert()):
+            for prediction in upstream.predict(
+                PredictionRequest(
+                    candidate=pvc,
+                    properties=frozenset(upstream.supported_properties),
+                    conditions=room,
+                )
+            ):
+                if prediction.is_usable:
+                    context[prediction.property] = prediction
+        assert set(context) == {"glass_transition_temperature", "amorphous_density"}
+        return expert.predict(
+            PredictionRequest(
+                candidate=pvc,
+                properties=frozenset({prop}),
+                conditions=conditions,
+                context=context,
+            )
+        )[0]
+
+    # Poly(vinyl chloride) is glassy at ambient: the modulus and the bound come
+    # out, and neither of them ever reads a chain dimension.
+    modulus = predict("youngs_modulus", 298.15)
+    assert modulus.is_usable
+    assert 2.0e9 <= modulus.quantity.to("Pa").value <= 3.5e9
+    bound = predict("theoretical_strength", 298.15)
+    assert bound.is_usable
+    assert bound.quantity.to("Pa").value == pytest.approx(
+        modulus.quantity.to("Pa").value * 0.1
+    )
+
+    # What genuinely needs one still refuses, and names it.
+    entanglement = predict("entanglement_molar_mass", 298.15)
+    assert not entanglement.is_usable
+    assert "no tabulated chain dimension" in " ".join(entanglement.notes)
+
+    # And so does the rubbery branch, saying which side of the transition it is on.
+    rubbery = predict("youngs_modulus", 500.0)
+    assert not rubbery.is_usable
+    reason = " ".join(rubbery.notes)
+    assert "entangled network" in reason
+    assert "would not have needed one" in reason
+
+    # The brittle-or-tough question is still unanswered, and the note says so:
+    # a modulus is not a strength.
+    assert "decides brittle from tough" in " ".join(modulus.notes)
 
 
 # -- the branch that decides everything -----------------------------------
