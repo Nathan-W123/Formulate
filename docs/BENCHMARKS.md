@@ -1353,8 +1353,8 @@ with the same repeat unit.
 acute toxicity and carcinogenicity, from a 76-row curated table covering every
 structure the bundled explorer can propose. Reproductive and target-organ
 toxicity, mutagenicity, aspiration, flammability, environmental hazard and every
-exposure limit are outside it, and two rows abstain on carcinogenicity rather
-than record a "not classified" nobody established. The initiator system shows
+exposure limit are outside it, and three of the 76 rows abstain on
+carcinogenicity rather than record a "not classified" nobody established. The initiator system shows
 what that costs: benzoyl peroxide's H242 appears in the codes attached to every
 prediction and in none of the numbers, so a specification screening on
 sensitisation and acute toxicity alone sees only half of what is wrong with
