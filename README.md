@@ -181,6 +181,9 @@ where they exist:
 | `viscosity_corresponding_states` | interfacial | molecule | liquid viscosity from critical constants, for structures no group table covers |
 | `melt_wlf` | interfacial | polymer | melt viscosity by WLF from the polymer's own glass transition |
 | `trouton` | interfacial | molecule | extensional viscosity, exact for a Newtonian liquid and refused for a polymer |
+| `kinetics_propagation` | chemical | molecule | propagation rate coefficient from the IUPAC pulsed-laser benchmark, seven monomers plus three crosslinkers on borrowed family values |
+| `cure_free_radical` | chemical | molecule | time for a reacting liquid to stop flowing: gel point by Flory–Stockmayer for a crosslinker, half conversion for a linear polymer; needs an initiation regime named in the conditions and refuses a monomer whose homopolymer is a rubber at the cure temperature |
+| `hansen_group_contribution` | interfacial | molecule | Hansen triple by Hoftyzer–Van Krevelen where the compilation has none, calibrated at 0.89 / 0.80 / 1.18 MPa^0.5; refuses on any uncovered group |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation

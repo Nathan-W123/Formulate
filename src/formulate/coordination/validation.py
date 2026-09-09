@@ -160,8 +160,12 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
     # density it will then be held at. A Green-Kubo integral needs the stress
     # every ten femtoseconds rather than the volume every picosecond, and each
     # of those samples is six single-point energies, so the finite difference
-    # rather than the dynamics sets the cost. Both measured on this
-    # installation, on 2-butanone; see docs/BENCHMARKS.md.
+    # rather than the dynamics sets the cost. These two are *estimated* from
+    # the density run's measured rate on this installation - the slab was
+    # still running when this was written and the viscosity had not started -
+    # and they are deliberately generous. A wrong guess here refuses a run it
+    # could have afforded, which costs a validation; the other direction runs
+    # something it cannot finish, which costs the whole stage.
     "surface_tension": 19800.0,
     "shear_viscosity": 9000.0,
 }
