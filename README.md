@@ -202,9 +202,10 @@ questions, and the pairing is the point. Owens–Wendt says whether a liquid
 *wets*; it does not say whether a solid *sticks*, and a poly(tetrafluoroethylene)
 film and a poly(tetrafluoroethylene) grease share a surface chemistry while only
 one of them is an adhesive. What separates them is stiffness, so the tack expert
-reads a modulus rather than a surface tension — and the consequence is a
-contradiction rather than a trade-off: a load-bearing filament is a glass at
-~10⁹ Pa and tack needs ~10⁵, so no single material does both.
+reads a modulus rather than a surface tension. Its verdict is about a
+temperature and not about a substance: a load-bearing filament is a glass at
+~10⁹ Pa and tack needs ~10⁵, so nothing is both *at one temperature* — while a
+hot melt is both at two, wetting while molten and holding once cold.
 
 `hazard_ghs` is the one expert in the panel that never estimates. Every value is
 a lookup in a curated GHS table and a structure outside it is refused by name,

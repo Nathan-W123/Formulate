@@ -356,13 +356,27 @@ class DahlquistTackExpert(Expert):
     amount of favourable surface energy substitutes for that, which is why this
     expert reads a modulus and not a surface tension.
 
-    The consequence for a load-bearing strand is a contradiction rather than a
-    trade-off, and it is the reason this expert was built. A filament that
-    carries load is a glass, and a glass is of order 10^9 Pa. Tack needs 10^5.
-    Those are three and a half orders of magnitude apart and no single material
-    occupies both, so a design that needs to both hold and stick has to put the
-    two functions in two materials. That is not a preference between
-    architectures; it is the only available one.
+    The consequence for a load-bearing strand is three and a half orders of
+    magnitude: a filament that carries load is a glass at about 10^9 Pa, and
+    tack needs 10^5. **At one temperature no single material occupies both.**
+
+    That qualifier is load-bearing and an earlier version of this docstring
+    left it out, which made the claim false. A hot melt occupies both *at
+    different temperatures*, and that is precisely what a hot melt is: molten
+    it wets anything, and cold it carries load. The same numbers say so.
+    Under a thumb pressure of 10^5 Pa held for one second, a glass at 1.06 GPa
+    reaches a strain of 9.4e-5 and conforms to nothing, while a polystyrene
+    melt at 180 C - 3657 Pa s from this panel's own melt expert - flows to a
+    strain of 27 and conforms to everything. Same material, 290,000 times the
+    deformation, and the only difference is temperature.
+
+    So the criterion here is evaluated *at the temperature it is asked about*
+    and says nothing about any other. What closes the one-material escape for a
+    thrown strand is not materials science but the clock: this repository's own
+    cooling calculation puts a 20 micron filament's vitrification at 173
+    microseconds against a flight of half a second, so it arrives some three
+    thousand times too late to be molten. A hot melt that could stick on
+    contact would have to reach the wall still hot, and it does not.
 
     **Three things this does not do.** It does not measure tack - a probe-tack
     or loop-tack test reports a force, and this reports whether the
@@ -456,9 +470,13 @@ class DahlquistTackExpert(Expert):
         ]
         if value == 0.0 and modulus > 1.0e8:
             notes.append(
-                "this is the contradiction rather than a near miss: a load-bearing "
-                "filament is a glass at about 10^9 Pa and tack needs 10^5, so no single "
-                "material does both and the two functions have to sit in two materials"
+                "this is a glass rather than a near miss: about 10^9 Pa against the "
+                "10^5 tack needs. At THIS temperature no material is both, but the same "
+                "material molten is - a hot melt wets while liquid and carries load once "
+                "cold - so this is a verdict about a temperature and not about a "
+                "substance. Whether the hot route is open depends on whether the "
+                "material is still molten when it makes contact, which is a cooling "
+                "question this panel does not answer"
             )
 
         return self._make(

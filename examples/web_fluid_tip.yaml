@@ -16,10 +16,24 @@ notes: >
   which is three and a half thousand times the ceiling.
 
   So the two functions want moduli three and a half orders of magnitude
-  apart, and no single material occupies both. Separating them into two
-  materials is not a preference between architectures; it is the only
-  available one. This specification is for the second material - whatever
-  sits at the tip, or as a thin exterior layer, and does the sticking.
+  apart, and at one temperature no single material occupies both. That
+  qualifier matters, because a hot melt occupies both at two temperatures -
+  molten it wets anything, cold it carries load - and that is exactly what a
+  hot melt is for.
+
+  What closes the one-material route here is the clock rather than the
+  chemistry. The hot route needs the strand still molten on contact, and the
+  cooling calculation in docs/BENCHMARKS.md puts a 20 micron filament's
+  vitrification at 173 microseconds against a half-second flight: it sets
+  some three thousand times before it arrives. A material that could stick
+  on contact would have to reach the wall hot, and this one cannot.
+
+  That is the argument for a second material, and it is narrower and better
+  than the modulus one: a hot-melt adhesive is a perfectly good single
+  material that both sticks and holds, and it fails here for a reason
+  specific to throwing it ten metres. This specification is for the second
+  material - whatever sits at the tip, or as a thin exterior layer, and does
+  the sticking cold.
 
   It is deliberately NOT a specification for an adhesive's strength. The
   panel cannot predict a peel force or a lap shear: bond strength is

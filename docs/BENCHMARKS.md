@@ -1450,12 +1450,37 @@ second it is pressed there.
 | polypropylene, amorphous phase | 0.35 MPa | **1.2× — inside the band** |
 
 A filament that carries 80 kg is a glass and a glass is ~10⁹ Pa; tack needs
-10⁵. **The two functions want moduli three and a half orders of magnitude
-apart, so no single material occupies both.** Separating them into two
-materials is not a preference between architectures — it is the only available
-one, and it is now a result the panel states rather than an assertion in a
-notes block. Surface treatment of the filament does not escape it either:
-coating a 1 GPa strand leaves a 1 GPa strand.
+10⁵. **At one temperature no single material occupies both.**
+
+That qualifier was missing from the first version of this section and its
+absence made the claim false, so it is worth stating what is actually true. A
+hot melt occupies both *at different temperatures* — that is what a hot melt
+is. The same numbers show it. Under a thumb pressure of 10⁵ Pa held for one
+second:
+
+| | modulus / viscosity | strain reached in 1 s |
+|---|---|---|
+| copolyamide at 25 °C, a glass | 1.06 GPa | **9.4 × 10⁻⁵** — conforms to nothing |
+| polystyrene melt at 180 °C | 3,657 Pa·s | **27** — conforms to everything |
+
+Same class of material, **290,000× the deformation**, and the only difference is
+temperature. So a "not tacky" verdict here is about the temperature it was
+asked at, not about the substance.
+
+### What actually closes the one-material route: the clock, not the chemistry
+
+The hot route needs the strand to still be molten when it makes contact, and
+this repository's own cooling calculation says it will not be. A 20 µm filament
+vitrifies in **173 µs** and needs 3.5 mm of flight to do it; the wall is 10 m
+away, which at 20 m/s is **0.5 s**. The strand sets roughly **3,000× before it
+arrives.**
+
+That is the real argument for separating the functions, and it is a stronger
+one than the modulus contradiction because it does not overreach: a hot-melt
+adhesive is a perfectly good single material that both sticks and holds, and it
+fails *here* for a reason specific to throwing it ten metres. Surface treatment
+of the filament does not help either — coating a 1 GPa strand leaves a 1 GPa
+strand.
 
 ### The band is the uncertainty, and inside it the expert declines
 

@@ -203,19 +203,53 @@ def test_hold_and_stick_want_moduli_three_orders_of_magnitude_apart():
     """The reason the expert exists, stated as arithmetic rather than as a view.
 
     A filament that carries load is a glass and a glass is about 1e9 Pa; tack
-    needs 1e5. No single material occupies both, so a design that has to hold
-    AND stick has to put the two functions in two materials. That is not a
-    preference between architectures - it is the only available one.
+    needs 1e5, three and a half orders of magnitude away.
     """
     from formulate.experts.adhesion import DAHLQUIST_HIGH
     from formulate.experts.mechanical import _GLASSY_MODULUS, shear_from_young
 
     glassy_shear = shear_from_young(_GLASSY_MODULUS, "glassy")
     assert glassy_shear / DAHLQUIST_HIGH > 1000.0
-    # And the panel says so of the material it actually selected.
     verdict = _tack(glassy_shear)
     assert verdict.is_usable and verdict.quantity.value == 0.0
-    assert "no single material does both" in " ".join(verdict.notes)
+
+
+def test_the_verdict_is_about_a_temperature_and_not_about_a_substance():
+    """A correction to a claim this module shipped and had to withdraw.
+
+    It said a glass is 1e9 Pa and tack needs 1e5, "so no single material does
+    both and the two functions have to sit in two materials". The first half is
+    arithmetic and the second half does not follow: a hot melt does both at
+    different temperatures, which is what a hot melt IS - molten it wets
+    anything, cold it carries load.
+
+    The panel's own numbers say so. Under a thumb pressure of 1e5 Pa held for
+    one second a glass at 1.06 GPa reaches a strain of 9.4e-5 and conforms to
+    nothing, while a polystyrene melt at 180 C at 3657 Pa s from this panel's
+    melt expert flows to a strain of 27. Same material, 290,000 times the
+    deformation, temperature the only difference.
+
+    So a "not tacky" here is a verdict about the temperature it was asked
+    about, and the note has to say so rather than generalising to the
+    substance.
+    """
+    from formulate.experts.rheology import wlf_melt_viscosity
+
+    verdict = _tack(1.06e9)
+    reason = " ".join(verdict.notes)
+    assert "At THIS temperature" in reason
+    assert "hot melt wets while liquid" in reason
+    assert "cooling question this panel does not answer" in reason
+    assert "no single material does both" not in reason
+
+    # The arithmetic behind the correction, recomputed rather than quoted.
+    stress = 1.0e5
+    glassy_strain = stress / 1.06e9
+    melt_viscosity = wlf_melt_viscosity(453.15, 373.0, 13.7, 50.0)
+    melt_strain = stress / melt_viscosity * 1.0
+    assert glassy_strain < 1.0e-4
+    assert melt_strain > 20.0
+    assert melt_strain / glassy_strain > 1.0e5
 
 
 def test_a_soft_enough_polymer_is_called_tacky():
