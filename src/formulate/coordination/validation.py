@@ -164,12 +164,15 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
     # molecules of 2-butanone, 150 ps equilibration and 400 ps production,
     # 6.12 hours on two of this installation's four cores while a second run
     # shared the machine - so this figure is what a contended run costs, which
-    # is the honest one to budget. The viscosity is still an estimate from
-    # the density run's rate, deliberately generous: a wrong guess here refuses
-    # a run it could have afforded, which costs a validation; the other
-    # direction runs something it cannot finish, which costs the whole stage.
+    # is the honest one to budget. The viscosity was measured too - 200
+    # molecules, 200 ps, 1.46 hours with the machine to itself - and came in
+    # well under the estimate, because the finite difference parallelises
+    # across four cores where the estimate assumed the density run's contended
+    # rate. It is rounded up rather than to the measurement: a generous figure
+    # refuses a run it could have afforded, which costs one validation, where a
+    # mean one starts something it cannot finish and costs the whole stage.
     "surface_tension": 22000.0,
-    "shear_viscosity": 9000.0,
+    "shear_viscosity": 6000.0,
 }
 
 #: Measured systematic error of each force field in the condensed phase, as a
@@ -200,15 +203,17 @@ CONDENSED_COST_SECONDS: dict[str, float] = {
 #: Self-diffusion is absent from both rows because neither was measured for it,
 #: and a coefficient that spans orders of magnitude is not a place to
 #: interpolate a systematic error from a density. Runs of it say so instead.
-#: Surface tension and shear viscosity are absent for the same reason and not
-#: for a weaker one. The tension has been run once, on 2-butanone: 23.69 mN/m
-#: against a measured 23.96, a deviation of 1.1 per cent inside a sampling
-#: error of 12.5. That is agreement, and it is not a measurement of the
-#: systematic error - a bias of five per cent would have been invisible under
-#: that noise. Borrowing the density's 1.2 per cent would be worse than
-#: admitting the gap: a tension is a small difference between two large
-#: pressures and has no reason to inherit a density's accuracy. See
-#: UNMEASURED_SYSTEMATIC below.
+#: Surface tension is absent, and the reason is worth stating because the
+#: viscosity beside it is not. Both were run once, on 2-butanone, and only one
+#: of the two runs measured anything about the force field. The tension came
+#: out at 23.69 mN/m against 23.96, a deviation of 1.1 per cent inside a
+#: sampling error of 12.5 - agreement, but a five per cent bias would have been
+#: invisible underneath it. The viscosity came out thirteen per cent low
+#: against a sampling error of 2.8, which is a bias that can actually be seen.
+#: Agreement inside wide noise is not a small systematic error; it is an
+#: unmeasured one, and borrowing the density's 1.2 per cent for a tension -
+#: a small difference between two large pressures - would be worse than saying
+#: so. See UNMEASURED_SYSTEMATIC below.
 CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
     "opls-aa": {
         "liquid_density": 0.012,
@@ -216,6 +221,19 @@ CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
         "enthalpy_vaporization": 0.037,
         "cohesive_energy_density": 0.039,
         "hildebrand_solubility_parameter": 0.020,
+        # One compound, and the only row here that rests on one. 2-butanone
+        # came out at 0.343 mPa s against a measured 0.395, thirteen per cent
+        # low, and unlike the surface tension that is a real measurement of the
+        # bias rather than agreement inside the noise: the sampling error was
+        # 2.8 per cent, so the deviation is five and a half sigma clear of it.
+        #
+        # Kept at twenty rather than refined to thirteen, for two reasons. A
+        # single compound cannot separate what this force field does to a ketone
+        # from what it does to a viscosity. And the protocol has a known
+        # one-signed omission - it leaves the kinetic term out of the integral,
+        # which can only subtract - so part of the thirteen is the method rather
+        # than OPLS-AA, and correcting for that on one point would be fitting.
+        "shear_viscosity": 0.20,
     },
     "mmff94": {
         "liquid_density": 0.26,
@@ -227,6 +245,21 @@ CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
 }
 
 
+#: Protocols only OPLS-AA may run.
+#:
+#: Both are components of the pressure tensor, and MMFF94 is twenty-six per
+#: cent low on a density here. A viscosity is exponential in density and a
+#: tension is a small difference between two large pressures, so neither
+#: survives a force field that wrong - the run would not be inaccurate, it
+#: would be meaningless, and it would cost hours to produce.
+#:
+#: This is why CONDENSED_SYSTEMATIC carries a shear viscosity for OPLS-AA and
+#: nothing for MMFF94: not a gap, but a protocol MMFF94 is refused before it
+#: starts. Two tests assert exactly that asymmetry, and both failed when the
+#: viscosity row was added without this constant to explain it.
+OPLS_ONLY_PROTOCOLS: frozenset[str] = frozenset({"surface_tension", "shear_viscosity"})
+
+
 #: Protocols whose force-field systematic error has not been measured here.
 #:
 #: A missing row in CONDENSED_SYSTEMATIC is otherwise indistinguishable from a
@@ -235,7 +268,7 @@ CONDENSED_SYSTEMATIC: dict[str, dict[str, float]] = {
 #: an estimate. Naming them makes the gap assertable by a test instead of
 #: something a reader has to notice.
 UNMEASURED_SYSTEMATIC: frozenset[str] = frozenset(
-    {"self_diffusion_coefficient", "surface_tension", "shear_viscosity"}
+    {"self_diffusion_coefficient", "surface_tension"}
 )
 
 
@@ -1354,7 +1387,7 @@ class PhysicsValidator:
         temperature = spec.conditions.temperature_k or 298.15
         molecules = self.policy.condensed_molecules
 
-        if protocol in ("surface_tension", "shear_viscosity") and force_field != "opls-aa":
+        if protocol in OPLS_ONLY_PROTOCOLS and force_field != "opls-aa":
             return None, (
                 f"a {protocol.replace('_', ' ')} is a component of the pressure tensor, and "
                 "MMFF94 is 26 per cent low on a density here; a tensor built from a force "
@@ -1393,7 +1426,7 @@ class PhysicsValidator:
                 )
                 diagnostics = result.diagnostics
                 in_domain = abs(result.log_log_slope - 1.0) <= 0.15
-            elif protocol in ("surface_tension", "shear_viscosity"):
+            elif protocol in OPLS_ONLY_PROTOCOLS:
                 # Both are run at the density the liquid chooses for itself,
                 # not at an assumed one. A slab held at the wrong density has
                 # the wrong tension, and a viscosity is exponential in density,

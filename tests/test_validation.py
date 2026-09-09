@@ -631,7 +631,14 @@ def test_the_liquid_fitted_force_field_claims_a_tighter_error_than_the_gas_fitte
     """The whole point of the switch, asserted rather than assumed."""
     from formulate.coordination.validation import CONDENSED_SYSTEMATIC
 
+    from formulate.coordination.validation import OPLS_ONLY_PROTOCOLS
+
     for prop in CONDENSED_SYSTEMATIC["opls-aa"]:
+        if prop in OPLS_ONLY_PROTOCOLS:
+            # MMFF94 is refused these before it starts, so there is no figure
+            # to be tighter than. Asserted the other way instead, below.
+            assert prop not in CONDENSED_SYSTEMATIC["mmff94"], prop
+            continue
         assert (
             CONDENSED_SYSTEMATIC["opls-aa"][prop] < CONDENSED_SYSTEMATIC["mmff94"][prop]
         ), prop
@@ -645,8 +652,13 @@ def test_every_condensed_property_that_runs_has_a_stated_systematic_error():
         UNMEASURED_SYSTEMATIC,
     )
 
-    for field in CONDENSED_SYSTEMATIC.values():
-        assert set(field) == set(CONDENSED_PROTOCOLS) - UNMEASURED_SYSTEMATIC
+    from formulate.coordination.validation import OPLS_ONLY_PROTOCOLS
+
+    expected = set(CONDENSED_PROTOCOLS) - UNMEASURED_SYSTEMATIC
+    assert set(CONDENSED_SYSTEMATIC["opls-aa"]) == expected
+    # MMFF94 never runs the pressure-tensor protocols, so it carries no figure
+    # for them and that is not a missing measurement.
+    assert set(CONDENSED_SYSTEMATIC["mmff94"]) == expected - OPLS_ONLY_PROTOCOLS
     # The exemption list is not a place to hide a property: everything on it
     # has to be a property this system actually runs.
     assert UNMEASURED_SYSTEMATIC <= set(CONDENSED_PROTOCOLS)

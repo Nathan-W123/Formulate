@@ -1035,6 +1035,7 @@ temperature. 4.5 hours of contended CPU.
 | Hildebrand parameter | 19.63 ± 0.13 MPa^0.5 | 19.05 | **+3.0 %** |
 | enthalpy of vaporisation | 36.9 kJ/mol | 34.8 | +6 % |
 | **surface tension** | **23.69 ± 2.97 mN/m** | **23.96** | **−1.1 %** |
+| **shear viscosity** | **0.343 ± 0.010 mPa·s** | **0.395** | **−13.1 %** |
 
 That is OPLS-AA's known record (1.2 % on density, 3.7 % on vaporisation over
 five other liquids), from a force field that saw none of these numbers. The run
@@ -1059,6 +1060,27 @@ it held **0.73 molecules** in the gap on average, implying 49 kPa against a real
 12.6 — because a count under one is not a statistic. That is now the stated
 reason `normal_boiling_point` is refused, with the number, in place of the old
 assertion about free energies.
+
+The shear viscosity is the second refusal retired, by the same tensor and at
+the opposite end of the statistics. `python bench/web_shooter_md.py viscosity`:
+200 molecules, the stress sampled every 10 fs for 200 ps, three independent
+shear components, 1.46 hours. The stress autocorrelation decays in 0.050 ps —
+a low-viscosity liquid, which is the easy case for Green-Kubo — and the running
+integral drifts 6 % across the plateau window, so it has converged.
+
+**Only one of these two runs measured anything about the force field.** The
+tension agreed to 1.1 % inside a 12.5 % sampling error, which cannot see a five
+per cent bias. The viscosity is 13.1 % low against a 2.8 % sampling error —
+five and a half sigma clear, and a real measurement of the bias. So
+`shear_viscosity` gets a systematic entry and `surface_tension` does not, which
+is the opposite of what the two deviations look like at a glance. Agreement
+inside wide noise is an unmeasured systematic error, not a small one.
+
+The viscosity figure is kept at 20 % rather than refined to the measured 13,
+for a reason the protocol is honest about: it leaves the kinetic term out of
+the Green-Kubo integral, an omission that can only subtract, so some of the
+13 % is the method rather than OPLS-AA. Correcting for that on one compound
+would be fitting to a single point.
 
 2-butanone has since left the recipe (below), so these validate the engine
 rather than the material; they are the first MD-validated numbers in the chain
