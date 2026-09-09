@@ -406,6 +406,81 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             condition_dependent=True,
             bounds=(0.0, None),
          multiplicative_error=True),
+        # --- Toughness, architecture and hazard: the three things the acrylate
+        # run could not be ranked on. ---
+        #
+        # A cured 1,6-hexanediol diacrylate network was the correct answer to a
+        # spec stating cure time, boiling point, viscosity and density, and the
+        # wrong material to build: brittle, a skin sensitiser, and a thermoset
+        # that cannot be remelted. None of those three is a state property the
+        # registry carried, so none of them could lose the candidate a single
+        # point. These are the properties that make them rankable.
+        _p(
+            "elongation_at_break",
+            "",
+            _M,
+            "Tensile strain at fracture, as a fraction rather than a percentage. "
+            "The toughness proxy: a material that reaches its strength and then "
+            "snaps at two per cent strain absorbs a hundredth of the energy of one "
+            "that draws to two hundred, at the same strength.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+            # Handbook elongations for one polymer run from two per cent to
+            # twelve hundred, and one compilation's range for a single grade
+            # routinely spans a factor of six. That is a multiplicative error by
+            # construction, and comparing two of them on absolute spread would
+            # hand the decision to whichever expert predicted the brittler
+            # material - exactly the failure the flag exists to prevent.
+            multiplicative_error=True,
+        ),
+        _p(
+            "crosslink_density",
+            "mol/m^3",
+            _S,
+            "Moles of elastically effective network strands per unit volume. Zero "
+            "for a thermoplastic and only for a thermoplastic: a covalent network "
+            "cannot be remelted, redissolved or reprocessed, and a spec that needs "
+            "a hot melt is stating a requirement on this rather than a preference.",
+            bounds=(0.0, None),
+        ),
+        # Hazard. Two GHS endpoints, read from a curated table and never inferred
+        # from structure, because there is no structure-activity model here worth
+        # putting a person's skin behind. What the table does not carry, the
+        # expert refuses - which is why the endpoints are separate properties
+        # rather than one "safe" score that would quietly average an unknown
+        # against a zero.
+        _p(
+            "skin_sensitiser",
+            "",
+            PropertyFamily.SPECIALIZED,
+            "One if the substance carries a GHS skin sensitisation classification "
+            "(H317, Skin Sens. 1/1A/1B), zero if it has been screened and does not. "
+            "Never inferred from structure: absence of a classification in the table "
+            "is a refusal, not a zero.",
+            bounds=(0.0, 1.0),
+        ),
+        _p(
+            "acute_toxicity_category",
+            "",
+            PropertyFamily.SPECIALIZED,
+            "Most severe GHS acute toxicity category across the oral, dermal and "
+            "inhalation routes: 1 is fatal at the smallest dose, 4 is harmful, and 5 "
+            "is reserved here for a substance screened against all three routes and "
+            "classified on none. Lower is worse, so a requirement on it is a lower "
+            "bound rather than an upper one.",
+            bounds=(1.0, 5.0),
+        ),
+        _p(
+            "carcinogen_category",
+            "",
+            PropertyFamily.SPECIALIZED,
+            "GHS carcinogenicity: 1 for category 1A (known), 2 for 1B (presumed), 3 "
+            "for category 2 (suspected), 4 for a substance screened and classified "
+            "on none. Present because a hazard screen carrying only sensitisation "
+            "and acute toxicity would report benzene as unobjectionable, and a false "
+            "clean bill is worse than no bill at all.",
+            bounds=(1.0, 4.0),
+        ),
         _p(
             "hansen_dispersion",
             "Pa^0.5",
