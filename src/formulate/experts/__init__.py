@@ -34,6 +34,11 @@ from .polymer import PolymerDensityExpert, PolymerGlassTransitionExpert
 from .registry import ExpertRegistry
 from .solubility import ESOLSolubilityExpert
 from .structural import StructuralDescriptorExpert
+from .toughness import (
+    ChainToughnessExpert,
+    MeasuredPolymerExpert,
+    PolymerArchitectureExpert,
+)
 
 #: The Phase 1 expert panel (specification section 10): a small set of
 #: reliable, published, deterministic predictors spanning four expert families.
@@ -83,6 +88,13 @@ PHASE4_EXPERTS = (
     # solidify in place has to be selected on.
     PropagationExpert,
     FreeRadicalCureExpert,
+    # Whether a strand draws or snaps, and whether it can be remelted. Both
+    # were missing when a brittle thermoset came out as the correct answer to
+    # five successive specifications: a failure mode that is not a registered
+    # property cannot cost a candidate a single point.
+    MeasuredPolymerExpert,
+    ChainToughnessExpert,
+    PolymerArchitectureExpert,
 )
 
 
@@ -103,6 +115,8 @@ __all__ = [
     "LearnedBoilingPointExpert", "LearnedRefractiveIndexExpert", "LorentzLorenzExpert",
     "MeasuredViscosityExpert", "MeltViscosityExpert", "TroutonExtensionalExpert",
     "PropagationExpert", "FreeRadicalCureExpert", "GroupContributionHansenExpert",
+    "ChainToughnessExpert", "MeasuredPolymerExpert",
+    "PolymerArchitectureExpert",
     "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert",
     "UNIFACActivityExpert",

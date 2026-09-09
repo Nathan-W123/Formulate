@@ -404,8 +404,14 @@ def test_registry_now_covers_polymers(registry):
     coverage = registry.coverage(
         ["glass_transition_temperature", "amorphous_density"], MaterialClass.POLYMER
     )
-    assert coverage["glass_transition_temperature"] == ["polymer_tg"]
-    assert coverage["amorphous_density"] == ["polymer_density"]
+    # Two routes each now, not one. The catalogue supplies tabulated values for
+    # the polymers it holds and refuses for everything else, and the two are
+    # sorted out by `prefer` on their spreads rather than by precedence: 7 K of
+    # compilation disagreement against 22 K of held-out fit error, and 0.02
+    # against 0.045 g/cm^3. Where the catalogue is silent these two experts are
+    # the only answer, which is what they were built for and still are.
+    assert coverage["glass_transition_temperature"] == ["polymer_measured", "polymer_tg"]
+    assert coverage["amorphous_density"] == ["polymer_density", "polymer_measured"]
     # Young's modulus is covered now too, by the mechanical expert, which reads
     # the transition this expert predicts to decide whether the polymer is a
     # glass or a rubber at the stated temperature.
