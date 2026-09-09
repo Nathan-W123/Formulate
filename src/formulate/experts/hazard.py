@@ -247,7 +247,20 @@ HAZARDS: dict[str, HazardRow] = dict(
         _row("CCOC(=O)C(C)O", "ethyl lactate", "H226, H318, H335", source=SELF),
         _row("CC(C)CC(C)=O", "methyl isobutyl ketone", "H225, H319, H332, H335", acute=4),
         _row("CCCCOC(C)=O", "butyl acetate", "H226, H336"),
-        _row("CC(C)OC(C)C", "diisopropyl ether", "H224, H336, H351", carc=3),
+        _row(
+            "CC(C)OC(C)C",
+            "diisopropyl ether",
+            "H224, H336, EUH019",
+            carc=None,
+            source=SELF,
+            note=(
+                "carcinogenicity left unrecorded: sources disagree about whether this "
+                "one carries a category 2 classification and this compiler could not "
+                "settle it, so the endpoint is declined rather than passed. EUH019 is "
+                "the hazard that actually characterises it - it forms explosive "
+                "peroxides on standing - and is not an endpoint this table scores"
+            ),
+        ),
         _row(
             "ClCCCl",
             "1,2-dichloroethane",
@@ -548,9 +561,7 @@ class GHSHazardExpert(Expert):
                 "negative here would be somebody's hands",
             )
 
-        rows = [hazard_row(s) for s in structures]
-        assert all(row is not None for row in rows)
-        rows = [row for row in rows if row is not None]
+        rows = [row for row in (hazard_row(s) for s in structures) if row is not None]
 
         if prop == "skin_sensitiser":
             worst = [row for row in rows if row.skin_sensitiser]

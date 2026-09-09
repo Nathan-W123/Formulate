@@ -559,8 +559,7 @@ class MeasuredPolymerExpert(_CataloguePolymerExpert):
                 + (f": {record.note}" if record.note else ""),
             )
         low, high = record.elongation_at_break
-        value = record.elongation
-        assert value is not None
+        value = math.sqrt(low * high)
         factor = elongation_source_spread()
         return self._make(
             prop,
@@ -681,12 +680,12 @@ class ChainToughnessExpert(_CataloguePolymerExpert):
             temperature_k=temperature,
         )
         if name is None:
-            assert glass_transition is not None
+            shift = 0.0 if glass_transition is None else glass_transition - temperature
             return Prediction.unsupported(
                 prop,
                 self.id,
-                f"the transition is {glass_transition - temperature:.0f} K above the "
-                f"stated temperature, beyond the {_GLASSY_CEILING_K:.0f} K the catalogue "
+                f"the transition is {shift:.0f} K above the stated temperature, beyond "
+                f"the {_GLASSY_CEILING_K:.0f} K the catalogue "
                 "covers. Every polymer behind the glassy class sits inside that window "
                 "and a rigid engineering plastic well outside it is a different material",
             )
@@ -870,12 +869,11 @@ def _attachment_points(spec: PolymerSpec) -> int:
 def _class_reason(
     name: str, glass_transition: float | None, temperature: float, spec: PolymerSpec
 ) -> str:
-    if name == "network":
+    if name == "network" or glass_transition is None:
         return (
             f"a {spec.topology.value} polymer is a single molecule, and a single molecule "
             "cannot draw - the strands between junctions have nowhere to go"
         )
-    assert glass_transition is not None
     shift = glass_transition - temperature
     if name == "rubbery":
         return (

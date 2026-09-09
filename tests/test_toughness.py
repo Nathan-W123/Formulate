@@ -122,11 +122,17 @@ def test_every_catalogue_row_parses_and_sums_to_one():
         assert math.isclose(sum(m.mole_fraction for m in backbone), 1.0, abs_tol=1e-6)
 
 
-def test_every_catalogue_row_is_found_by_the_expert_that_reads_it():
+def test_every_catalogue_row_is_found_and_finds_itself():
     """Matching is on structure and architecture, so a row that cannot be
-    matched is a row nothing can ever use."""
-    for record in load_polymers():
-        assert catalogue_record(polymer_spec(record)) is not None, record["name"]
+    matched is a row nothing can ever use - and two rows sharing a key would
+    silently shadow one another, which is why the abbreviation is checked
+    rather than only the presence."""
+    found = [
+        (record["abbreviation"], catalogue_record(polymer_spec(record)))
+        for record in load_polymers()
+    ]
+    assert all(match is not None for _, match in found)
+    assert [name for name, _ in found] == [match.abbreviation for _, match in found]
 
 
 def test_the_two_polyethylenes_are_told_apart_by_architecture_alone():
