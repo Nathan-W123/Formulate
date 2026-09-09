@@ -982,6 +982,198 @@ prediction, the diffusion coefficient in the drying calculation is an input, and
 the Hansen route got polymer–polymer miscibility wrong for a well-understood
 reason. It is a feasibility argument, not a validated design.
 
+## Physical validation, and what it took
+
+The paragraph above said nothing in the web-shooter chain had been validated by
+physics and the engine would refuse most of it. Both halves were true, and both
+had the same cause, which was not the one the refusals gave.
+
+### The refusals were wrong about why
+
+`surface_tension` was in `NOT_VALIDATABLE_REASONS` for needing "a periodic
+condensed phase larger than the available potentials support"; `shear_viscosity`
+for having "no dynamics workflow." What neither had was a pressure tensor. A
+tension is a difference between diagonal components, a viscosity is the
+autocorrelation of an off-diagonal one, and **OpenMM publishes no pressure
+tensor at all** — its barostats compute one inside their own Monte Carlo move and
+never expose it. Both properties were refused for an absent accessor.
+
+`physics/md/stress.py` recovers it by finite difference: strain the cell, carry
+the contents along affinely, take dU/dε from two single-point energies. Three
+choices decide whether that is a pressure or arithmetic. The strain translates
+whole molecules rather than scaling atoms, because bonds to hydrogen are
+constrained and an atomic strain silently loses the constraint virial — so this
+is the molecular virial, which gives the same tension and the same
+zero-frequency viscosity as the atomic one. Image shifts cancel, because the
+cell's vectors strain by the same ε. And only three of six shears are
+expressible, since OpenMM needs box vectors in reduced form; the tensor is
+symmetric, so that costs nothing.
+
+Verified against four closed forms before any wall clock was spent on it:
+
+| check | agreement |
+|---|---|
+| two Lennard-Jones particles, `−U′(r) dₐd_b / V`, all six components | 1 part in 10⁶ |
+| full OPLS-AA cluster against the force identity `−Σ R_I·F_I` | few parts in 10⁶ |
+| Ewald's exact 1/L scaling under isotropic strain | 8 parts in 10⁶ |
+| ideal-gas kinetic term against `NkT/V` | 1329 vs 1325 bar |
+
+And once end to end: a Monte Carlo barostat holding **250 bar** on 200 molecules
+of 2-butanone, read back by finite difference at **258 ± 23 bar**, with an
+instantaneous spread of 277 bar. The target was buried in fluctuations eleven
+times its size and came back within a sigma.
+
+### What MD then said about the carrier
+
+`python bench/web_shooter_md.py bulk` — 400 molecules of 2-butanone under
+OPLS-AA, 200 ps at constant pressure plus one isolated molecule at the same
+temperature. 4.5 hours of contended CPU.
+
+| | MD | measured | deviation |
+|---|---|---|---|
+| liquid density | 0.8077 ± 0.0005 g/cm³ | 0.7995 | **+1.0 %** |
+| Hildebrand parameter | 19.63 ± 0.13 MPa^0.5 | 19.05 | **+3.0 %** |
+| enthalpy of vaporisation | 36.9 kJ/mol | 34.8 | +6 % |
+
+That is OPLS-AA's known record (1.2 % on density, 3.7 % on vaporisation over
+five other liquids), from a force field that saw none of these numbers. The run
+flagged itself: density drifted +0.0023 g/cm³ across production, larger than
+its own sampling error, so the ±0.0005 is optimistic and the honest error is
+nearer the drift. The Hildebrand parameter is the number that matters — it is
+the total behind the Hansen sphere the solvent selection ran on, and MD
+reproduces it independently from cohesive energy.
+
+The surface tension slab was still running when this was written. 2-butanone
+has since left the recipe (below), so these validate the engine rather than the
+material; they are the first MD-validated numbers in the chain regardless.
+
+### The base could not be searched for, because no rate existed
+
+The reactive jet's majority component was specified as "a monomer that cures in
+flight" and never selected, because the property registry held forty-nine
+properties and **not one rate**. A material chosen for what it becomes cannot be
+searched on what it is.
+
+`experts/kinetics.py` adds propagation from the IUPAC pulsed-laser benchmark
+(good to ~10 %), an order-of-magnitude termination coefficient, and an
+initiation regime named in `Conditions.processing` — refused if absent, because
+a cure time without one is a property of nothing. Seven monomers went into a
+catalogue file of their own, **not** into `reference_compounds.json`, which is
+the held-out calibration set a dozen docstrings cite by size.
+
+`examples/cured_jet_base.yaml`, two-second ceiling: **nothing feasible in 56.**
+Fastest solid-former was vinyl acetate at 79 s. The four faster monomers were
+refused because their homopolymers are rubbers at ambient — a time at which a
+liquid becomes a gum is not a cure. That disconfirmed the hand-picked base by
+40×.
+
+### Two orders of magnitude were in the endpoint, not the chemistry
+
+The 79 s was time to *vitrification* at half conversion. A crosslinker does not
+vitrify to solidify; it **gels**, at one crosslink per primary chain, which for
+chains hundreds of units long is a fraction of a per cent of conversion.
+Functionality is now read from the structure, gelation comes from
+Flory–Stockmayer, and the glass-transition refusal applies only to linear
+polymers — it had been turning away every diacrylate, the exact chemistry fast
+enough to work.
+
+`examples/cured_jet_base_gelled.yaml`, two seconds: **hexanediol diacrylate gels
+in 0.064 s, trimethylolpropane triacrylate in 0.026 s.** Both stated as lower
+bounds on conversion (cyclisation) and upper bounds on time (Trommsdorff), with
+a borrowed family k_p since no pulsed-laser measurement exists for a monomer
+that gels during the experiment.
+
+### Three defects the search turned up, all silent
+
+**`prefer()` compared absolute uncertainty.** On a property spanning orders of
+magnitude that hands the win to whichever expert predicts the smallest number.
+HDDA's viscosity: Joback 4.25 mPa·s at ±31 %, corresponding states 0.175 at
+±85 % — and the second won, on 1.5×10⁻⁴ against 1.3×10⁻³ Pa·s of spread. Every
+jet number was wrong by fifty-fold until chased. Nine properties now declare
+`multiplicative_error` and compare on relative spread; a boiling point keeps the
+absolute comparison, and a test asserts both halves.
+
+**Joback estimates arrived labelled "measured."** The compilation's default
+accessor returns a group contribution when it holds nothing else and does not
+say so; it came through the route stamped *"measured, not estimated"* with a
+1 K error bar, and the panel called both winning monomers solids at 25 °C.
+Joback's melting point is its weakest correlation (53 K low on MMA where a
+measurement exists). Filtered to compilation methods; zero of the fifty
+reference compounds affected.
+
+**A vacuum boiling point served as a normal one.** HDDA's compiled 403 K is
+where it distils at a few mmHg; at one atmosphere it is near 570. It passed a
+hard constraint it should have failed and fed a Brock–Bird surface tension of
+8.4 mN/m against a real 34. Caught by a 181 K disagreement with the group
+estimate (median 7 K over the set) and arbitrated by reduced boiling point
+Tb/Tc, 0.663 ± 0.034 over 58 compounds: the compiled value's 0.527 is the worst
+outlier in the set. The same tiebreaker sides with the compilation for
+γ-butyrolactone (0.654 vs Joback's 0.494), so it settles both contradicted
+compounds in opposite directions with neither chosen by hand. With the boiling
+point right, the panel's surface tension for HDDA is **35.2 mN/m**.
+
+### Closing the jet, and where it closed
+
+`python bench/web_shooter_gelled_jet.py` runs the three constraints of the
+reactive jet against each other for the first time. Thin jets stay cool and
+laminar and break up in milliseconds; thick ones survive and cook (409 K of
+adiabatic rise in a diacrylate, 121 °C at 4.2 mm); at the resin's own viscosity
+there is no radius that works. Viscosity opens the window — which is what the
+thickener was always for. At 100 mPa·s and 1 mm radius: Reynolds 404, break-up
+11.5 m against a 0.064 s gel, peak 32 °C, 0.8 bar at the nozzle.
+
+`bench/web_shooter_strength.py` puts a bound under the assumed 40 MPa. The
+engine's own `theoretical_strength` (E/10, 286 MPa on the glassy plateau) is
+knocked down by a factor measured on the two glassy polymers it can predict:
+0.14 for polystyrene, 0.245 for PMMA. **Realised: 40–70 MPa, 4–7 filaments of
+1 mm.** The aligned-chain ceiling is 33 GPa and unreachable, because nothing
+draws a ballistic jet — which is why spiders pull silk rather than shoot it.
+
+### The formulation, validated as a mixture
+
+Asked to score the blend, the panel returned nothing for nine properties: the
+Hansen compilation covers ordinary solvents, and every component here is
+something else. `GroupContributionHansenExpert` fills it by Hoftyzer–Van
+Krevelen, calibrated against the compilation over the forty reference structures
+it accepts — **0.89, 0.80, 1.18 MPa^0.5** on dispersion, polar and hydrogen
+bonding — with a test that recomputes those and fails if the expert ever claims
+better. It refuses on any uncovered group, on a polyhalogenated carbon, and
+(after being caught typing benzoyl peroxide as two esters) on a peroxyester.
+Polymer components now resolve through the polymer experts with their `[*]`
+attachment points intact.
+
+| | |
+|---|---|
+| polystyrene in HDDA | **RED 0.83** — dissolves (2-butanone 0.87, hexane 1.16 as controls) |
+| blend Hansen triple, polymer included | 16.6 / 3.6 / 8.4 MPa^0.5 |
+| blend density | 1170 kg/m³ |
+
+`examples/web_fluid_formulation.yaml`: 96.6 % HDDA, 1.5 % polystyrene 500 kDa,
+1.2 % benzoyl peroxide (part A), 0.67 % N,N-dimethyl-p-toluidine (part B).
+The thickener loading is stated as `c[η] = 1.81`, which is exact, and split into
+0.7–3.1 wt% across the measured polystyrene pairs, because no Mark–Houwink
+constants exist for it in a diacrylate and borrowing one is refused.
+
+### What passes, and why it is still the wrong thing to build
+
+Everything the engine can compute passes with margin. What it cannot compute is
+exactly what decides the device: **MD is impossible on the base** (OPLS-AA has
+no ester carbonyl type and refuses every acrylate), **strength is
+flaw-controlled** and no structure route exists, **adhesion is untouched**,
+and a Mc ≈ 113 g/mol network is brittle — the literature confirms sub-second
+acrylate cure gives brittle specimens. Add a 64 ms pot life that must clear
+2.8 mL of mixhead in 6.4 ms, a 409 K exotherm in anything trapped, and three
+components that are sensitisers or oxidisers, and the reactive jet is the
+scientifically interesting answer and the wrong material.
+
+A polyamide hot melt sidesteps every one of those: single part, no pot life, no
+exotherm, tough rather than brittle, benign pellets, and 33–53 MPa published —
+the same band as the acrylate without any of its failure modes. The engine could
+not select it, because toughness, hazard and a polymer candidate pool were not
+in it. All three are in it now, and the section below is the run: the engine
+reaches a copolyamide on its own evidence, and refuses the acrylate on three
+hard requirements it could not previously see.
+
 ---
 
 ## The thermoplastic run: making the acrylate lose

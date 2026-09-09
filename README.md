@@ -181,12 +181,13 @@ where they exist:
 | `viscosity_corresponding_states` | interfacial | molecule | liquid viscosity from critical constants, for structures no group table covers |
 | `melt_wlf` | interfacial | polymer | melt viscosity by WLF from the polymer's own glass transition |
 | `trouton` | interfacial | molecule | extensional viscosity, exact for a Newtonian liquid and refused for a polymer |
-| `kinetics_propagation` | chemical | molecule | propagation rate coefficient from the IUPAC pulsed-laser benchmark set |
-| `cure_free_radical` | chemical | molecule | how long a monomer stays liquid under a stated initiation regime |
-| `polymer_measured` | mechanical | polymer | tabulated glass transition, amorphous density and elongation at break |
-| `toughness_proxy` | mechanical | polymer | elongation at break by network/glassy/rubbery classification |
-| `polymer_architecture` | structural | polymer | crosslink density, read off the specification and refused where undefined |
-| `hazard_ghs` | specialized | molecule, polymer, mixture | skin sensitisation, acute toxicity and carcinogenicity, by curated lookup only |
+| `kinetics_propagation` | chemical | molecule | propagation rate coefficient from the IUPAC pulsed-laser benchmark, seven monomers plus three crosslinkers on borrowed family values |
+| `cure_free_radical` | chemical | molecule | time for a reacting liquid to stop flowing: gel point by Flory–Stockmayer for a crosslinker, half conversion for a linear polymer; needs an initiation regime named in the conditions and refuses a monomer whose homopolymer is a rubber at the cure temperature |
+| `hansen_group_contribution` | interfacial | molecule | Hansen triple by Hoftyzer–Van Krevelen where the compilation has none, calibrated at 0.89 / 0.80 / 1.18 MPa^0.5; refuses on any uncovered group |
+| `polymer_measured` | mechanical | polymer | tabulated glass transition, amorphous density and elongation at break, from the bundled polymer catalogue |
+| `toughness_proxy` | mechanical | polymer | elongation at break by network/glassy/rubbery classification, leave-one-out to a factor of 1.40 among rubbers and 6.64 among glasses |
+| `polymer_architecture` | structural | polymer | crosslink density, read off the specification and refused for a network that states none |
+| `hazard_ghs` | specialized | molecule, polymer, mixture | skin sensitisation, acute toxicity and carcinogenicity, by curated lookup only; refuses any structure not in the table |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation
