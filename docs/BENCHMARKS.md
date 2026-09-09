@@ -981,3 +981,202 @@ magnitude over three polymers, the cure time is an input rather than a
 prediction, the diffusion coefficient in the drying calculation is an input, and
 the Hansen route got polymer–polymer miscibility wrong for a well-understood
 reason. It is a feasibility argument, not a validated design.
+
+---
+
+## The thermoplastic run: making the acrylate lose
+
+```
+python -m formulate.cli.main run examples/web_fluid_thermoplastic.yaml
+python -m formulate.cli.main run examples/web_fluid_thermoplastic_relaxed.yaml
+python -m pytest tests/test_toughness.py tests/test_hazard.py -q
+```
+
+Five runs converged on 1,6-hexanediol diacrylate with a benzoyl peroxide /
+N,N-dimethyl-p-toluidine redox pair, gelling in 0.064 s. That is the correct
+answer to the specifications that were written, and it is the wrong material to
+build: a tightly crosslinked network is brittle, a 64 ms pot life clogs, the
+diacrylate is a skin sensitiser and the peroxide is both a sensitiser and an
+organic peroxide, and a thermoset nozzle jam is permanent.
+
+**The engine did not miss any of that. None of it was a property.** A failure
+mode the registry does not carry cannot cost a candidate a single point, and
+that is a statement about the registry rather than about the ranking.
+
+So this run adds what was missing — an elongation at break, a crosslink
+density, and three GHS endpoints — puts the cured network into the candidate
+pool alongside sixteen commodity thermoplastics, and asks the panel to choose.
+
+### What the panel is worth on each of the new columns
+
+| route | measured against | what it is worth |
+|---|---|---|
+| tabulated elongation | geometric width of the quoted `[low, high]` ranges, 16 polymers | **factor 1.97** |
+| toughness proxy, rubbery class | leave-one-out, 5 polymers | factor 1.40 (2.14 with specimen spread) |
+| toughness proxy, glassy class | leave-one-out, 6 polymers | **factor 6.64** (7.47 with specimen spread) |
+| toughness proxy, overall | leave-one-out hit rate | **7 / 11**, typical miss 3.53× |
+| tabulated glass transition | stated compilation-to-compilation spread | 7 K |
+| tabulated amorphous density | worst disagreement between the two tables bundled here | 0.02 g/cm³ |
+| crosslink density | read off the specification | exact, or refused |
+| GHS endpoints | curated lookup | exact, or refused |
+
+**The proxy's glassy class does not work and the number says so.** Polystyrene
+elongates 1.7% and polyamide 6 draws to 77%, forty-five times as far; both are
+glasses at ambient and the *ductile* one is the closer to its transition, 25 K against 75.
+Distance above Tg does not separate them in magnitude or even in direction.
+What does is whether the glass shear-yields before it crazes, which is the
+entanglement density of the chains in the glass — a quantity
+`polymer_mechanical` already computes from the packing length, and holds the
+chain dimension for nine repeat units, none of them a polyamide or a polyester.
+The better proxy is one measurement per polymer away and is not reachable from
+the structure.
+
+**A defect the calibration caught before the run shipped.** The class mean over
+five rubbers is reproducible to 1.40 and one handbook range's half-width is
+1.97, so a proxy quoting only its own fit error is the *tighter* prediction and
+`prefer()` chose it over every measurement it had been fitted to. Both routes
+predict what a bar of this polymer will do, so both carry the
+specimen-to-specimen spread and the proxy carries its class error on top.
+`test_a_measured_elongation_outranks_the_proxy_that_was_fitted_to_it` holds it.
+
+### Run 1, as specified: nothing feasible, and the blocker is the panel
+
+Seventeen candidates, **zero feasible**. `shear_viscosity` at 180 °C eliminated
+all seventeen — sixteen because no value could be produced at all, and
+polystyrene because 3,657 Pa·s is 366 times the ceiling.
+
+That is the correct behaviour and it is not a chemistry result. The panel's only
+route to a melt viscosity is WLF referenced to the glass transition with
+measured constants for three polymers, and for a semicrystalline hot melt that
+route is not approximately right but **inapplicable**: above its melting point
+the melt follows Arrhenius and has left the window WLF describes. A hard
+requirement that cannot be verified is a hard violation, so every candidate died
+on a gap in the panel and the six requirements that *can* be checked never got
+to decide anything.
+
+**One wrong number was found here rather than by reading.** Poly(methyl
+methacrylate) came first at 3.4 × 10⁻⁵ Pa·s — thinner than water by thirty
+times, for a polymer whose real melt viscosity at 180 °C is of order 10⁴, and
+75 K above its transition so well inside the existing 120 K guard. The defect is
+in the constant pair: `c1` is the number of decades between the reference
+temperature and the high-temperature asymptote, so a pair referenced to Tg
+cannot have a `c1` that puts the asymptote below any liquid that exists. 13.7
+leaves polystyrene asymptotic to 0.02 Pa·s; **34.0 leaves PMMA asymptotic to
+10⁻²² Pa·s**, which is not a viscosity. The pair is very likely quoted against a
+reference temperature of its own and the table cannot tell. The expert now
+refuses below the viscosity of water and names the `c1` that caused it.
+Polystyrene is untouched.
+
+### Run 2, melt viscosity soft: a copolyamide hot melt
+
+Four of seventeen feasible. Ranked:
+
+| # | candidate | Tg / K | elongation | crosslinks | H317 | ρ / kg m⁻³ | verdict |
+|---|---|---|---|---|---|---|---|
+| 1 | **copolyamide 6/66/12** | 320 ± 34 *(est.)* | **4.58** *(meas.)* | 0 | no | 1042 *(est.)* | feasible |
+| 2 | **polyamide 6** | **323 ± 7** *(meas.)* | 0.77 *(meas.)* | 0 | no | 1084 *(meas.)* | feasible |
+| 3 | poly(butylene terephthalate) | 315 *(meas.)* | 1.22 *(meas.)* | 0 | no | 1260 *(meas.)* | feasible |
+| 4 | poly(ethylene terephthalate) | 342 *(meas.)* | 0.95 *(meas.)* | 0 | no | 1335 *(meas.)* | feasible |
+| 7 | polystyrene | 373 *(meas.)* | **0.017** *(meas.)* | 0 | no | 1050 | **brittle** |
+| 12 | poly(methyl methacrylate) | 378 *(meas.)* | **0.045** *(meas.)* | 0 | no | 1170 | **brittle** |
+| 15 | polylactide | 328 *(meas.)* | **0.045** *(meas.)* | 0 | no | 1248 | **brittle** |
+| 5,6,10 | PP, HDPE, LDPE | 267, 195, 195 | 2.4–3.6 | 0 | no | 850–855 | **Tg too low** |
+| 8,9 | EVA-18, EVA-40 | 214, 233 *(est.)* | 7.3, 8.4 *(meas.)* | 0 | no | — | **Tg too low** |
+| 11 | polyamide 12 | 310 *(meas.)* | 2.65 *(meas.)* | 0 | no | 990 | **Tg 3 K short** |
+| 17 | **cured poly(HDDA)** | refused | **0.022** *(meas.)* | **9,700** | **yes** | refused | **four hard failures** |
+
+**The engine converges on a copolyamide hot melt**, which is the material a
+person who has built one would have named. It gets there on stated evidence and
+not by assertion:
+
+- **copolyamide first** on a measured elongation of 4.58 — it draws six times
+  further than polyamide 6 — with a transition it has to *estimate*, at ±34 K,
+  which is why its transition utility is zero on the risk-adjusted scale even
+  though the nominal value is inside the window. It wins on toughness and pays
+  for it in certainty.
+- **polyamide 6 second**, and it is the more solid answer: every number in its
+  row is measured, its transition is inside the window by 10 K against a 7 K
+  spread, and it is the lightest of the four feasible.
+- The **polyesters** are feasible and lose on density alone: PET is 1,335
+  kg/m³ against polyamide 6's 1,084, and mass on a wrist is the one soft
+  objective that discriminated here.
+
+**The acrylate finishes last, refused on four hard requirements at once**, three
+of them by the machinery this run added:
+
+| requirement | poly(HDDA) | source |
+|---|---|---|
+| `elongation_at_break` ≥ 0.05 | **0.022** | measured range 1–5% for a neat cured diacrylate network |
+| `crosslink_density` = 0 | **9,700 mol/m³** | calculated from complete conversion; exact in sign |
+| `skin_sensitiser` = false | **true (H317)** | curated GHS table, inherited from the monomer by a recorded decision |
+| `glass_transition_temperature` in 40–120 °C | refused | network topology is outside every repeat-unit correlation |
+
+That last row is the shape of the whole result: the network is refused rather
+than scored, by two experts independently, each naming its reason. Nothing here
+argued the acrylate down. It was proposed, evaluated by the same panel at the
+same conditions as everything else, and lost.
+
+### What the run does not establish, and what it exposed
+
+**The melt viscosity was never verified for any winner.** The soft run's top
+four all score zero on it, which is the absence of a measurement and not a bad
+measurement. A copolyamide hot melt's real melt viscosity at 180 °C is of order
+2–50 Pa·s and would pass the ceiling comfortably; this engine cannot say so, and
+saying so here would be asserting exactly the kind of number the rest of the
+repository refuses to assert.
+
+**No polymer melting point exists in the registry, and this is now the largest
+gap on the polymer side.** Every semicrystalline candidate in the pool — the
+polyethylenes, polypropylene, both polyamides, both polyesters,
+polycaprolactone, both EVA grades — is useful in service up to its *melting*
+point and was judged here on its *glass* transition, which understates it by a
+hundred kelvin and more. The requirement that eliminated ten of seventeen
+candidates is therefore the wrong requirement, correctly applied. It is exactly
+why polyamide 12 lost by 3 K and why both EVA grades and the polyethylenes lost
+at all — a hot melt is *designed* to have a low transition.
+
+**No degree of crystallinity either, and it costs a number that can be shown.**
+The catalogue's measured tensile column is the first data in this repository
+able to check what `theoretical_strength` is worth rather than restate it:
+
+| polymer | measured tensile | flaw-free bound | delivered |
+|---|---|---|---|
+| polystyrene | 44 MPa | 286 MPa | **15%** |
+| poly(methyl methacrylate) | 60 MPa | 286 MPa | **21%** |
+| low-density polyethylene | 12 MPa | 0.7 MPa | **17×over** |
+| high-density polyethylene | 26 MPa | 0.7 MPa | **39×over** |
+| polypropylene | 36 MPa | 0.1 MPa | **339×over** |
+
+The bound holds for the two glasses, at the one-to-three-orders-below the
+mechanical module claims. It is *broken* by every semicrystalline polymer, and
+not because the bound is wrong: those three are above their glass transitions at
+ambient, so the panel computes a rubber-elastic modulus — `3ρRT/M_e`, about a
+megapascal — for materials that carry their load in crystals. Polypropylene is
+the worst of the three because the rubbery modulus goes as `1/M_e` and the panel
+puts its entanglement mass at 6,014 g/mol against polyethylene's 948. The panel
+is answering correctly for the amorphous polymer, which is a different material
+with the same repeat unit.
+
+**The hazard screen screens out and cannot screen in.** Skin sensitisation,
+acute toxicity and carcinogenicity, from a 76-row curated table covering every
+structure the bundled explorer can propose. Reproductive and target-organ
+toxicity, mutagenicity, aspiration, flammability, environmental hazard and every
+exposure limit are outside it, and two rows abstain on carcinogenicity rather
+than record a "not classified" nobody established. The initiator system shows
+what that costs: benzoyl peroxide's H242 appears in the codes attached to every
+prediction and in none of the numbers, so a specification screening on
+sensitisation and acute toxicity alone sees only half of what is wrong with
+putting an organic peroxide in a hand-held cartridge.
+
+**Six of the seventeen candidates carry an estimated transition rather than a
+measured one** — the copolyamide, both EVA grades, the polyurethane, and the two
+that were refused. For the copolyamide that is a ±34 K estimate deciding a hard
+80 K window, and it is the one number in the winning row that a bench would
+settle in an afternoon.
+
+**Nothing about the two-part pot life was tested here.** The 64 ms gel time is a
+processing property, not a material one, and it is the reason a thermoplastic
+route is being asked for at all — but a specification stating
+`material_classes: [polymer]` cannot see it, because a cure time belongs to a
+monomer and a monomer is not a polymer. The two halves of the argument still do
+not meet inside one run.

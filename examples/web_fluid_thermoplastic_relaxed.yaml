@@ -1,0 +1,148 @@
+name: web fluid v7b - the same specification with the requirement the panel cannot verify made soft
+notes: >
+  web_fluid_thermoplastic.yaml, with one word changed: the melt viscosity
+  ceiling is soft here rather than hard. Nothing else differs, and the reason
+  for the pair is that the first run answers a different question from the one
+  it looks like it is answering.
+
+  In the hard run nothing is feasible, and the blocker is not chemistry. The
+  panel's only route to a melt viscosity is WLF referenced to the glass
+  transition with measured constants for three polymers, and for a
+  semicrystalline hot melt that route is not approximately right but
+  inapplicable: above its melting point the melt follows Arrhenius and has
+  left the window WLF describes. A hard requirement that cannot be verified is
+  a hard violation, so every candidate was eliminated on a gap in the panel
+  and the remaining six requirements never got to decide anything.
+
+  That is the correct behaviour and it is also an unusable answer. This run
+  makes the melt viscosity a soft objective so that the requirements which CAN
+  be verified - the transition, the toughness, the architecture, the hazard -
+  are allowed to rank the pool, and so that what the panel genuinely cannot
+  supply is visible as a missing column rather than as a wall.
+
+  Read the two together. The hard run says what a hot-melt selection needs and
+  this engine cannot deliver. The soft run says which material the engine
+  picks out of the part it can deliver. Neither is the answer on its own, and
+  a run that reported only the second would be claiming a screen it did not
+  perform.
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+
+material_classes: [polymer]
+
+requirements:
+  # Service, not processing. The strand has to be a solid on a wrist in the
+  # sun and soft enough to have been extruded a moment earlier. Below 40 C it
+  # creeps in summer; above 120 C the melt it was delivered from is hot enough
+  # to burn the person holding the nozzle.
+  - property: glass_transition_temperature
+    direction: in_range
+    lower: 40 degC
+    upper: 120 degC
+    hard: true
+    rationale: solid on the wrist, and not delivered at a temperature that burns it
+
+  # The processing requirement, stated at the processing temperature rather
+  # than at the service one. Ten pascal seconds is about what a hot-melt
+  # applicator pumps; a hundred is a hand tool that stalls. Soft here: see the
+  # notes, and read this run beside the hard one rather than instead of it.
+  - property: shear_viscosity
+    direction: minimize
+    lower: 0.1 Pa*s
+    upper: 10 Pa*s
+    hard: false
+    weight: 2.0
+    conditions:
+      temperature: 180 degC
+      pressure: 1 atm
+    rationale: >-
+      still what makes a hot melt pumpable, and soft only because the panel
+      cannot verify it for a semicrystalline polymer; a candidate that scores
+      zero here has not been shown to be pumpable, it has been left unmeasured
+
+  # A bound rather than a strength: a real specimen fails at its largest flaw,
+  # which is a property of how it was made. Left soft because the panel can
+  # only reach it for repeat units it has a measured chain dimension for, and
+  # a hard requirement on it would eliminate every polymer on the panel's
+  # coverage rather than on the material's merits.
+  - property: theoretical_strength
+    direction: maximize
+    lower: 30 MPa
+    upper: 500 MPa
+    weight: 1.0
+    rationale: the strand carries eighty kilograms
+
+  # The requirement the acrylate was never made to face. Five per cent is the
+  # floor: below it the strand is a glass rod that reaches its load and then
+  # shatters, and the shatter is the failure mode a web cannot have.
+  - property: elongation_at_break
+    direction: maximize
+    lower: 0.05
+    upper: 3.0
+    hard: true
+    weight: 3.0
+    rationale: it has to draw before it breaks, not reach its strength and snap
+
+  # Exactly zero, which is what "thermoplastic" means. A covalent network
+  # cannot be remelted, redissolved or reprocessed; a blocked nozzle full of
+  # one is a thrown-away nozzle.
+  - property: crosslink_density
+    direction: in_range
+    lower: 0 mol/m^3
+    upper: 0 mol/m^3
+    hard: true
+    rationale: it has to be remeltable, so a jam is a delay rather than a write-off
+
+  # Hard, and not negotiable against anything else. Acrylate sensitisation is
+  # permanent once acquired and this is a device held against skin.
+  - property: skin_sensitiser
+    direction: in_range
+    lower: 0
+    upper: 0
+    hard: true
+    rationale: worn on the wrist and mixed at the nozzle; there is no dose that trades
+
+  # Mass carried on the wrist, and the softest requirement here.
+  - property: amorphous_density
+    direction: minimize
+    lower: 800 kg/m^3
+    upper: 1500 kg/m^3
+    weight: 1.0
+    rationale: the strand carries its own weight first
+
+assumptions:
+  - statement: >-
+      "Tough" was read as an elongation at break rather than as a work to
+      fracture or an impact energy. The panel can predict neither of the other
+      two, and elongation is where the difference between these materials
+      actually lives.
+    source: inferred
+    made_by: operator
+    affects: [elongation_at_break]
+  - statement: >-
+      The service temperature ceiling is stated as a glass transition, which
+      is the wrong transition for a semicrystalline polymer: a polyamide or a
+      polyester is useful up to its MELTING point and no melting point is in
+      the property registry. Every hot-melt candidate is therefore judged on a
+      transition that understates it.
+    source: inferred
+    made_by: operator
+    affects: [glass_transition_temperature]
+  - statement: >-
+      The melt viscosity ceiling was made soft because the panel cannot
+      verify it, which is a statement about the panel and not about the
+      requirement. A candidate ranked highly here has not been shown to be
+      pumpable at 180 C.
+    source: stated
+    made_by: operator
+    affects: [shear_viscosity]
+  - statement: >-
+      Hazard was read as skin sensitisation alone. The curated table also
+      carries acute toxicity and carcinogenicity and this specification ranks
+      on neither, because for a solid polymer neither discriminates; the
+      screen is not a clean bill of health.
+    source: stated
+    made_by: operator
+    affects: [skin_sensitiser]

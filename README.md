@@ -152,7 +152,7 @@ a bounded budget on the few candidate-property pairs where uncertainty could
 still reorder the ranking, and refuses any property quantum chemistry or
 molecular dynamics cannot legitimately produce.
 
-The expert panel spans six families, reusing published open implementations
+The expert panel spans eight families, reusing published open implementations
 where they exist:
 
 | Expert | Family | Class | Predicts |
@@ -181,6 +181,12 @@ where they exist:
 | `viscosity_corresponding_states` | interfacial | molecule | liquid viscosity from critical constants, for structures no group table covers |
 | `melt_wlf` | interfacial | polymer | melt viscosity by WLF from the polymer's own glass transition |
 | `trouton` | interfacial | molecule | extensional viscosity, exact for a Newtonian liquid and refused for a polymer |
+| `kinetics_propagation` | chemical | molecule | propagation rate coefficient from the IUPAC pulsed-laser benchmark set |
+| `cure_free_radical` | chemical | molecule | how long a monomer stays liquid under a stated initiation regime |
+| `polymer_measured` | mechanical | polymer | tabulated glass transition, amorphous density and elongation at break |
+| `toughness_proxy` | mechanical | polymer | elongation at break by network/glassy/rubbery classification |
+| `polymer_architecture` | structural | polymer | crosslink density, read off the specification and refused where undefined |
+| `hazard_ghs` | specialized | molecule, polymer, mixture | skin sensitisation, acute toxicity and carcinogenicity, by curated lookup only |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation
@@ -188,6 +194,17 @@ set: ten polymers withheld from the fit and from the choice of descriptors,
 against which the glass transition comes out at 22 K RMSE and the density at
 3.7%. In-sample agreement is not reported as evidence, because a fitted model
 reproduces what it was fitted to by construction.
+
+`hazard_ghs` is the one expert in the panel that never estimates. Every value is
+a lookup in a curated GHS table and a structure outside it is refused by name,
+because the structural alerts for skin sensitisation are wrong often enough in
+both directions to matter and a false negative there is somebody's hands. It
+carries three endpoints rather than two: benzene is not a sensitiser and is not
+acutely toxic at any category, so a screen without carcinogenicity would return
+two clean numbers for a category 1A carcinogen. What the table does not carry -
+reproductive and target-organ toxicity, mutagenicity, aspiration, flammability,
+environmental hazard, every exposure limit - is named in each prediction's own
+notes, because the screen can screen out and cannot screen in.
 
 The two refractive index experts are a worked example of section 4's design:
 neither has precedence over the other anywhere in the code. Measured on the 385
@@ -226,6 +243,16 @@ report next to the numbers they qualify:
   four known solvents and describing them only by their measured properties,
   the search recovered one of the four; what it returned instead was
   chemically sensible in every case.
+
+A degree of crystallinity is deliberately absent and is the largest thing
+missing from the polymer side. It is measurable and the panel cannot use it:
+high-density polyethylene at 25 C is above its glass transition, so the
+mechanical expert computes a rubber-elastic modulus for a material that carries
+its load in crystals, and the resulting flaw-free strength bound comes out 39
+times *below* the measured tensile strength. Alongside it, no polymer melting
+point: a semicrystalline hot melt is useful up to its melting point and can only
+be asked for here on its glass transition, which understates it by a hundred
+kelvin and more.
 
 The mechanical properties beyond density are deliberately absent rather than
 stubbed, and so is a dielectric constant: a model for it was trained on 1212
