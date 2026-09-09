@@ -75,7 +75,7 @@
       "glass_transition_k": 305,
       "amorphous_density_g_cm3": 1.19,
       "source": "polymer handbook / standard polymer-physics compilations",
-      "note": "no tensile figures: PVAc is a tacky solid a few degrees above its transition and is not moulded into test bars, so the compilations carry a Tg and a density for it and nothing mechanical"
+      "omissions": "poly(vinyl acetate) is a tacky solid a few degrees above its transition and is not moulded into test bars, so the compilations carry a transition and a density for it and nothing mechanical"
     },
     {
       "name": "high-density polyethylene",
@@ -230,7 +230,8 @@
         7.0
       ],
       "source": "supplier technical datasheet ranges for commercial grades",
-      "note": "no transition and no density: the compilations tabulate the three homopolymers, not this terpolymer, and a Fox average of them would be an estimate wearing a measurement's clothes. The panel estimates both and says so. The whole design of a copolyamide hot melt is that randomising three amide sequences destroys the crystal, which drops the melting point to 100-150 C without dropping the amide hydrogen bonding that makes polyamides tough"
+      "note": "the whole design of a copolyamide hot melt is that randomising three amide sequences destroys the crystal, which drops the melting point to 100-150 C without dropping the amide hydrogen bonding that makes polyamides tough",
+      "omissions": "the compilations tabulate the three homopolymers this is made from and not the terpolymer itself, and a Fox average of them would be an estimate wearing a measurement's clothes"
     },
     {
       "name": "poly(ethylene terephthalate)",
@@ -354,7 +355,8 @@
         9.0
       ],
       "source": "supplier technical datasheet ranges for commercial grades",
-      "note": "mole fractions computed from the stated 18 wt% vinyl acetate and the two repeat-unit masses, 28.05 and 86.09 g/mol. No transition: reported values for ethylene-vinyl acetate span 233-253 K between compilations because polyethylene's own amorphous transition is itself disputed by forty kelvin, and picking one of them would be picking a side"
+      "note": "mole fractions computed from the stated 18 wt% vinyl acetate and the two repeat-unit masses, 28.05 and 86.09 g/mol",
+      "omissions": "reported transitions for ethylene-vinyl acetate span 233-253 K between compilations, because polyethylene's own amorphous transition is itself disputed by forty kelvin, and picking one would be picking a side; the tabulated density is for the semicrystalline sample and this field is the amorphous phase"
     },
     {
       "name": "poly(ethylene-co-vinyl acetate), 40 wt% vinyl acetate",
@@ -380,7 +382,8 @@
         7.0,
         10.0
       ],
-      "source": "supplier technical datasheet ranges for commercial grades"
+      "source": "supplier technical datasheet ranges for commercial grades",
+      "omissions": "reported transitions for ethylene-vinyl acetate span 233-253 K between compilations, because polyethylene's own amorphous transition is itself disputed by forty kelvin, and picking one would be picking a side; the tabulated density is for the semicrystalline sample and this field is the amorphous phase"
     },
     {
       "name": "thermoplastic polyurethane (MDI/butanediol/polytetramethylene ether)",
@@ -407,7 +410,8 @@
         7.0
       ],
       "source": "supplier technical datasheet ranges for commercial grades",
-      "note": "a segmented block copolymer, deliberately included as one the repeat-unit models are wrong about. It has two transitions, one per phase, and no field here can hold two; every additive model in the panel will report a single mole-averaged value for a material that does not have one, and says so in its own notes"
+      "note": "a segmented block copolymer, deliberately included as one the repeat-unit models are wrong about. It has two transitions, one per phase, and no field here can hold two; every additive model in the panel will report a single mole-averaged value for a material that does not have one, and says so in its own notes",
+      "omissions": "a segmented block copolymer has one transition per phase and this field holds one, and the tabulated density is for the two-phase solid"
     },
     {
       "name": "crosslinked poly(1,6-hexanediol diacrylate)",
@@ -432,7 +436,8 @@
         0.05
       ],
       "source": "reported ranges for neat cured di(meth)acrylate networks",
-      "note": "the material five earlier runs selected, put into the pool so that it is refused by the panel rather than by prose. Not a commodity thermoplastic and not offered as one. The crosslink density is calculated and not measured: complete conversion of neat 1,6-hexanediol diacrylate, molar mass 226.27 g/mol, at a cured density near 1.10 g/cm^3 gives 4.9e3 mol/m^3 of tetrafunctional junctions and so 9.7e3 mol/m^3 of elastically effective strands. Real conversion stops short of complete and cyclisation wastes further double bonds, so it is an upper bound - which is the safe direction, because every requirement here asks the number to be zero and no amount of incomplete cure makes a network into a thermoplastic"
+      "note": "the material five earlier runs selected, put into the pool so that it is refused by the panel rather than by prose. Not a commodity thermoplastic and not offered as one. The crosslink density is calculated and not measured: complete conversion of neat 1,6-hexanediol diacrylate, molar mass 226.27 g/mol, at a cured density near 1.10 g/cm^3 gives 4.9e3 mol/m^3 of tetrafunctional junctions and so 9.7e3 mol/m^3 of elastically effective strands. Real conversion stops short of complete and cyclisation wastes further double bonds, so it is an upper bound - which is the safe direction, because every requirement here asks the number to be zero and no amount of incomplete cure makes a network into a thermoplastic",
+      "omissions": "a cured network's transition is broad and moves with conversion, and neither it nor an amorphous density is tabulated for this one; both are outside every repeat-unit correlation in the panel besides, which refuses them independently"
     }
   ]
 }

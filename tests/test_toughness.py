@@ -204,14 +204,42 @@ def test_the_measured_route_reports_the_geometric_centre_of_the_range():
 
 def test_the_measured_route_refuses_where_the_catalogue_is_silent():
     """Poly(vinyl acetate) has a transition and a density and nothing
-    mechanical, and the refusal says which of the three is missing."""
+    mechanical, and the refusal says which of the three is missing and why."""
     prediction = _predict(MeasuredPolymerExpert(), _candidate("PVAc"), "elongation_at_break")
     assert prediction.status is PredictionStatus.UNSUPPORTED
-    assert "no measured elongation" in " ".join(prediction.notes)
+    reason = " ".join(prediction.notes)
+    assert "no measured elongation" in reason
+    assert "not moulded into test bars" in reason
     transition = _predict(
         MeasuredPolymerExpert(), _candidate("PVAc"), "glass_transition_temperature"
     )
     assert transition.status is PredictionStatus.OK
+
+
+def test_a_refusal_carries_the_omission_and_not_the_whole_row():
+    """A row's note says what the material is and belongs on its predictions; a
+    refusal needs only why the field is absent.
+
+    Carrying both made one report unreadable: the cured network's paragraph
+    about how its crosslink density was calculated appeared three times, under
+    three properties, none of which was the crosslink density.
+    """
+    record = next(r for r in polymer_records() if r.abbreviation == "poly(HDDA)")
+    assert record.note and record.omissions and record.note != record.omissions
+
+    refusal = _predict(
+        MeasuredPolymerExpert(), _candidate("poly(HDDA)"), "glass_transition_temperature"
+    )
+    assert refusal.status is PredictionStatus.UNSUPPORTED
+    text = " ".join(refusal.notes)
+    assert record.omissions[:40] in text
+    assert "elastically effective strands" not in text
+
+    answered = _predict(
+        MeasuredPolymerExpert(), _candidate("poly(HDDA)"), "elongation_at_break"
+    )
+    assert answered.status is PredictionStatus.OK
+    assert record.note[:40] in " ".join(answered.notes)
 
 
 def test_the_measured_route_refuses_a_polymer_outside_the_catalogue():

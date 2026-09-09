@@ -122,7 +122,14 @@ class PolymerRecord:
     tensile_strength_mpa: tuple[float, float] | None
     crosslink_density_mol_m3: float | None
     source: str
+    #: What this row means, attached to every prediction it produces.
     note: str
+    #: Why the fields this row omits are omitted, attached to the refusals
+    #: instead.  Kept apart from ``note`` because a refusal that carried the
+    #: whole row's commentary was unreadable: the cured network's paragraph
+    #: about how its crosslink density was calculated appeared three times in
+    #: one report, under three properties, none of them the crosslink density.
+    omissions: str
 
     @property
     def is_network(self) -> bool:
@@ -197,6 +204,7 @@ def polymer_records() -> tuple[PolymerRecord, ...]:
                 crosslink_density_mol_m3=record.get("crosslink_density_mol_m3"),
                 source=record.get("source", ""),
                 note=record.get("note", ""),
+                omissions=record.get("omissions", ""),
             )
         )
     return tuple(out)
@@ -503,7 +511,7 @@ class MeasuredPolymerExpert(_CataloguePolymerExpert):
                     prop,
                     self.id,
                     f"the catalogue carries no measured transition for {record.name}"
-                    + (f": {record.note}" if record.note else ""),
+                    + (f": {record.omissions}" if record.omissions else ""),
                 )
             return self._make(
                 prop,
@@ -528,7 +536,7 @@ class MeasuredPolymerExpert(_CataloguePolymerExpert):
                     prop,
                     self.id,
                     f"the catalogue carries no measured amorphous density for {record.name}"
-                    + (f": {record.note}" if record.note else ""),
+                    + (f": {record.omissions}" if record.omissions else ""),
                 )
             return self._make(
                 prop,
@@ -556,7 +564,7 @@ class MeasuredPolymerExpert(_CataloguePolymerExpert):
                 prop,
                 self.id,
                 f"the catalogue carries no measured elongation for {record.name}"
-                + (f": {record.note}" if record.note else ""),
+                + (f": {record.omissions}" if record.omissions else ""),
             )
         low, high = record.elongation_at_break
         value = math.sqrt(low * high)
