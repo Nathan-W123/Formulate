@@ -1,0 +1,438 @@
+{
+  "schema": "formulate/polymer-catalogue/1",
+  "description": "Commodity thermoplastics relevant to hot-melt and fibre use, as candidates for the search to propose. A catalogue, not calibration data: nothing here is scored against, and nothing here was used to fit a coefficient.",
+  "provenance": "Repeat-unit structures written to match the convention of reference_polymers.json, with explicit [*] attachment points. Glass transitions and amorphous densities are commonly tabulated handbook values (Brandrup/Immergut Polymer Handbook and the standard polymer-physics texts), recorded to the nearest kelvin and the nearest 0.005 g/cm^3. Tensile strengths and elongations at break are recorded as [low, high] RANGES rather than as single values, because that is how every source quotes them: an elongation at break is not a property of a polymer but of a specimen, and the range is the honest content of the measurement. Rows marked with a supplier source carry commercial-grade datasheet ranges rather than handbook entries, and rows for the cured acrylate network carry ranges reported for neat cured di(meth)acrylate networks. Every row names its own source class. These are reference values for proposing and ranking candidates, NOT a curated scientific benchmark; verify against a primary source before drawing a scientific conclusion from a number computed against them. Fields no source could supply are omitted rather than estimated, and several rows are deliberately sparse for that reason.",
+  "caveats": [
+    "This file is kept apart from reference_compounds.json on purpose. That file is the held-out calibration set behind a dozen quoted uncertainties - 'over the fifty reference compounds' - and adding structures to it would invalidate all of them without recomputing any.",
+    "It overlaps reference_polymers.json, which IS calibration data: nine of these repeat units appear in the fit split of the glass-transition model. A group-contribution transition for one of them is therefore an in-sample number and is not evidence of anything. Where this file carries a measured transition the measured route answers instead, which is the point.",
+    "A glass transition is a kinetic event: reported values for the same polymer differ between compilations by 5-10 K, and by far more when the polymer absorbs water.",
+    "Densities are for the AMORPHOUS phase. Every semicrystalline polymer here - the polyethylenes, polypropylene, the polyamides, the polyesters, polycaprolactone - is denser than this in service by an amount set by processing, and its useful temperature ceiling is its MELTING point rather than its glass transition. Nothing in this file or in the panel carries a polymer melting point, which is the single largest gap between what a hot-melt selection needs and what can be asked for here.",
+    "Elongation at break is quoted for a moulded bar at ambient temperature and a conventional strain rate. It falls by an order of magnitude at high rate or low temperature, and a strand fired at 20 m/s is loaded at neither of those."
+  ],
+  "polymers": [
+    {
+      "name": "polystyrene",
+      "abbreviation": "PS",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC([*])c1ccccc1",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 100000,
+      "glass_transition_k": 373,
+      "amorphous_density_g_cm3": 1.05,
+      "tensile_strength_mpa": [
+        35.0,
+        55.0
+      ],
+      "elongation_at_break": [
+        0.012,
+        0.025
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations",
+      "note": "general-purpose grade; the brittleness is the point of its presence here"
+    },
+    {
+      "name": "poly(methyl methacrylate)",
+      "abbreviation": "PMMA",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC([*])(C)C(=O)OC",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "tacticity": "atactic",
+      "number_average_molar_mass_g_mol": 60000,
+      "glass_transition_k": 378,
+      "amorphous_density_g_cm3": 1.17,
+      "tensile_strength_mpa": [
+        48.0,
+        76.0
+      ],
+      "elongation_at_break": [
+        0.02,
+        0.1
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations"
+    },
+    {
+      "name": "poly(vinyl acetate)",
+      "abbreviation": "PVAc",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC([*])OC(C)=O",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 40000,
+      "glass_transition_k": 305,
+      "amorphous_density_g_cm3": 1.19,
+      "source": "polymer handbook / standard polymer-physics compilations",
+      "note": "no tensile figures: PVAc is a tacky solid a few degrees above its transition and is not moulded into test bars, so the compilations carry a Tg and a density for it and nothing mechanical"
+    },
+    {
+      "name": "high-density polyethylene",
+      "abbreviation": "HDPE",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 50000,
+      "glass_transition_k": 195,
+      "amorphous_density_g_cm3": 0.855,
+      "tensile_strength_mpa": [
+        22.0,
+        31.0
+      ],
+      "elongation_at_break": [
+        1.0,
+        13.0
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations",
+      "note": "same repeat unit as LDPE and a different material: what separates them is chain branching, which is carried as the topology rather than as the structure, and crystallinity, which no field here holds"
+    },
+    {
+      "name": "low-density polyethylene",
+      "abbreviation": "LDPE",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "branched",
+      "number_average_molar_mass_g_mol": 30000,
+      "glass_transition_k": 195,
+      "amorphous_density_g_cm3": 0.855,
+      "tensile_strength_mpa": [
+        8.0,
+        17.0
+      ],
+      "elongation_at_break": [
+        1.0,
+        6.5
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations"
+    },
+    {
+      "name": "polypropylene (isotactic)",
+      "abbreviation": "PP",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC([*])C",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "tacticity": "isotactic",
+      "number_average_molar_mass_g_mol": 80000,
+      "glass_transition_k": 267,
+      "amorphous_density_g_cm3": 0.85,
+      "tensile_strength_mpa": [
+        31.0,
+        41.0
+      ],
+      "elongation_at_break": [
+        1.0,
+        6.0
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations",
+      "note": "declared isotactic because the mechanical figures are for the isotactic homopolymer; the group-contribution transition is fitted on atactic polymers and correctly declares itself out of domain here"
+    },
+    {
+      "name": "polyamide 6",
+      "abbreviation": "PA6",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]NCCCCCC(=O)[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 20000,
+      "glass_transition_k": 323,
+      "amorphous_density_g_cm3": 1.084,
+      "tensile_strength_mpa": [
+        70.0,
+        85.0
+      ],
+      "elongation_at_break": [
+        0.3,
+        2.0
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations",
+      "note": "the quoted transition is dry-as-moulded. Polyamide 6 absorbs 2-3 per cent water at 50 per cent relative humidity and the transition falls to roughly 273 K when it does, which is fifty kelvin and is not a field this table has anywhere to put"
+    },
+    {
+      "name": "polyamide 12",
+      "abbreviation": "PA12",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]NCCCCCCCCCCCC(=O)[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 25000,
+      "glass_transition_k": 310,
+      "amorphous_density_g_cm3": 0.99,
+      "tensile_strength_mpa": [
+        40.0,
+        55.0
+      ],
+      "elongation_at_break": [
+        2.0,
+        3.5
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations"
+    },
+    {
+      "name": "copolyamide 6/66/12",
+      "abbreviation": "coPA",
+      "role": "hot-melt adhesive grade",
+      "repeat_units": [
+        {
+          "smiles": "[*]NCCCCCC(=O)[*]",
+          "mole_fraction": 0.4
+        },
+        {
+          "smiles": "[*]NCCCCCCNC(=O)CCCCC(=O)[*]",
+          "mole_fraction": 0.3
+        },
+        {
+          "smiles": "[*]NCCCCCCCCCCCC(=O)[*]",
+          "mole_fraction": 0.3
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 15000,
+      "tensile_strength_mpa": [
+        20.0,
+        40.0
+      ],
+      "elongation_at_break": [
+        3.0,
+        7.0
+      ],
+      "source": "supplier technical datasheet ranges for commercial grades",
+      "note": "no transition and no density: the compilations tabulate the three homopolymers, not this terpolymer, and a Fox average of them would be an estimate wearing a measurement's clothes. The panel estimates both and says so. The whole design of a copolyamide hot melt is that randomising three amide sequences destroys the crystal, which drops the melting point to 100-150 C without dropping the amide hydrogen bonding that makes polyamides tough"
+    },
+    {
+      "name": "poly(ethylene terephthalate)",
+      "abbreviation": "PET",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]OCCOC(=O)c1ccc(cc1)C(=O)[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 20000,
+      "glass_transition_k": 342,
+      "amorphous_density_g_cm3": 1.335,
+      "tensile_strength_mpa": [
+        50.0,
+        72.0
+      ],
+      "elongation_at_break": [
+        0.3,
+        3.0
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations",
+      "note": "elongation spans an order of magnitude on crystallinity and draw alone"
+    },
+    {
+      "name": "poly(butylene terephthalate)",
+      "abbreviation": "PBT",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]OCCCCOC(=O)c1ccc(cc1)C(=O)[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 25000,
+      "glass_transition_k": 315,
+      "amorphous_density_g_cm3": 1.26,
+      "tensile_strength_mpa": [
+        50.0,
+        60.0
+      ],
+      "elongation_at_break": [
+        0.5,
+        3.0
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations"
+    },
+    {
+      "name": "polycaprolactone",
+      "abbreviation": "PCL",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]CCCCCC(=O)O[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 50000,
+      "glass_transition_k": 213,
+      "amorphous_density_g_cm3": 1.095,
+      "tensile_strength_mpa": [
+        12.0,
+        30.0
+      ],
+      "elongation_at_break": [
+        3.0,
+        10.0
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations"
+    },
+    {
+      "name": "polylactide",
+      "abbreviation": "PLA",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]OC(C)C(=O)[*]",
+          "mole_fraction": 1.0
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 60000,
+      "glass_transition_k": 328,
+      "amorphous_density_g_cm3": 1.248,
+      "tensile_strength_mpa": [
+        48.0,
+        72.0
+      ],
+      "elongation_at_break": [
+        0.02,
+        0.1
+      ],
+      "source": "polymer handbook / standard polymer-physics compilations"
+    },
+    {
+      "name": "poly(ethylene-co-vinyl acetate), 18 wt% vinyl acetate",
+      "abbreviation": "EVA-18",
+      "role": "hot-melt adhesive grade",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC[*]",
+          "mole_fraction": 0.933
+        },
+        {
+          "smiles": "[*]CC([*])OC(C)=O",
+          "mole_fraction": 0.067
+        }
+      ],
+      "topology": "branched",
+      "number_average_molar_mass_g_mol": 25000,
+      "tensile_strength_mpa": [
+        17.0,
+        25.0
+      ],
+      "elongation_at_break": [
+        6.0,
+        9.0
+      ],
+      "source": "supplier technical datasheet ranges for commercial grades",
+      "note": "mole fractions computed from the stated 18 wt% vinyl acetate and the two repeat-unit masses, 28.05 and 86.09 g/mol. No transition: reported values for ethylene-vinyl acetate span 233-253 K between compilations because polyethylene's own amorphous transition is itself disputed by forty kelvin, and picking one of them would be picking a side"
+    },
+    {
+      "name": "poly(ethylene-co-vinyl acetate), 40 wt% vinyl acetate",
+      "abbreviation": "EVA-40",
+      "role": "hot-melt adhesive grade",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC[*]",
+          "mole_fraction": 0.8215
+        },
+        {
+          "smiles": "[*]CC([*])OC(C)=O",
+          "mole_fraction": 0.1785
+        }
+      ],
+      "topology": "branched",
+      "number_average_molar_mass_g_mol": 25000,
+      "tensile_strength_mpa": [
+        10.0,
+        20.0
+      ],
+      "elongation_at_break": [
+        7.0,
+        10.0
+      ],
+      "source": "supplier technical datasheet ranges for commercial grades"
+    },
+    {
+      "name": "thermoplastic polyurethane (MDI/butanediol/polytetramethylene ether)",
+      "abbreviation": "TPU",
+      "role": "commodity thermoplastic",
+      "repeat_units": [
+        {
+          "smiles": "[*]OCCCCOC(=O)Nc1ccc(Cc2ccc(NC(=O)[*])cc2)cc1",
+          "mole_fraction": 0.25
+        },
+        {
+          "smiles": "[*]CCCCO[*]",
+          "mole_fraction": 0.75
+        }
+      ],
+      "topology": "linear",
+      "number_average_molar_mass_g_mol": 60000,
+      "tensile_strength_mpa": [
+        30.0,
+        50.0
+      ],
+      "elongation_at_break": [
+        4.0,
+        7.0
+      ],
+      "source": "supplier technical datasheet ranges for commercial grades",
+      "note": "a segmented block copolymer, deliberately included as one the repeat-unit models are wrong about. It has two transitions, one per phase, and no field here can hold two; every additive model in the panel will report a single mole-averaged value for a material that does not have one, and says so in its own notes"
+    },
+    {
+      "name": "crosslinked poly(1,6-hexanediol diacrylate)",
+      "abbreviation": "poly(HDDA)",
+      "role": "incumbent under test",
+      "repeat_units": [
+        {
+          "smiles": "[*]CC([*])C(=O)OCCCCCCOC(=O)C([*])C[*]",
+          "mole_fraction": 1.0,
+          "role": "crosslinker"
+        }
+      ],
+      "topology": "network",
+      "number_average_molar_mass_g_mol": null,
+      "crosslink_density_mol_m3": 9700.0,
+      "tensile_strength_mpa": [
+        30.0,
+        60.0
+      ],
+      "elongation_at_break": [
+        0.01,
+        0.05
+      ],
+      "source": "reported ranges for neat cured di(meth)acrylate networks",
+      "note": "the material five earlier runs selected, put into the pool so that it is refused by the panel rather than by prose. Not a commodity thermoplastic and not offered as one. The crosslink density is calculated and not measured: complete conversion of neat 1,6-hexanediol diacrylate, molar mass 226.27 g/mol, at a cured density near 1.10 g/cm^3 gives 4.9e3 mol/m^3 of tetrafunctional junctions and so 9.7e3 mol/m^3 of elastically effective strands. Real conversion stops short of complete and cyclisation wastes further double bonds, so it is an upper bound - which is the safe direction, because every requirement here asks the number to be zero and no amount of incomplete cure makes a network into a thermoplastic"
+    }
+  ]
+}
