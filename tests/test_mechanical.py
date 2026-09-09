@@ -47,7 +47,51 @@ def test_tensile_and_shear_strength_are_not_properties_of_a_structure():
     """
     assert "tensile_strength" not in PROPERTY_REGISTRY
     assert "shear_strength" not in PROPERTY_REGISTRY
-    assert "elongation_at_break" not in PROPERTY_REGISTRY
+
+
+def test_elongation_at_break_clears_the_bar_that_strength_does_not():
+    """This test used to assert that elongation was not registered either, and
+    it now asserts why it is.
+
+    The Griffith argument above is a signal-to-noise claim: the quantity moves
+    more with how a bar was made than with what it is made of, so a number for
+    it says more about a mould than about a material.  That is an argument with
+    a measurement in it, and the polymer catalogue is the first data here able
+    to make it.  Every source quotes both quantities as a range, and the range
+    is the specimen-to-specimen spread; the scatter of the range centres across
+    sixteen polymers is the material-to-material spread.
+
+        tensile strength    specimen 1.27x    material 1.75x    ratio 1.38
+        elongation at break specimen 1.97x    material 8.81x    ratio 4.47
+
+    Strength barely separates these materials at all, and the guard above
+    stands. Elongation separates them by four and a half times more than
+    processing moves any one of them - polystyrene at 1.7 per cent against
+    polyethylene at 360 - which is what makes it rankable when strength is not.
+    Its uncertainty carries the specimen spread on every prediction.
+    """
+    import math
+    import statistics
+
+    from formulate.experts.toughness import polymer_records
+
+    assert "elongation_at_break" in PROPERTY_REGISTRY
+    assert PROPERTY_REGISTRY["elongation_at_break"].multiplicative_error is True
+
+    def ratio(quoted):
+        rows = [r for r in (quoted(x) for x in polymer_records()) if r]
+        within = math.exp(statistics.fmean([math.log(hi / lo) for lo, hi in rows]) / 2.0)
+        between = math.exp(
+            statistics.stdev([math.log(math.sqrt(lo * hi)) for lo, hi in rows])
+        )
+        return within, between
+
+    strength_within, strength_between = ratio(lambda r: r.tensile_strength_mpa)
+    strain_within, strain_between = ratio(lambda r: r.elongation_at_break)
+
+    assert strength_between / strength_within == pytest.approx(1.38, abs=0.05)
+    assert strain_between / strain_within == pytest.approx(4.47, abs=0.05)
+    assert strain_between / strain_within > 3.0 * (strength_between / strength_within)
 
 
 def test_the_bound_that_is_built_is_named_apart_from_the_thing_it_is_not():
