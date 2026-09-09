@@ -46,7 +46,6 @@
         }
       ],
       "topology": "linear",
-      "tacticity": "atactic",
       "number_average_molar_mass_g_mol": 60000,
       "glass_transition_k": 378,
       "amorphous_density_g_cm3": 1.17,
@@ -58,7 +57,8 @@
         0.02,
         0.1
       ],
-      "source": "polymer handbook / standard polymer-physics compilations"
+      "source": "polymer handbook / standard polymer-physics compilations",
+      "note": "no tacticity declared, deliberately. The reference sets here take an unspecified polymer to be the atactic or otherwise conventionally amorphous form, and these figures are for that form, so declaring 'atactic' would only make a candidate built without the word miss this row. Polypropylene below does declare one, because there the word selects a different material rather than restating the default"
     },
     {
       "name": "poly(vinyl acetate)",

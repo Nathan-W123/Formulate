@@ -148,6 +148,26 @@ def test_the_two_polyethylenes_are_told_apart_by_architecture_alone():
     assert catalogue_record(ldpe.polymer).abbreviation == "LDPE"
 
 
+def test_a_polymer_written_without_a_tacticity_still_finds_its_row():
+    """Matching on tacticity is load-bearing for polypropylene and a trap
+    everywhere else.
+
+    The reference sets take an unspecified polymer to be the conventionally
+    amorphous form, so a row that spells that out as "atactic" is matched only
+    by callers who spell it out too - and ``polymer_candidate`` does not. Every
+    row therefore leaves it unspecified except polypropylene, where the word
+    selects a different material: atactic and isotactic polypropylene sit 14 K
+    apart in transition and are not the same thing mechanically.
+    """
+    assert catalogue_record(polymer_candidate(PS, conditions=ROOM).polymer) is not None
+    pmma = polymer_candidate("[*]CC([*])(C)C(=O)OC", conditions=ROOM)
+    assert catalogue_record(pmma.polymer).abbreviation == "PMMA"
+
+    # And the one that should miss, does.
+    assert catalogue_record(polymer_candidate("[*]CC([*])C", conditions=ROOM).polymer) is None
+    assert catalogue_record(_candidate("PP").polymer).abbreviation == "PP"
+
+
 def test_nothing_was_added_to_the_held_out_calibration_set():
     """Every measured uncertainty in this repository that says "over the fifty
     reference compounds" is invalidated by a fifty-first."""
