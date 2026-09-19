@@ -62,6 +62,18 @@ THERMAL_DIFFUSIVITY_RTOL = 0.20
 #: shape. A skin does not need to reach the centre to stop it beading.
 SKIN_FRACTION_FOR_SHAPE = 0.5
 
+#: Thermal conductivity of a polymer melt, W/m/K, and of air.
+POLYMER_CONDUCTIVITY = 0.25
+AIR_CONDUCTIVITY = 0.030
+AIR_DENSITY = 1.0
+AIR_VISCOSITY = 2.2e-5
+POLYMER_HEAT_CAPACITY = 2000.0
+
+#: Temperature ratio a filament must fall through before it is set: from a melt
+#: about 145 K above ambient to about 80 K above it, which for polyethylene is
+#: roughly 165 C down to the 100 C where crystallisation runs fast.
+COOLING_RATIO = 145.0 / 80.0
+
 #: How much axial drawing suppresses the capillary instability. A filament
 #: under tension has its perturbations stretched along it faster than they
 #: grow, and the stabilisation scales with how hard it is being drawn. Taken
@@ -69,13 +81,45 @@ SKIN_FRACTION_FOR_SHAPE = 0.5
 DRAW_STABILISATION = 1.0
 
 
-def solidification_time(diameter: float, diffusivity: float = THERMAL_DIFFUSIVITY) -> float:
-    """Seconds for a skin to reach the depth that holds the shape.
+def heat_transfer_coefficient(diameter: float, speed: float) -> float:
+    """Forced convection onto a fine cylinder in crossflow, W/m^2/K."""
+    reynolds = AIR_DENSITY * speed * diameter / AIR_VISCOSITY
+    nusselt = 0.3 + 0.62 * math.sqrt(max(reynolds, 1e-9)) * 0.7 ** (1.0 / 3.0)
+    return nusselt * AIR_CONDUCTIVITY / diameter
 
-    ``t = (f R)^2 / alpha``. The square is the whole story: halving the
-    diameter quarters the time, and no chemistry does anything comparable.
+
+def solidification_time(
+    diameter: float,
+    speed: float = 1.0,
+    diffusivity: float = THERMAL_DIFFUSIVITY,
+) -> float:
+    """Seconds for a filament to cool to where it sets.
+
+    Two regimes, and which one applies is the Biot number ``h R / k``: whether
+    the bottleneck is getting heat out through the air film or through the
+    polymer.
+
+    The first version of this took the conduction case unconditionally, which
+    is the ``Bi >> 1`` limit and is wrong for anything fine. A 60 um filament
+    has ``Bi = 0.18``: the air film is the bottleneck, and the honest answer is
+    five times slower than the conduction model gave. Conduction only takes
+    over above about 330 um at spinning speeds, which is to say for the fat
+    strands this project started with and abandoned.
+
+    Both regimes still go as a power of the radius, so the structural finding -
+    that setting is geometry and not chemistry - is unchanged. Only the number
+    moves, and it moves the wrong way for the design, which is why it is worth
+    getting right.
     """
-    return (SKIN_FRACTION_FOR_SHAPE * diameter / 2.0) ** 2 / diffusivity
+    radius = diameter / 2.0
+    h = heat_transfer_coefficient(diameter, speed)
+    biot = h * radius / POLYMER_CONDUCTIVITY
+    conduction = (SKIN_FRACTION_FOR_SHAPE * radius) ** 2 / diffusivity
+    # Lumped capacitance: rho c V / (h A), with V/A = R/2 for a cylinder.
+    convection = (
+        AIR_DENSITY * 0.0 + 910.0
+    ) * POLYMER_HEAT_CAPACITY * (radius / 2.0) / h * math.log(COOLING_RATIO)
+    return max(conduction, convection) if biot >= 1.0 else convection
 
 
 def extrusion_pressure(
@@ -145,7 +189,12 @@ class SpinlineExpert(Expert):
         draw = spinline.draw_ratio or 1.0
 
         if prop == "solidification_time":
-            value = solidification_time(diameter)
+            line_speed = (
+                spinline.line_speed.to("m/s").value
+                if spinline.line_speed is not None
+                else 1.0
+            )
+            value = solidification_time(diameter, line_speed)
             return self._make(
                 prop, value, "second", request, domain,
                 std=value * 2.0 * THERMAL_DIFFUSIVITY_RTOL,
@@ -157,8 +206,13 @@ class SpinlineExpert(Expert):
                 notes=(
                     f"die {spinline.die_diameter.to('m').value*1e6:.0f} um drawn "
                     f"{draw:g}x to {diameter*1e6:.1f} um",
-                    "radius squared: this is a property of the geometry, and the material "
-                    "barely enters it",
+                    "the air film is the bottleneck at this size, not conduction through "
+                    "the polymer; both go as a power of the radius, so this is still a "
+                    "property of the geometry rather than of the material",
+                    "this is cooling only. Crystallisation has its own clock that nothing "
+                    "here models - quiescent polyethylene takes tens of milliseconds and "
+                    "spinline stress cuts that to a few, which is the mechanism the design "
+                    "rests on and the largest thing taken on trust",
                 ),
                 conditions=request.conditions,
             )
@@ -216,7 +270,7 @@ class SpinlineExpert(Expert):
                 prop, self.id, "the melt surface tension this rests on was not available"
             )
         distance = breakup_length(diameter, speed, viscosity, density, surface_tension, draw)
-        needed = solidification_time(diameter) * speed
+        needed = solidification_time(diameter, speed) * speed
         value = distance / needed if needed > 0 else 0.0
         return self._make(
             prop, value, "dimensionless", request, domain,

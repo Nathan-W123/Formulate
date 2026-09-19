@@ -93,19 +93,36 @@ def test_draw_down_sets_the_diameter_that_matters():
 # -- the square law, which is the whole finding ---------------------------
 
 
-def test_solidification_goes_as_the_square_of_the_radius():
-    assert solidification_time(120e-6) / solidification_time(60e-6) == pytest.approx(4.0)
+def test_solidification_picks_the_regime_from_the_biot_number():
+    """The first version took conduction unconditionally, which is the Bi >> 1
+    limit and wrong for anything fine. A 60 um filament is air-film limited and
+    five times slower than that model gave."""
+    from formulate.experts.spinline import (
+        POLYMER_CONDUCTIVITY,
+        heat_transfer_coefficient,
+    )
+
+    fine = 60e-6
+    biot = heat_transfer_coefficient(fine, 9.0) * (fine / 2) / POLYMER_CONDUCTIVITY
+    assert biot < 1.0, "a fine filament is limited by the air film"
+    conduction_only = (0.5 * fine / 2) ** 2 / 1e-7
+    assert solidification_time(fine, 9.0) > 3 * conduction_only
 
 
-def test_a_thick_strand_cannot_solidify_in_time_whatever_it_is_made_of():
-    """4.4 mm is tens of seconds; 60 um is milliseconds. Same material."""
-    assert solidification_time(4.4e-3) > 10.0
-    assert solidification_time(60e-6) < 0.01
+def test_setting_still_rises_steeply_with_diameter():
+    """Which regime applies changes the number, not the finding: setting is
+    geometry, and a fat strand cannot be made to set quickly by chemistry."""
+    assert solidification_time(4.4e-3, 9.0) > 5.0
+    assert solidification_time(60e-6, 9.0) < 0.05
+    ratio = solidification_time(240e-6, 9.0) / solidification_time(60e-6, 9.0)
+    assert ratio > 3.0
 
 
-def test_the_engine_reports_the_drawn_filament_as_milliseconds():
-    prediction = _predict("solidification_time")
-    assert prediction.quantity.to_canonical().value < 0.01
+def test_the_engine_reports_the_drawn_filament_in_tens_of_milliseconds():
+    """Not the 2.25 ms the conduction model claimed. Still inside a 333 ms
+    flight, but by a factor of thirty rather than a hundred and fifty."""
+    value = _predict("solidification_time").quantity.to_canonical().value
+    assert 0.005 < value < 0.05
 
 
 # -- pressure is spent at the die, at the die's own speed -----------------
