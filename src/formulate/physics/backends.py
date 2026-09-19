@@ -208,17 +208,37 @@ def _probe_openmm() -> BackendCapability:
         return BackendCapability(
             "openmm", BackendKind.FORCE_FIELD, False, f"OpenMM is not installed ({exc})"
         )
+    # OpenMM ships biomolecular force fields only, so what decides whether an
+    # arbitrary small molecule can be simulated is whether something can TYPE
+    # it. Two routes do: openff-toolkit, and the OPLS-AA route this repository
+    # already carries in formulate.physics.md.opls. The probe used to ask only
+    # about the first, and so reported the backend unavailable on an
+    # installation where the second was working - which is the same class of
+    # error as a missing prediction being read as a bad one.
+    typing_route = ""
     try:
         from openff.toolkit import Molecule  # noqa: F401
+
+        typing_route = "openff-toolkit"
     except Exception:
+        try:
+            from formulate.physics.md import opls
+
+            if opls.available():
+                typing_route = "OPLS-AA via foyer"
+        except Exception:
+            typing_route = ""
+
+    if not typing_route:
         return BackendCapability(
             "openmm",
             BackendKind.FORCE_FIELD,
             False,
             (
-                "OpenMM is installed but openff-toolkit is not, so an arbitrary small "
-                "molecule cannot be parameterised. OpenMM ships biomolecular force "
-                "fields only. Installing openff-toolkit would make this the preferred "
+                "OpenMM is installed but nothing here can type an arbitrary small "
+                "molecule for it: neither openff-toolkit nor the OPLS-AA route "
+                "(formulate[opls]) is importable. OpenMM ships biomolecular force "
+                "fields only. Installing either would make this the preferred "
                 "periodic condensed-phase backend"
             ),
         )
@@ -227,9 +247,20 @@ def _probe_openmm() -> BackendCapability:
         BackendKind.FORCE_FIELD,
         True,
         supports_periodic=True,
-        periodic_reason="OpenMM supports periodic boundary conditions natively",
+        periodic_reason=(
+            f"OpenMM supports periodic boundary conditions natively, and small "
+            f"molecules are typed here by {typing_route}"
+        ),
         supports_forces=True,
         reference_ms_per_evaluation=0.1,
+        notes=(
+            f"small-molecule parameters come from {typing_route}; OPLS-AA is fitted to "
+            "liquid densities and enthalpies of vaporisation, which is the right "
+            "provenance for a condensed-phase property and the wrong one for a "
+            "gas-phase geometry",
+        )
+        if typing_route.startswith("OPLS")
+        else (),
     )
 
 

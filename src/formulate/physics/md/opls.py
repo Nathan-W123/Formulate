@@ -169,14 +169,25 @@ def available() -> bool:
 
 
 def load_forcefield():
-    """The foyer OPLS-AA force field, loaded once."""
+    """The foyer OPLS-AA force field, loaded once.
+
+    foyer's bundled OPLS-AA XML has no name or version attribute and carries a
+    few empty SMARTS definitions, so loading it emits three warnings that say
+    nothing about this installation and nothing a user can act on. They are
+    silenced here rather than left to print in the middle of `formulate
+    physics`, which exists to tell the user what IS actionable.
+    """
     global _FORCE_FIELD
     if _FORCE_FIELD is None:
         _install_simtk_alias()
         _restore_empty_system_data()
+        import warnings
+
         import foyer
 
-        _FORCE_FIELD = foyer.Forcefield(name="oplsaa")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _FORCE_FIELD = foyer.Forcefield(name="oplsaa")
     return _FORCE_FIELD
 
 
