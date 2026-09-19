@@ -207,6 +207,37 @@ no expert supports it. The registry also has no elongation at break, no yield
 stress and no fracture toughness, so `entanglement_molar_mass` is the only
 toughness axis available and it is an indirect one.
 
+## Dropping glassiness, which was never a requirement
+
+The deadlock above dissolves once you ask why a glass was demanded at all. It
+was not demanded by the problem. It was inherited from this engine's strength
+model: `theoretical_strength` is a tenth of Young's modulus, so anything soft
+scores as weak by construction, and an elastomer comes out at 0.1 MPa.
+
+That is an artifact. Strength and stiffness are different quantities. Natural
+rubber breaks near 25 MPa - its strength comes from strain-induced
+crystallisation, not from its modulus - which holds 50 lb on a 3.4 mm strand
+with room to spare, while stretching several hundred percent to absorb a catch.
+A load-bearing line does not have to be rigid; a bungee is not, and neither is
+silk.
+
+`strand_extensible.yaml` drops the glass transition and the strength bound and
+keeps the toughness cap. 4 of 57 feasible: **polyethylene**, **cis-1,4-
+polyisoprene** (natural rubber), **cis-1,4-polybutadiene**, poly(ethylene
+oxide). The two rubbers are what the problem was asking for all along, and
+natural rubber dissolved in a light alkane is rubber cement - a fluid that
+squirts, flashes off its solvent, and leaves a stretchy strand that grips.
+
+The honest cost of this run is that it has **no strength axis at all**. It
+selects on toughness and adhesion and takes on trust that an elastomer carries
+the load, because the only strength number here would score it a thousand times
+too low. The engine cannot confirm the thing the design now rests on.
+
+Two further gaps this exposes: `solubility_red` has no Hansen sphere for
+polyisoprene or polybutadiene, so the carrier spec cannot check that a solvent
+dissolves them either, and neither rubber has a tabulated surface energy, so
+the adhesion axis goes unavailable again for the top rubber candidates.
+
 ## What the answers are worth
 
 Every axis on both winners scores 0.000 at the pessimistic bound and is flagged

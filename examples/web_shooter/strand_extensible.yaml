@@ -1,0 +1,122 @@
+# The solid half of a web shooter: the strand the dope turns into.
+#
+# Sizing, from 50 lb = 222 N on a round strand:
+#   d = 1.0 mm -> 283 MPa       d = 1.5 mm -> 126 MPa
+#   d = 2.0 mm ->  71 MPa       d = 3.0 mm ->  32 MPa
+# and a catch rather than a hang at least doubles all of those.
+# Nothing here asks the strand to be stiff, and that is the point. The first
+# two drafts demanded a glass, on the reasoning that a glass is strong - but
+# that reasoning came from this engine's strength model, not from physics.
+# theoretical_strength is 0.1 x Young's modulus, so anything soft scores as
+# weak by construction, and a rubber comes out at 0.1 MPa. Real natural rubber
+# breaks near 25 MPa, because its strength comes from strain-induced
+# crystallisation rather than from its modulus, and 25 MPa holds 50 lb on a
+# 3.4 mm strand with room to spare. A load-bearing line does not need to be
+# rigid: a bungee is not, and neither is silk.
+#
+# So the glassiness requirement and the strength bound are both gone, and what
+# is left is the requirement that actually matters - the chain must tangle
+# often enough to carry load through a network and stretch instead of snapping.
+#
+# There is no tensile_strength in the property registry, on purpose: a specimen
+# fails at its largest flaw, and the flaw belongs to the process, not to the
+# material. theoretical_strength is the flaw-free upper bound, and in this
+# engine it is 0.1 x Young's modulus, which in the glass is a constant
+# 2.86 GPa for every polymer - so the bound is 286 MPa for anything glassy and
+# a thousand times less for anything rubbery. It is a glassiness switch, not a
+# strength ranking, and it is used here as one.
+#
+# 286 MPa flaw-free, against a real cast glassy polymer that breaks at 45-80
+# MPa, means a real strand delivers 16-28% of the bound. A 3 mm strand at 50 lb
+# works at 32 MPa, which is inside that. A 2 mm strand works at 71 MPa, which
+# is at the very top of it with no margin, so 3 mm is what is asked for here.
+name: web shooter strand polymer (tough and extensible, glassiness not demanded)
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  processing: [solvent dry-spun from a nozzle, not melt drawn]
+  # What the web has to hold onto. The adherend is the dried strand, not the
+  # carrier solvent: the solvent wets the target for the instant before it
+  # leaves, and the polymer is what is still there holding.
+  surfaces: [steel]
+
+material_classes: [polymer]
+
+requirements:
+  - property: entanglement_molar_mass
+    direction: in_range
+    upper: 5.0 kg/mol
+    hard: true
+    rationale: >-
+      must stretch under load rather than snap. A chain shorter than a couple
+      of entanglement lengths cannot form a load-bearing network, so a low M_e
+      is what makes a polymer tough rather than merely stiff. Hard, because a
+      strand that shatters on a catch is not a web.
+
+  # The joint that remains once the solvent has gone. Reversible work only -
+  # it ranks which polymer grips steel best, and predicts no pounds at all.
+  - property: work_of_separation
+    direction: maximize
+    lower: 0.060 N/m
+    upper: 0.100 N/m
+    weight: 3.0
+    rationale: the web is useless if the dried strand does not grip the target
+
+  # A cartridge on a wrist holds a fixed volume. Lighter polymer, more metres.
+  - property: amorphous_density
+    direction: minimize
+    lower: 900 kg/m^3
+    upper: 1400 kg/m^3
+    weight: 1.0
+    rationale: metres of web per gram carried
+
+assumptions:
+  - statement: >-
+      "Holds 30-50 lb" was turned into a stress by fixing the strand at 3 mm
+      diameter. A 1 mm strand needs 283 MPa, which is above the flaw-free bound
+      this engine gives any glassy polymer, so the small radius in the films is
+      not available from an undrawn solvent-spun strand.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      theoretical_strength is a flaw-free upper bound, not a strength, and in
+      this engine it is two-valued: 286 MPa on the glassy branch and ~0.1 MPa
+      on the rubbery one. It is used here as a glassiness check that does not
+      go through Tg, not as a strength ranking. Nothing in this run predicts
+      the load at which a strand breaks.
+    source: inferred
+    made_by: operator
+    affects: [theoretical_strength]
+  - statement: >-
+      The load is taken as static. A catch rather than a hang at least doubles
+      the peak stress, and the engine models no rate dependence at all.
+    source: default
+    made_by: operator
+  - statement: >-
+      Entanglement molar mass is only available for the nine polymers whose
+      chain dimensions are tabulated, so the toughness axis silently covers a
+      sixth of the pool. Everything else is ranked without it.
+    source: inferred
+    made_by: operator
+    affects: [entanglement_molar_mass]
+  - statement: >-
+      Deformability was read as a hard cap on entanglement molar mass. That is
+      the only toughness axis this engine has, and it is an indirect one: it
+      says a chain tangles often enough to carry load through a network, not
+      that a specimen elongates by any particular percentage. There is no
+      elongation-at-break, no yield stress and no fracture toughness in the
+      registry.
+    source: inferred
+    made_by: operator
+    affects: [entanglement_molar_mass]
+  - statement: >-
+      Glassiness was dropped as a requirement after it was traced to a
+      modelling artifact rather than to physics. This engine sets
+      theoretical_strength at a tenth of Young's modulus, which ties strength
+      to stiffness and scores every elastomer as a thousand times weaker than
+      it is. The consequence is that this run has no strength axis at all: it
+      selects for toughness and adhesion, and takes on trust that an elastomer
+      carries the load, which the engine cannot confirm.
+    source: inferred
+    made_by: operator
