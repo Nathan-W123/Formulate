@@ -369,11 +369,45 @@ its surface. So the useful muzzle velocity is about 9 m/s and the range is
 **4-8 m**, set by aerodynamics rather than by the 13 bar, which could otherwise
 push it to 20 m/s.
 
-Honest caveats: cured cyanoacrylate is brittle unless it is the
+### Clogging, in two parts
+
+**The orifice, holding unmixed CA.** It cures where moisture reaches it, and
+moisture arrives by diffusion, so the plug grows as `sqrt(Dt)`:
+
+| left standing | plug depth | on the 4.4 mm orifice |
+|---|---|---|
+| 30 s | 0.17 mm | blows out on the next shot |
+| 2 min | 0.35 mm | blows out on the next shot |
+| 10 min | 0.77 mm | needs clearing |
+| 1 hour | 1.90 mm | drill it out |
+
+Minutes are fine, an hour is not. A sealed cap with a desiccant pellet removes
+the problem entirely, and that is the whole fix.
+
+**The static mixer.** This one clogs every shot, by design - the point of
+mixing is that it gels in about a second, and whatever is in the mixer when you
+release the trigger gels there. A 6 x 60 mm tip holds ~1.7 mL and is lost each
+time. They cost about 30 cents. Budget one per shot and stop thinking of it as
+a failure.
+
+### The problem that neither of those is
+
+It does not cure in flight. At 9 m/s the jet is airborne for 333 ms over 3 m,
+and accelerated CA gels in 1-5 s. So the rope arrives **liquid**. It bonds on
+contact, which cyanoacrylate does superbly, and then cures while hanging - sagging
+meanwhile, and carrying nothing until it has set.
+
+UV was the obvious escape and it fails on arithmetic. A 20 mm LED ring at 9 m/s
+gives the jet 2.2 ms of light; a UV acrylate wants 0.3-1 J/cm2, which demands
+about 225 W/cm2 - a few hundred times what a cheap LED array delivers.
+
+Flight time and gel time are within about a factor of three to ten of each
+other, so more accelerator might close it. Might. It is not demonstrated here
+and should not be assumed.
+
+Honest caveats beyond that: cured cyanoacrylate is brittle unless it is the
 rubber-toughened grade, which is again a two-phase material the engine cannot
-represent; the mixed stream sets in the static mixer, so that nozzle is a
-consumable; and unmixed CA still skins on ambient moisture, so the barrel needs
-to stay sealed and dry.
+represent; and CA bonds skin instantly, which is the real safety issue.
 
 ### A data bug found on the way
 
@@ -431,20 +465,35 @@ The 13 bar design point is the cheap one, and it is cheap because of the
 viscosity, not the hardware: 20% solids in acetone is a thin dope, and 13 bar
 is a bicycle pump into a PET bottle.
 
-- **Pressure**: a 2 L PET bottle pumped to 13 bar with a bike pump, or a 12 g
-  CO2 cartridge and a piercing valve (~36 shots at 5 bar, ~18 at 10 bar).
-  PET soda bottles are rated well above this and fail by splitting, not
-  shattering.
-- **Reservoir**: a 60 mL luer-lock syringe barrel. At 80 mL/s a 0.6 s shot uses
-  ~48 mL, so this is **one shot per barrel** - the real cost of the bundle is
-  that a web shooter carries about four shots, not forty.
-- **Spinneret**: 40 holes of 0.7 mm. A drilled aluminium disc, or the cheapest
-  version, 40 blunt 22-gauge dispensing needles in a manifold.
-- **Valve**: a trigger-operated ball valve. The nozzle must be sealed or
-  solvent-flooded between shots or the dope skins over in it, which is the
-  failure mode that will actually end the project.
+That was the solvent-dope build. The reactive version needs far less, because
+the pressure collapsed once the bundle went away:
 
-Total, well under $50, and none of it is the hard part.
+| | solvent dope, 40 x 0.7 mm | cyanoacrylate, one 4.4 mm |
+|---|---|---|
+| pressure | 13 bar | **1.9 bar** (1.5 viscous + 0.45 kinetic) |
+| flow | 80 mL/s | 137 mL/s |
+| a 3 m shot | 203 g | **46 mL, 51 g** |
+| shot duration | 600 ms | 333 ms |
+
+1.9 bar is a hand-pumped garden sprayer, not a pressure vessel. Better still,
+a mechanical plunger does it and guarantees the mix ratio regardless of
+pressure: a 30 mm bore barrel needs 137 N at 19 cm/s, which is a spring or a
+lever, not a compressor.
+
+**Parts list:**
+
+- **Dual cartridge and gun**, 10:1 or 20:1, the standard two-part adhesive
+  kind - this is the pressure source *and* the metering in one part, ~$25
+- **Static mixer tips**, one per shot, ~$0.30 each
+- **Orifice**: drill a mixer tip out to 4.4 mm with a 2 mm land. Free
+- **Spring or lever drive** for a repeatable 137 N, ~$10
+- **Sealed cap with a desiccant pellet** - this is what stops the orifice
+  clogging, ~$2
+- **Rubber-toughened cyanoacrylate and accelerator**, ~$15
+
+Under $60. One 60 mL cartridge is one 3 m shot.
+
+The hard part is not on this list. It is that the rope arrives liquid.
 
 ## Verdict
 
