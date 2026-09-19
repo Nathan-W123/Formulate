@@ -575,6 +575,94 @@ def verdict(red: float) -> str:
 # --------------------------------------------------------------------------
 
 
+#: How far below its melting point a crystalline polymer stays insoluble.
+#:
+#: Not a fitted number: it is the melting point itself, and this constant only
+#: says how close to it the lattice has loosened enough to matter. Gel spinning
+#: of ultra-high-molar-mass polyethylene is run at 130 to 150 C against a
+#: melting point of 135, which is the industrial statement of exactly this.
+CRYSTALLINE_DISSOLUTION_MARGIN_K = 20.0
+
+
+def _crystalline_refusal(request: "PredictionRequest") -> str | None:
+    """Why a crystalline polymer will not dissolve here, or None.
+
+    THE LIMITATION THIS EXISTS FOR. Hansen parameters describe cohesion in an
+    amorphous phase. They say nothing about a crystal lattice, and a crystalline
+    polymer below its melting point is insoluble in anything however close the
+    parameters sit - the solvent has to pay the heat of fusion before it can
+    solvate a chain, and at room temperature it cannot.
+
+    Measured here, and it is not a corner case: polyethylene's predicted triple
+    is (17.5, 0.0, 0.0) against xylene's (17.8, 1.0, 3.1), a Hansen distance of
+    3.3 MPa^0.5 - comfortably inside any reasonable interaction radius. The
+    engine would have called that a good solvent at 25 C. Polyethylene does not
+    dissolve in xylene at 25 C; it dissolves at about 130, which is why
+    Dyneema is gel-spun hot and not cold.
+
+    This fires ONLY on a polymer with a measured melting point, below it. A
+    configurationally regular backbone is not enough - see the comment at the
+    missing-melting-point branch - and for everything else the weaker claim
+    ``_crystallinity_warning`` already makes is the right one.
+    """
+    from formulate.core.candidate import Tacticity
+
+    from .melt import MELTING_POINTS, _match, crystallinity
+
+    spec = request.candidate.polymer
+    if spec is None:
+        mixture = request.candidate.mixture
+        if mixture is None:
+            return None
+        polymers = [c.polymer for c in mixture.components if c.polymer is not None]
+        if len(polymers) != 1:
+            return None
+        spec = polymers[0]
+
+    backbone = [m for m in spec.monomers if m.role is not MonomerRole.END_GROUP]
+    if len(backbone) != 1:
+        return None
+    repeat = backbone[0].smiles
+
+    phase = crystallinity(repeat, spec.tacticity or Tacticity.UNSPECIFIED)
+    if phase.crystalline is not True:
+        return None
+
+    temperature = request.conditions.temperature_k
+    if temperature is None:
+        return None
+
+    found = _match(repeat, MELTING_POINTS)
+    if found is None:
+        # NO REFUSAL HERE, and the restraint is the point. ``crystallinity``
+        # answers whether the chain is configurationally REGULAR, which is
+        # necessary for crystallising and not sufficient - melt.py records
+        # polyisobutylene as its known miss and bisphenol-A polycarbonate is
+        # the same class, a regular backbone that is amorphous in practice
+        # because the isopropylidene bridge stops the chains packing. Refusing
+        # on regularity alone would tell a user that polycarbonate does not
+        # dissolve in chloroform, which it plainly does.
+        #
+        # So this gate fires only where the polymer is KNOWN to crystallise,
+        # by having a measured melting point, and the temperature is below it.
+        # Everywhere else ``_crystallinity_warning`` already says that a
+        # semicrystalline sample resists solvents its sphere admits, which is
+        # the right strength of claim for a regularity test on its own.
+        return None
+    melting = found[1].temperature
+    if temperature >= melting - CRYSTALLINE_DISSOLUTION_MARGIN_K:
+        return None
+    return (
+        f"this chain crystallises and melts at {melting - 273.15:.0f} C, so at "
+        f"{temperature - 273.15:.0f} C it is a solid crystal rather than a coil a solvent "
+        "can reach. Hansen parameters describe cohesion in an AMORPHOUS phase and say "
+        "nothing about a lattice - the solvent has to pay the heat of fusion first. "
+        "Polyethylene against xylene is 3.3 MPa^0.5 apart in Hansen space and does not "
+        "dissolve at room temperature at all; it dissolves near 130 C, which is why "
+        "ultra-high-molar-mass polyethylene is gel-spun hot"
+    )
+
+
 class PolymerDissolutionExpert(Expert):
     """How well a named solvent dissolves a polymer candidate."""
 
@@ -757,8 +845,20 @@ class PolymerDissolutionExpert(Expert):
         self, prop: str, request: PredictionRequest, domain: ApplicabilityDomain
     ) -> Prediction | None:
         if request.candidate.material_class is MaterialClass.POLYMER:
-            return self._predict_polymer(prop, request, domain)
-        return self._predict_mixture(prop, request, domain)
+            prediction = self._predict_polymer(prop, request, domain)
+        else:
+            prediction = self._predict_mixture(prop, request, domain)
+
+        # AFTER, not before. This gate exists to stop a wrong ANSWER, and
+        # putting it first made it mask refusals that are more actionable than
+        # it is: "no Hansen triple could be obtained for this repeat unit" tells
+        # a user what to fix, and "it is a crystal at this temperature" tells
+        # them to give up - so the first one has to survive when both apply.
+        if prediction is not None and prediction.is_usable:
+            crystalline = _crystalline_refusal(request)
+            if crystalline is not None:
+                return Prediction.unsupported(prop, self.id, crystalline)
+        return prediction
 
     # -- the POLYMER path --------------------------------------------------
 

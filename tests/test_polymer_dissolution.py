@@ -1265,3 +1265,111 @@ def test_an_out_of_domain_upstream_triple_penalises_the_mixture_answer():
         "predicted triple is itself out of domain" in w
         for w in prediction.applicability.warnings
     )
+
+
+# -- the limitation Hansen parameters have, and cannot see ------------------
+
+
+def _dissolution_candidate(repeat, tacticity=None):
+    from formulate.core.candidate import (
+        Candidate,
+        MaterialClass,
+        MonomerUnit,
+        PolymerSpec,
+        Tacticity,
+    )
+    from formulate.core.conditions import Conditions
+    from formulate.core.quantity import Quantity
+
+    return Candidate(
+        material_class=MaterialClass.POLYMER,
+        polymer=PolymerSpec(
+            monomers=(MonomerUnit(smiles=repeat),),
+            tacticity=tacticity or Tacticity.UNSPECIFIED,
+            number_average_molar_mass=Quantity(value=100.0, unit="kg/mol"),
+        ),
+        conditions=Conditions.standard(),
+    )
+
+
+def _crystalline_reason(repeat, celsius, tacticity=None):
+    from formulate.core.conditions import Conditions
+    from formulate.core.quantity import Quantity
+    from formulate.experts.base import PredictionRequest
+    from formulate.experts.polymer_dissolution import _crystalline_refusal
+
+    request = PredictionRequest(
+        candidate=_dissolution_candidate(repeat, tacticity),
+        properties=frozenset({"solubility_red"}),
+        conditions=Conditions(temperature=Quantity(value=celsius + 273.15, unit="K")),
+    )
+    return _crystalline_refusal(request)
+
+
+@requires_rdkit
+def test_a_crystalline_polymer_does_not_dissolve_below_its_melting_point():
+    """Hansen parameters describe cohesion in an AMORPHOUS phase. They say
+    nothing about a lattice, and the engine was about to act on that.
+
+    Measured: polyethylene's predicted triple is (17.5, 0.0, 0.0) against
+    xylene's (17.8, 1.0, 3.1) - a Hansen distance of 3.3 MPa^0.5, comfortably
+    inside any reasonable radius. Polyethylene does not dissolve in xylene at
+    25 C. It dissolves near 130, which is why ultra-high-molar-mass
+    polyethylene is gel-spun hot and not cold.
+    """
+    reason = _crystalline_reason("[*]CC[*]", 25)
+    assert reason is not None
+    assert "heat of fusion" in reason
+
+
+@requires_rdkit
+def test_the_same_polymer_dissolves_once_it_is_hot_enough():
+    assert _crystalline_reason("[*]CC[*]", 140) is None
+
+
+@requires_rdkit
+def test_an_amorphous_polymer_is_not_gated():
+    """Atactic polystyrene and PMMA dissolve at room temperature, and the gate
+    must not be a blanket refusal of every polymer."""
+    from formulate.core.candidate import Tacticity
+
+    assert _crystalline_reason("[*]CC(c1ccccc1)[*]", 25, Tacticity.ATACTIC) is None
+    assert _crystalline_reason("[*]CC(C)(C(=O)OC)[*]", 25, Tacticity.ATACTIC) is None
+
+
+@requires_rdkit
+def test_tacticity_decides_the_gate_where_it_decides_crystallinity():
+    from formulate.core.candidate import Tacticity
+
+    assert _crystalline_reason("[*]CC(C)[*]", 25, Tacticity.ISOTACTIC) is not None
+    assert _crystalline_reason("[*]CC(C)[*]", 25, Tacticity.ATACTIC) is None
+
+
+@requires_rdkit
+def test_a_regular_backbone_with_no_melting_point_is_warned_about_not_refused():
+    """The restraint that keeps the gate honest.
+
+    ``crystallinity`` answers whether the chain is configurationally REGULAR,
+    which is necessary for crystallising and not sufficient. melt.py records
+    polyisobutylene as its known miss, and bisphenol-A polycarbonate is the
+    same class - a regular backbone that is amorphous in practice because the
+    isopropylidene bridge stops the chains packing. Refusing on regularity
+    alone would tell a user that polycarbonate does not dissolve in chloroform.
+    """
+    assert _crystalline_reason("[*]CCCCCCCC[*]", 25) is None
+    assert _polymer_red("polycarbonate", "chloroform").is_usable
+
+
+@requires_rdkit
+def test_the_gate_does_not_mask_a_more_actionable_refusal():
+    """A missing Hansen triple tells a user what to fix; a crystal tells them
+    to give up. When both apply the first one has to survive, which is why the
+    gate runs after the prediction rather than before it."""
+    import inspect
+
+    from formulate.experts.polymer_dissolution import PolymerDissolutionExpert
+
+    source = inspect.getsource(PolymerDissolutionExpert._predict_one)
+    before = source.index("_predict_polymer")
+    after = source.index("_crystalline_refusal")
+    assert after > before

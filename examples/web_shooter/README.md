@@ -1575,6 +1575,83 @@ strength. A candidate that passes `fiber.yaml` has cleared four of seven
 criteria, and the three missing ones are the ones that decide whether a web
 holds a person.
 
+## The final material
+
+Two independent routes through this engine converge on one answer.
+
+`fiber.yaml`, which states the four statable requirements of a load-bearing
+web, ranks **polyethylene** first out of 546 candidates. The dope map, which
+asks which fluid can actually be fired, finds exactly one cell that clears both
+spinnability and a wrist-mountable pressure:
+
+```
+polyethylene in xylene, at the geometry the sweep found
+
+  wt%   kg/mol    eta Pa.s        Wi        bar  verdict
+    2     6000       78.64     0.446      13.59  will not spin
+    5     1000       86.26     0.195      14.91  will not spin
+    5     3000       915.5      2.07      158.2  *** BOTH ***
+    5     6000        4063      9.19      702.1  spins, too stiff
+   10     1000        1713      1.93        296  spins, too stiff
+   20     3000   3.638e+05       203  6.287e+04  spins, too stiff
+```
+
+**5 wt% polyethylene at 3000 kg/mol in a hydrocarbon solvent. 916 Pa s,
+Weissenberg 2.07, 158 bar.**
+
+That is gel-spun ultra-high-molar-mass polyethylene. It is Dyneema, and it is
+the strongest fibre in commercial production by specific strength. The engine
+was not told about it; it arrived from a fibre-requirements ranking and a
+process map that were run separately and did not share a candidate list.
+
+### And the engine says the device cannot make it
+
+Polyethylene's predicted Hansen triple is (17.5, 0.0, 0.0) against xylene's
+(17.8, 1.0, 3.1) - a distance of 3.3 MPa^0.5, comfortably compatible. The
+engine was about to report that as a room-temperature solvent, and it is not
+one. Hansen parameters describe cohesion in an AMORPHOUS phase; they say
+nothing about a crystal lattice, and a crystalline polymer below its melting
+point is insoluble however close the parameters sit. The solvent has to pay
+the heat of fusion first.
+
+`polymer_dissolution` now refuses it:
+
+```
+PE in xylene at  25 C: REFUSED
+  this chain crystallises and melts at 135 C, so at 25 C it is a solid crystal
+  rather than a coil a solvent can reach [...] it dissolves near 130 C, which
+  is why ultra-high-molar-mass polyethylene is gel-spun hot
+
+PE in xylene at 140 C: proceeds
+```
+
+The gate fires only on a polymer with a MEASURED melting point, below it. A
+configurationally regular backbone is not enough - `melt.py` records
+polyisobutylene as its known miss and bisphenol-A polycarbonate is the same
+class, regular and amorphous in practice - so for everything else the weaker
+warning that was already there is the right strength of claim.
+
+### So the answer is
+
+**The material is ultra-high-molar-mass polyethylene, about 3000 kg/mol,
+spun as a 5% gel in a hydrocarbon solvent.** It meets every requirement this
+engine can state, with margin rather than inside its error bars - the only
+candidate in this document that does.
+
+**The device cannot hold it.** The dope only exists above about 130 C, because
+that is where the crystals let go. A wrist cartridge of 130 C xylene is not a
+web shooter; it is a hazard. The chemistry problem is solved and the
+engineering problem is worse than it looked, and that is a more useful place to
+end than a ranked list would have been.
+
+What would change it: a polymer that crystallises fast enough to lock
+orientation but dissolves cold, which is a genuine contradiction rather than a
+gap in this engine - crystallinity is what makes both of those true. The
+routes out are a soluble precursor that crystallises after spinning, the way
+poly(vinyl alcohol) fibre and carbon fibre are made, or an entirely different
+solidification mechanism. Neither is a search this engine can run, because
+neither is a property in its registry.
+
 ## Verdict
 
 The engine handled the parts it covers and refused the rest legibly rather than
