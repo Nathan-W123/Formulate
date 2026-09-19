@@ -72,6 +72,10 @@ _THEORETICAL_STRENGTH_FRACTION = 0.10
 #: Below roughly this the material is brittle whatever its modulus.
 _ENTANGLEMENTS_FOR_TOUGHNESS = 2.0
 
+#: Properties a measured semicrystalline modulus can answer on its own,
+#: without the chain dimension the entanglement route needs.
+_MODULUS_PROPERTIES = frozenset({"youngs_modulus", "shear_modulus", "theoretical_strength"})
+
 
 @dataclass(frozen=True, slots=True)
 class ChainDimension:
@@ -326,8 +330,16 @@ class PolymerMechanicalExpert(Expert):
         if spec is None:
             return Prediction.unsupported(prop, self.id, "candidate carries no polymer")
 
+        from .melt import semicrystalline_modulus
+
         chain = self._chain(candidate)
-        if chain is None:
+        crystalline = semicrystalline_modulus(candidate)
+        if chain is None and not (prop in _MODULUS_PROPERTIES and crystalline is not None):
+            # A chain dimension is what the entanglement mass is built from, and
+            # the rubbery modulus rests on that in turn. A *measured*
+            # semicrystalline modulus rests on neither, so gating it here
+            # refused polycaprolactone a stiffness that is sitting in a table -
+            # and with it the whole low-melting branch of the search.
             return Prediction.unsupported(
                 prop,
                 self.id,
@@ -342,7 +354,9 @@ class PolymerMechanicalExpert(Expert):
             )
 
         model = entanglement_model()
-        entanglement = model.entanglement(chain.r2_per_mass, density)
+        entanglement = (
+            model.entanglement(chain.r2_per_mass, density) if chain is not None else None
+        )
 
         if prop == "entanglement_molar_mass":
             return self._make(

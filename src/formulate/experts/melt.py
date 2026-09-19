@@ -127,6 +127,8 @@ FLOW_ACTIVATION_ENERGY: dict[str, float] = {
     "[*]CC(C)=CC[*]": 35.0e3,                        # cis-1,4-polyisoprene
     "[*]CC=CC[*]": 30.0e3,                           # 1,4-polybutadiene
     "[*]CC(C)(C)[*]": 50.0e3,                        # polyisobutylene
+    "[*]CCCCCC(=O)O[*]": 40.0e3,                     # polycaprolactone
+    "[*]OC(C)C(=O)[*]": 80.0e3,                      # polylactide
 }
 
 #: Relative one-sigma on a tabulated activation energy.
@@ -186,6 +188,8 @@ SEMICRYSTALLINE_MODULUS: dict[str, SolidModulus] = {
     "[*]OCCOC(=O)c1ccc(cc1)C(=O)[*]": SolidModulus(2.8e9, 0.5e9, "PET, 23 C"),
     "[*]OCCCCOC(=O)c1ccc(cc1)C(=O)[*]": SolidModulus(2.4e9, 0.5e9, "PBT, 23 C"),
     "[*]C(F)(F)C(F)(F)[*]": SolidModulus(0.5e9, 0.2e9, "PTFE, 23 C"),
+    "[*]CCCCCC(=O)O[*]": SolidModulus(0.4e9, 0.1e9, "polycaprolactone, 23 C"),
+    "[*]OC(C)C(=O)[*]": SolidModulus(3.5e9, 0.5e9, "polylactide, 23 C"),
 }
 
 
@@ -243,6 +247,12 @@ MELTING_POINTS: dict[str, MeltingPoint] = {
     "[*]OCCOC(=O)c1ccc(cc1)C(=O)[*]": MeltingPoint(538.0, 8.0, "PET; 265 C"),
     "[*]OCCCCOC(=O)c1ccc(cc1)C(=O)[*]": MeltingPoint(498.0, 8.0, "PBT; 225 C"),
     "[*]C(F)(F)C(F)(F)[*]": MeltingPoint(600.0, 10.0, "PTFE; 327 C"),
+    # The low-melting pair. Polycaprolactone is the one polymer here a person
+    # could handle molten without a burn unit - it is sold to hobbyists as
+    # pellets you soften in hot water - and that makes it the only entry whose
+    # melting point is a safety property rather than a processing one.
+    "[*]CCCCCC(=O)O[*]": MeltingPoint(333.0, 5.0, "polycaprolactone; 60 C"),
+    "[*]OC(C)C(=O)[*]": MeltingPoint(448.0, 10.0, "polylactide, stereoregular; 175 C"),
 }
 
 #: Polymers known to be amorphous, with why. Distinguished from "not in the

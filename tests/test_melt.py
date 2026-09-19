@@ -281,3 +281,43 @@ def test_viscosity_falls_with_temperature_and_rises_with_chain_length():
     assert hot < cold
     assert longer > hot
     assert longer / hot == pytest.approx(2.0**3.4, rel=1e-6)
+
+
+@requires_rdkit
+def test_polycaprolactone_melts_low_enough_to_handle():
+    """The safety-relevant entry: 60 C against polyethylene's 135 and the
+    200 C a hot-melt nozzle runs at. Molten polymer sticks to skin, so the
+    melting point of the material is a burn risk, not just a process setting."""
+    prediction = _predict(_polymer("[*]CCCCCC(=O)O[*]"), "melting_point")
+    assert prediction.quantity.to_canonical().value == pytest.approx(333.0)
+
+
+@requires_rdkit
+def test_a_measured_modulus_does_not_need_a_chain_dimension():
+    """Gating it there refused polycaprolactone a stiffness sitting in a table,
+    and with it the whole low-melting branch of the search."""
+    from formulate.core.candidate import Candidate, MaterialClass
+    from formulate.experts import polymer_registry
+    from formulate.experts.base import PredictionRequest as Req
+    from formulate.experts.mechanical import CHAIN_DIMENSIONS
+
+    assert "[*]CCCCCC(=O)O[*]" not in CHAIN_DIMENSIONS, "the point of the test"
+
+    candidate = Candidate(
+        material_class=MaterialClass.POLYMER,
+        polymer=PolymerSpec(monomers=(MonomerUnit(smiles="[*]CCCCCC(=O)O[*]"),)),
+        conditions=Conditions.standard(),
+    )
+    registry = polymer_registry()
+    wanted = frozenset({"youngs_modulus", "glass_transition_temperature", "amorphous_density"})
+    context = {}
+    for expert in registry.resolution_order(
+        registry.experts_for(wanted, MaterialClass.POLYMER)
+    ):
+        for prediction in expert.predict(
+            Req(candidate=candidate, properties=wanted,
+                conditions=candidate.conditions, context=dict(context))
+        ):
+            if prediction.is_usable:
+                context.setdefault(prediction.property, prediction)
+    assert context["youngs_modulus"].quantity.to_canonical().value == pytest.approx(0.4e9)
