@@ -3,31 +3,46 @@ sulfones, sulfides and imides.
 
 ``vinyl.py`` writes chains whose backbone is carbon and ``condensation.py``
 writes chains whose backbone is carbon joined by esters and amides.  Between
-them they regenerate 50 of the 57 bundled reference polymers and cannot reach
-the other eight, and the eight are not a scatter: every one of them has the
-heteroatom *in* the backbone rather than hanging off it.  Poly(ethylene oxide),
-poly(propylene oxide), poly(tetramethylene oxide), polyoxymethylene,
+them they regenerate 49 of the 57 bundled reference polymers as canonical SMILES
+- a fiftieth, polycaprolactone, comes back from ``condensation.py`` only at a
+different cut - and they cannot reach the other eight.  The eight are not a
+scatter: every one of them has the heteroatom *in* the backbone rather than
+hanging off it.  Poly(ethylene oxide), poly(propylene oxide),
+poly(tetramethylene oxide), polyoxymethylene,
 poly(oxytrimethylene), polycaprolactone, poly(2,6-dimethyl-1,4-phenylene oxide)
 and poly(ether ether ketone) are this module's acceptance test, and it
 regenerates all eight.
 
 This is also where the property range ends.  Poly(ethylene oxide) is the most
-water-soluble synthetic polymer in commerce and Kapton is the highest-Tg one;
-neither is reachable from a carbon backbone, so without this family the engine's
-answer to "give me something very polar" or "give me something that survives
-300 C" was bounded by the wrong end of the wrong list.
+water-soluble synthetic polymer in commerce and the aromatic polyimides sit at
+the top of the commercial glass-transition range; neither end is reachable from
+a carbon backbone, so without this family the engine's answer to "give me
+something very polar" or "give me something that survives 300 C" was bounded by
+the wrong end of the wrong list.
 
 What this module is careful about
 ---------------------------------
-**It gates on chemistry, not on syntax.**  Nine gates, each naming the reaction
-that happens *instead* of polymerisation: :func:`refusals` returns every
-structure the grammar built and then refused, and the probe set at the bottom
-exists so the gates are exercised rather than asserted.  Tetrahydropyran,
-1,4-dioxane, thiane, glycidol, 3-ethyl-3-(hydroxymethyl)oxetane, glycidyl
+**It gates on chemistry, not on syntax.**  Nine structural gates and a curated
+refusal table, each naming the reaction that happens *instead* of
+polymerisation.  :func:`refusals` returns every structure the grammar built and
+then refused, and the probe set at the bottom exists so the gates are exercised
+rather than asserted.  Tetrahydropyran,
+1,4-dioxane, thiane, gamma-butyrolactone, gamma-valerolactone, glycidol,
+3-ethyl-3-(hydroxymethyl)oxetane, glycidyl
 methacrylate, ethylene peroxide, ethylene carbonate, propylene carbonate, the
 bisphenol urethanes, the unactivated aryl ethers, poly(phenylene oxide) from
 plain phenol, 2-methyltetrahydrofuran and tetrahydrothiophene are all built here
 and all refused.
+
+**It deduplicates on the chain, not on the string.**  A repeat unit records
+where someone chose to cut a periodic chain, so two units can be the same
+polymer and have different canonical SMILES - ``-O-A-O-B-`` and ``-O-B-O-A-``
+are one material.  The aryl-ether grid contains exactly one such pair
+(:data:`SAME_CHAIN_TWICE`) and would otherwise have put that polymer in a
+ranking twice under two names, which doubles its share of the answer.
+:func:`periodic_identity` closes the unit into a ring to remove the choice of
+cut, and the second spelling is refused under ``duplicate-cut`` rather than
+dropped in silence.
 
 **It does not refuse silicon and sulfur, and that is deliberate.**
 ``vinyl.py`` refuses poly(vinyl bromide) because bromine is outside the element
@@ -39,11 +54,14 @@ behaves like poly(dimethylsiloxane).  So they are generated and *marked*
 downstream by their own domain check.  An expert saying "outside my domain" is
 an answer; a library that never proposes the material is a silent gap.
 
-**It says which polymers have a melt.**  Polyimides and poly(phenylene sulfide
-sulfone)-type backbones reach their decomposition temperature before they flow,
-which makes them unreachable for every melt-processing requirement and still the
-right answer for a stiffness or service-temperature one.  Every unit carries a
-:class:`Melt` and the ones that are not melt-processable say so in their name.
+**It says which polymers have a melt.**  Every aromatic polyimide whose
+dianhydride carries no swivel - no aryl ether, no hexafluoroisopropylidene -
+reaches its decomposition temperature before it flows, and a
+silicone or a liquid polysulfide is never a thermoplastic at all; that makes
+them unreachable for every melt-processing requirement and still the right
+answer for a stiffness or a service-temperature one.  Every unit carries a
+:class:`Melt` and anything that is not simply melt-processable says so in its
+name.
 
 **It says that a polyurethane repeat unit is half a polymer.**  A real
 polyurethane is a *segmented block copolymer*: a rigid diisocyanate/chain-
@@ -56,6 +74,15 @@ their name.  Averaging a hard segment's properties and calling the answer a
 polyurethane is exactly the substitution this repository forbids, so the label
 is not decoration.
 
+**A polymer that is sold is not the same as a monomer that is sold.**  Allyl
+glycidyl ether, methylvinyldichlorosilane and sodium disulfide are all bought by
+the tonne, and none of the three homopolymers written from them is a product:
+allyl glycidyl ether goes into ECO rubber as a few per cent of a termonomer, VMQ
+silicone carries well under a mole per cent of methylvinylsiloxane, and the
+rubber sold as Thiokol A is the ethylene *tetra*sulfide rather than the
+disulfide-rank chain.  All three are :attr:`Availability.REPORTED` here, and
+each one says in its note what the product actually is.
+
 **Polycaprolactone is here, and it overlaps ``condensation.py`` on purpose.**
 That module writes it as the AB polyester of 6-hydroxyhexanoic acid,
 ``[*]OCCCCCC(=O)[*]``; the bundled file writes it at the lactone cut,
@@ -65,27 +92,37 @@ It is the same periodic chain.  It is regenerated here at the bundled cut,
 because caprolactone ring-opening is how the polymer is actually made, and this
 is the one place in the three modules where two families write one chain.  No
 other lactone is generated here: the lactones belong to ``condensation.py``.
+The gate that keeps it that way is worth reading for what it does *not* claim.
+A gamma-lactone is the one ring size in the series that will not open, so the
+five-ring lactone monomer is refused - but the chain it would give is
+poly(4-hydroxybutyrate), which is bioresorbable, is sold, and comes back from
+``condensation.py`` from the hydroxy acid.  The gate refuses the monomer and
+says so, and a unit arriving with a route of its own is exempt, exactly as the
+CO2 carbonates are exempt from the cyclic-carbonate gate.
 
 Measured on this installation
 -----------------------------
-:func:`units` returns **171** repeat units - 42 polyurethane hard segments, 36
-polyimides, 35 aryl polyethers, 23 polyethers, 19 polycarbonates, 7 silicones,
+:func:`units` returns **170** repeat units - 42 polyurethane hard segments, 36
+polyimides, 34 aryl polyethers, 23 polyethers, 19 polycarbonates, 7 silicones,
 5 polysulfides, 3 polyacetals and polycaprolactone - and :func:`refusals`
-returns **24** structures the grammar built and would not emit.  **39** of the
-171 are polymers that are or have been sold, **40** have been made and
-published, and **92** are combinations nobody appears to have run; every
-monomer in all 171 is purchasable, 77 units entirely from commodities.
+returns **27** structures the grammar built and would not emit.  **35** of the
+170 are polymers that are or have been sold, **44** have been made and
+published, and **91** are combinations nobody appears to have run; every
+monomer in all 170 is purchasable, 77 units entirely from commodities.
 
 *Rediscovery.*  **8 of 8**.  Poly(ethylene oxide), poly(propylene oxide),
 poly(tetramethylene oxide), polyoxymethylene, poly(oxytrimethylene),
 polycaprolactone, poly(2,6-dimethyl-1,4-phenylene oxide) and poly(ether ether
 ketone) all come back as canonical SMILES against canonical SMILES, and nothing
 here collides with a reference polymer belonging to another module's family.
+With this module in place the three grammars regenerate **57 of the 57** bundled
+reference polymers between them, and share no repeat unit at all - so the list
+the engine used to search can be retired rather than merged.
 
-*Feasibility.*  ``PolymerFeasibilityExpert`` scores **144 of 171** and has no
+*Feasibility.*  ``PolymerFeasibilityExpert`` scores **143 of 170** and has no
 route at all for **27**; :data:`NO_FEASIBILITY_ROUTE` names them and says which
 three chemistries are missing from its table.  Scores run 2.05 to 6.56, median
-3.34, against poly(ethylene terephthalate) at 2.50.
+3.35, against poly(ethylene terephthalate) at 2.50.
 
 *Two places the expert and this module disagree, both left visible.*  The seven
 silicones score 3.96 to 6.56, the top of the whole module, and the expert's own
@@ -97,7 +134,7 @@ a monomer sold by the tonne as a solvent because that ring does not open.
 Neither is corrected here; correcting one would mean fitting an expert to this
 library.
 
-*What the rest of the panel will then refuse.*  **35 of 171** contain silicon or
+*What the rest of the panel will then refuse.*  **34 of 170** contain silicon or
 sulfur and are outside the element set the density and Tg models were fitted
 over, so those two experts will decline them by their own domain check.  That is
 the correct answer rather than a coverage gap, and it is in the label.
@@ -274,7 +311,7 @@ class Monomer:
 
 
 #: The 27 units the engine's own ``PolymerFeasibilityExpert`` returns no score
-#: for, measured by running all 171 through it.  Three chemistries are missing
+#: for, measured by running all 170 through it.  Three chemistries are missing
 #: from its route table and this is exactly which units they cost:
 #:
 #: * **imide formation from a dianhydride and a diamine** - 24 of the 36
@@ -284,10 +321,11 @@ class Monomer:
 #:   actually made.  So the expert reaches every polyimide whose dianhydride
 #:   carries an aryl ether and no other, which is a sharp and correct line.
 #: * **sodium sulfide against a dihaloarene** - poly(p-phenylene sulfide).
-#: * **a disulfide backbone** - the two Thiokols.  The expert refuses to close a
-#:   ring across an S-S bond, on the stated grounds that a disulfide's chemistry
-#:   is redox rather than polymerisation, which is right about the ring and
-#:   wrong about these two polymers.
+#: * **a disulfide backbone** - the two ethylene polysulfides.  The expert refuses
+#:   to close a ring across an S-S bond, on the stated grounds that a disulfide's
+#:   chemistry is redox rather than polymerisation, which is right about the ring
+#:   and wrong about these two polymers, one of which (Thiokol LP) is sold by the
+#:   drum.
 #:
 #: This is a list of names rather than a rule because it is a *measurement*, and
 #: a test asserts it still holds: if the expert grows an imide route, or loses
@@ -306,6 +344,21 @@ NO_FEASIBILITY_ROUTE = frozenset(
         for code in ("PMDA", "BPDA", "BTDA", "6FDA")
         for amine in ("PPD", "MPD", "ODA", "MDA", "DDS", "BAPP")
     }
+)
+
+
+#: The one pair in this module's grids that is one polymer written twice.  A
+#: bisphenol crossed with a dihaloarene gives ``-O-A-O-B-``, and the grid also
+#: contains the pair that gives ``-O-B-O-A-``: 4,4'-dihydroxybenzophenone with
+#: 4,4'-dichlorodiphenyl sulfone writes the same chain as bisphenol S with
+#: 4,4'-difluorobenzophenone, because SNAr does not care which half arrived
+#: carrying the halide.  The two canonical SMILES differ, so canonical
+#: deduplication cannot see it; :func:`periodic_identity` can, and the second one
+#: is refused under ``duplicate-cut``.  Both routes are real and either name
+#: would do - the point is that only one of them reaches the ranking.
+SAME_CHAIN_TWICE = (
+    "poly(dihydroxybenzophenone ether sulfone)",
+    "poly(bisphenol S ether ketone)",
 )
 
 
@@ -331,6 +384,55 @@ def elements(smiles: str) -> frozenset[str]:
     if mol is None:
         return frozenset()
     return frozenset(a.GetSymbol() for a in Chem.AddHs(mol).GetAtoms()) - {"*"}
+
+
+@functools.lru_cache(maxsize=4096)
+def periodic_identity(smiles: str) -> str | None:
+    """The polymer a repeat unit spells, with the choice of cut removed.
+
+    Canonical SMILES is not an identity for a *chain*.  ``[*]O-A-O-B-[*]`` and
+    ``[*]O-B-O-A-[*]`` are one polymer cut at two different bonds and their
+    canonical SMILES differ, so deduplicating on canonical SMILES lets a grid
+    emit the same material twice under two names - which is worse than missing
+    it, because it doubles that material's share of a ranking.  Closing the unit
+    into a ring removes the cut, and the ring's canonical SMILES is the same
+    whichever bond the unit was opened at.
+
+    The ring is a graph key and not a claim that the ring exists.  When the two
+    attachment points sit on atoms that are already bonded - polyoxymethylene,
+    every siloxane - there is no ring to close and no choice of cut left to
+    remove, so the canonical SMILES already is the identity and is returned.
+    """
+    Chem = _rdkit()
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+    dummies = [a.GetIdx() for a in mol.GetAtoms() if a.GetAtomicNum() == 0]
+    if len(dummies) != 2:
+        return None
+    anchors: list[int] = []
+    for idx in dummies:
+        neighbours = mol.GetAtomWithIdx(idx).GetNeighbors()
+        if len(neighbours) != 1:
+            return None
+        anchors.append(neighbours[0].GetIdx())
+    if anchors[0] == anchors[1]:
+        return None
+    if mol.GetBondBetweenAtoms(anchors[0], anchors[1]) is not None:
+        return Chem.MolToSmiles(mol)
+    editable = Chem.RWMol(mol)
+    editable.AddBond(anchors[0], anchors[1], Chem.BondType.SINGLE)
+    for idx in sorted(dummies, reverse=True):
+        editable.RemoveAtom(idx)
+    for atom in editable.GetAtoms():
+        atom.SetNoImplicit(False)
+        atom.SetNumExplicitHs(0)
+    ring: Any = editable.GetMol()
+    try:
+        Chem.SanitizeMol(ring)
+    except Chem.rdchem.MolSanitizeException:  # pragma: no cover - every unit sanitises
+        return None
+    return Chem.MolToSmiles(ring)
 
 
 # --------------------------------------------------------------------------
@@ -436,11 +538,13 @@ EPOXIDES: tuple[tuple[str, str, str, Availability, Scale, str], ...] = (
      Availability.CONSTRUCTIBLE, Scale.BULK, ""),
     ("phenyl glycidyl ether", "(COc1ccccc1)", "poly(phenyl glycidyl ether)",
      Availability.REPORTED, Scale.BULK, ""),
-    ("allyl glycidyl ether", "(COCC=C)", "poly(allyl glycidyl ether)", Availability.COMMERCIAL,
+    ("allyl glycidyl ether", "(COCC=C)", "poly(allyl glycidyl ether)", Availability.REPORTED,
      Scale.BULK,
-     "the cure site in ECO rubber. The pendant allyl survives the polymerisation rather "
-     "than crosslinking it: an allyl group does not propagate, it transfers (Odian "
-     "3-9c), which is exactly why it is used as a latent cure site"),
+     "the monomer is a commodity and is the cure site in ECO rubber, but it goes in at a "
+     "few per cent as a termonomer and the homopolymer written here is not a product - "
+     "which is why this says reported and not commercial. The pendant allyl survives the "
+     "polymerisation rather than crosslinking it: an allyl group does not propagate, it "
+     "transfers (Odian 3-9c), which is exactly why it is used as a latent cure site"),
 )
 
 #: Cyclohexene oxide is written out rather than templated because its two
@@ -644,6 +748,13 @@ PHENOLS: tuple[tuple[str, str, str, str, Availability, Scale, str], ...] = (
 #: battery-electrolyte solvents rather than polymerised.  The polymers are real
 #: and are emitted separately, from carbon dioxide and the epoxide, which is the
 #: route that actually reaches them.
+#:
+#: The 1,3-diols are a softer version of the same story and are kept, because
+#: their ring is six-membered and six-membered carbonates *do* open: 1,3-
+#: propanediol and a carbonate source give trimethylene carbonate, and the
+#: bioresorbable polymer is made by ring-opening that rather than by driving the
+#: condensation past it.  The same chain, one step further round, which is why
+#: those units are emitted and the 1,2-diols are not.
 CARBONATE_DIOLS: tuple[Monomer, ...] = (
     Monomer("ethylene glycol", "CC", "ethylene", Scale.BULK),
     Monomer("1,2-propanediol", "CC(C)", "propylene", Scale.BULK),
@@ -671,7 +782,7 @@ REPORTED_CARBONATES: dict[str, str] = {
     "bisphenol S": "bisphenol-S PC",
     "4,4'-biphenol": "biphenol PC",
     "1,4-butanediol": "poly(tetramethylene carbonate)",
-    "diethylene glycol": "CR-39 precursor diol",
+    "diethylene glycol": "an ether-carbonate polyol comonomer",
 }
 
 #: The two polycarbonates that exist and cannot be condensed: carbon dioxide
@@ -772,10 +883,12 @@ SILOXANES: tuple[tuple[str, str, str, str, Availability, Scale, str], ...] = (
     ("diphenyldichlorosilane", "(c1ccccc1)(c1ccccc1)", "poly(diphenylsiloxane)", "",
      Availability.REPORTED, Scale.CATALOGUE,
      "crystalline and infusible as the homopolymer; used only as a comonomer"),
-    ("methylvinyldichlorosilane", "(C)(C=C)", "poly(methylvinylsiloxane)", "VMQ cure site",
-     Availability.COMMERCIAL, Scale.BULK,
-     "the vinyl is a hydrosilylation cure site, not a propagating group: it survives the "
-     "siloxane equilibration that builds the chain"),
+    ("methylvinyldichlorosilane", "(C)(C=C)", "poly(methylvinylsiloxane)", "",
+     Availability.REPORTED, Scale.BULK,
+     "VMQ silicone rubber is a dimethylsiloxane copolymer carrying well under one mole "
+     "per cent of this unit, so the homopolymer written here is not the product VMQ is - "
+     "reported, not commercial. The vinyl is a hydrosilylation cure site, not a "
+     "propagating group: it survives the siloxane equilibration that builds the chain"),
     ("methyldichlorosilane", "(C)([H])", "poly(methylhydrosiloxane)", "PMHS",
      Availability.COMMERCIAL, Scale.BULK,
      "sold as a crosslinker and as a mild reducing agent"),
@@ -803,11 +916,16 @@ SILOXANES: tuple[tuple[str, str, str, str, Availability, Scale, str], ...] = (
 #: chemistry the feasibility expert's route table does not contain, which is why
 #: it and it alone in this module carries ``no feasibility route``.
 #:
-#: The liquid polysulfides - the Thiokols - keep their sulfur-sulfur bond, and
-#: it is load-bearing: the S-S is what lets the sealant be cured by an oxidant
-#: and what makes it self-healing under stress.  The backbone gate below refuses
-#: an O-O and an N-N and deliberately does not refuse an S-S, because a peroxide
-#: is a radical initiator and a disulfide is a commercial aerospace sealant.
+#: The liquid polysulfides keep their sulfur-sulfur bond, and it is load-bearing:
+#: the S-S is what lets the sealant be cured by an oxidant and what makes it
+#: self-healing under stress.  The backbone gate below refuses an O-O and an N-N
+#: and deliberately does not refuse an S-S, because a peroxide is a radical
+#: initiator and Thiokol LP is a commercial aerospace sealant.
+#:
+#: Sulfur *rank* is part of the material and is not something a repeat unit can
+#: be vague about.  Thiokol LP is disulfide-rank and is written here as one; the
+#: rubber sold as Thiokol A is the tetrasulfide, so the disulfide-rank ethylene
+#: polysulfide below is reported rather than commercial and says so.
 SULFIDES: tuple[HeteroUnit, ...] = (
     HeteroUnit(
         name="poly(ethylene sulfide)",
@@ -846,12 +964,14 @@ SULFIDES: tuple[HeteroUnit, ...] = (
         smiles="[*]CCSS[*]",
         subfamily="polysulfide",
         monomers=("1,2-dichloroethane", "sodium disulfide"),
-        availability=Availability.COMMERCIAL,
+        availability=Availability.REPORTED,
         scale=Scale.CATALOGUE,
         melt=Melt.ELASTOMER,
-        common_name="Thiokol A",
-        note="the first synthetic rubber sold in the United States; the S-S bond is the cure "
-             "site, not a defect",
+        note="the S-S bond is the cure site, not a defect, which is why the backbone gate "
+             "exempts it. This is NOT Thiokol A: the rubber sold under that name is the "
+             "ethylene *tetra*sulfide from sodium tetrasulfide, (C2H4S4)n, and a chain of "
+             "different sulfur rank is a different material. The disulfide-rank ethylene "
+             "polysulfide written here is a real polymer that nobody sells",
     ),
     HeteroUnit(
         name="poly(oxydiethylene formal disulfide)",
@@ -934,10 +1054,13 @@ COMMERCIAL_IMIDES: dict[tuple[str, str], str] = {
     ("BPDA", "PPD"): "Upilex-S",
     ("BPDA", "ODA"): "Upilex-R",
     ("BPADA", "MPD"): "Ultem 1000 (polyetherimide)",
-    ("BTDA", "MDA"): "Larc-TPI / thermoset polyimide matrix",
 }
 
 REPORTED_IMIDES: dict[tuple[str, str], str] = {
+    # LARC-TPI is BTDA with 3,3'-diaminobenzophenone, not with MDA; this pair is the
+    # BTDA/MDA polyimide of the adhesive and laminating literature and is reported
+    # rather than sold under a name anyone would recognise.
+    ("BTDA", "MDA"): "the BTDA/MDA thermoset polyimide",
     ("PMDA", "PPD"): "the all-para polyimide; infusible and insoluble",
     ("6FDA", "PPD"): "a gas-separation membrane polyimide",
     ("6FDA", "ODA"): "a gas-separation membrane polyimide",
@@ -960,8 +1083,8 @@ REPORTED_IMIDES: dict[tuple[str, str], str] = {
 #: is a hydrazine, an N-O a hydroxylamine, an O-S a sulfenate, and all of them
 #: are redox chemistry rather than polymerisation.
 #:
-#: Two bonds are deliberately absent.  **S-S stays**, because the Thiokols are
-#: commercial sealants whose disulfide is the cure site.  **Si-O stays**,
+#: Two bonds are deliberately absent.  **S-S stays**, because Thiokol LP is a
+#: commercial sealant whose disulfide is the cure site.  **Si-O stays**,
 #: because it is the backbone of every silicone.  A gate written as "two
 #: heteroatoms in a row" would have taken out both, which is how a plausible
 #: rule deletes two real families.
@@ -999,7 +1122,8 @@ _NO_HOMOPOLYMER: dict[str, str] = {
 #: An allyl ether is not here and must not be: allyl groups transfer rather than
 #: propagate (Odian 3-9c), which is exactly why allyl glycidyl ether is sold as
 #: a *latent* cure site and its homopolymer is linear.  A vinyl on silicon is
-#: not here either, for the same reason: VMQ silicone is made with it in place.
+#: not here either, for the same reason: VMQ silicone rubber is built with it in
+#: place, because it cures by hydrosilylation rather than by addition.
 _PENDANT_POLYMERISABLE: tuple[tuple[str, str], ...] = (
     ("[CX3]=[CX3][CX3](=[OX1])[OX2]", "an acrylic or methacrylic ester on the side group "
                                       "polymerises through the double bond under the same "
@@ -1089,8 +1213,8 @@ def _gate_backbone_heteroatom_pair(unit: HeteroUnit, mol: Any) -> tuple[str, str
                 "hydrazine, a hydroxylamine or a sulfenate depending on which it is; all of "
                 "them are redox reagents rather than polymer linkages, and a polymeric "
                 "peroxide in particular is an initiator that decomposes on warming. The "
-                "disulfide of the Thiokols and the siloxane bond of the silicones are "
-                "deliberately not in this list"
+                "disulfide of the liquid polysulfide sealants and the siloxane bond of the "
+                "silicones are deliberately not in this list"
             )
     return None
 
@@ -1120,6 +1244,56 @@ def _gate_unstrained_ring(unit: HeteroUnit, mol: Any) -> tuple[str, str] | None:
         "chair is as relaxed as the chain it would make, so the equilibrium sits on the "
         "monomer (Odian ch. 7). Tetrahydrofuran polymerises and tetrahydropyran does not; "
         "1,4-dioxane and thiane do not either, and all three sit in bottles as solvents"
+    )
+
+
+def _gate_five_ring_lactone(unit: HeteroUnit, mol: Any) -> tuple[str, str] | None:
+    """A gamma-lactone is the one ring size in the series that will not open.
+
+    This refuses the *monomer*, not the chain.  The chain is real - it is
+    poly(4-hydroxybutyrate), which ``condensation.py`` writes from the hydroxy
+    acid and which is sold as a bioresorbable - so a unit carrying a route other
+    than ``direct`` is exempt, exactly as the CO2 carbonates are exempt from the
+    cyclic-carbonate gate.  What has no route is opening gamma-butyrolactone.
+    """
+    if unit.route != "direct":
+        return None
+    path = _backbone_termini(mol)
+    if path is None or len(path) != 5:
+        return None
+    Chem = _rdkit()
+    if any(mol.GetAtomWithIdx(i).GetIsAromatic() for i in path):
+        return None
+    symbols = [mol.GetAtomWithIdx(i).GetSymbol() for i in path]
+    if any(s not in ("C", "O") for s in symbols):
+        return None
+    oxygens = [i for i in path if mol.GetAtomWithIdx(i).GetSymbol() == "O"]
+    if len(oxygens) != 1:
+        return None  # two backbone oxygens is a carbonate, and has its own gate
+    carbonyls = [
+        neighbour.GetIdx()
+        for neighbour in mol.GetAtomWithIdx(oxygens[0]).GetNeighbors()
+        if neighbour.GetAtomicNum() == 6 and _exocyclic_carbonyl(mol, neighbour.GetIdx())
+    ]
+    if len(carbonyls) != 1:
+        return None  # an ether oxygen, not an ester one
+    for first, second in zip(path, path[1:]):
+        bond = mol.GetBondBetweenAtoms(first, second)
+        if bond is None or bond.GetBondType() is not Chem.BondType.SINGLE:
+            return None
+    return "five-ring-lactone", (
+        "the monomer this repeat unit implies is a gamma-lactone, and the five-membered "
+        "lactone is the one ring size in the series that does not open: gamma-butyrolactone "
+        "has a ceiling temperature below room temperature and is shipped by the tanker as a "
+        "solvent rather than polymerised, and gamma-valerolactone is a fuel candidate for "
+        "the same reason. The four-ring (beta-propiolactone) and the six- and seven-rings "
+        "(delta-valerolactone, epsilon-caprolactone) all open and all three are polymers "
+        "people make. It can be forced below about -40 C with a specialised catalyst, and "
+        "the chain unzips back to monomer on warming, which is a recycling result rather "
+        "than a material. The chain itself is not the problem and is not refused anywhere "
+        "else: poly(4-hydroxybutyrate) is this chain, is bioresorbable and is sold, and "
+        "condensation.py writes it from the hydroxy acid. What is refused is the claim that "
+        "a gamma-lactone gives it"
     )
 
 
@@ -1308,6 +1482,7 @@ _GATES = (
     _gate_backbone_heteroatom_pair,
     _gate_pendant_polymerisable,
     _gate_unstrained_ring,
+    _gate_five_ring_lactone,
     _gate_cyclic_carbonate,
     _gate_aryl_carbamate,
     _gate_aryl_ether,
@@ -1368,6 +1543,10 @@ PROBES: tuple[HeteroUnit, ...] = (
     _probe("poly(1,4-dioxane)", "[*]OCCOCC[*]", "1,4-dioxane",
            "the standard counterexample to ring-opening: THF polymerises, THP and "
            "dioxane do not"),
+    _probe("poly(gamma-butyrolactone)", "[*]CCCC(=O)O[*]", "gamma-butyrolactone",
+           "the lactone series' own counterexample: the four-ring and the seven-ring "
+           "open and this one does not. condensation.py owns the lactones that do"),
+    _probe("poly(gamma-valerolactone)", "[*]C(C)CCC(=O)O[*]", "gamma-valerolactone"),
     _probe("poly(thiane)", "[*]CCCCCS[*]", "thiane (pentamethylene sulfide)"),
     _probe("poly(2-methyltetrahydrofuran)", "[*]C(C)CCCO[*]", "2-methyltetrahydrofuran"),
     _probe("poly(tetrahydrothiophene)", "[*]CCCCS[*]", "tetrahydrothiophene"),
@@ -1625,16 +1804,30 @@ def _proposals() -> Iterator[HeteroUnit]:
 def _built() -> tuple[tuple[HeteroUnit, ...], tuple[Refusal, ...]]:
     kept: list[HeteroUnit] = []
     refused: list[Refusal] = []
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     for proposal in (*_proposals(), *PROBES):
         verdict = gate(proposal)
         if verdict is not None:
             refused.append(verdict)
             continue
-        key = canonical(proposal.smiles)
-        if key is None or key in seen:  # pragma: no cover - the structure gate parses first
+        key = periodic_identity(proposal.smiles) or canonical(proposal.smiles)
+        if key is None:  # pragma: no cover - the structure gate parses first
             continue
-        seen.add(key)
+        if key in seen:
+            refused.append(
+                Refusal(
+                    proposal.name,
+                    proposal.smiles,
+                    "duplicate-cut",
+                    f"this is {seen[key]} written at a different bond - the same "
+                    "periodic chain, so the same material, and its canonical SMILES "
+                    "differs only because a repeat unit records where someone chose to "
+                    "cut it. Emitting both would put one polymer in the ranking twice "
+                    "under two names and double its share of the answer",
+                )
+            )
+            continue
+        seen[key] = proposal.name
         kept.append(proposal)
     return tuple(kept), tuple(refused)
 
@@ -1664,12 +1857,12 @@ def units() -> list[tuple[str, str]]:
 #: should be a failing test rather than a paragraph that went stale.
 MEASURED: dict[str, Any] = {
     #: Repeat units emitted, and structures built and refused.
-    "units": 171,
-    "refusals": 24,
+    "units": 170,
+    "refusals": 27,
     "subfamilies": {
         "polyurethane": 42,
         "polyimide": 36,
-        "aryl polyether": 35,
+        "aryl polyether": 34,
         "polyether": 23,
         "polycarbonate": 19,
         "polysiloxane": 7,
@@ -1678,34 +1871,34 @@ MEASURED: dict[str, Any] = {
         "lactone polyester": 1,
         "aryl polysulfide": 1,
     },
-    #: 39 polymers that are or have been sold, 40 made and published, 92 pairs
-    #: nobody appears to have run.  Every monomer in all 171 is purchasable: 77
-    #: units are built entirely from commodities and 94 need a catalogue chemical.
-    "availability": {"commercial": 39, "reported": 40, "constructible": 92},
-    "monomer_scale": {"bulk": 77, "catalogue": 94},
-    #: 99 have a melt, 42 are polyurethane hard segments, 21 polyimides
+    #: 35 polymers that are or have been sold, 44 made and published, 91 pairs
+    #: nobody appears to have run.  Every monomer in all 170 is purchasable: 77
+    #: units are built entirely from commodities and 93 need a catalogue chemical.
+    "availability": {"commercial": 35, "reported": 44, "constructible": 91},
+    "monomer_scale": {"bulk": 77, "catalogue": 93},
+    #: 98 have a melt, 42 are polyurethane hard segments, 21 polyimides
     #: decompose first, 9 are silicones or liquid polysulfides that are never
     #: thermoplastic.
     "melt": {
-        "melt processable": 99,
+        "melt processable": 98,
         "hard segment of a block copolymer": 42,
         "not melt processable": 21,
         "fluid or cured elastomer, not melt processed": 9,
     },
     #: Silicon or sulfur, so the density and Tg experts will refuse them.
-    "outside_element_budget": 35,
+    "outside_element_budget": 34,
     #: All eight of the bundled reference polymers this family owed, by
     #: canonical SMILES against canonical SMILES, and no polymer belonging to
     #: another module's family.
     "rediscovered": 8,
-    #: ``PolymerFeasibilityExpert`` scores 144 of 171 and has no route for 27
+    #: ``PolymerFeasibilityExpert`` scores 143 of 170 and has no route for 27
     #: (see :data:`NO_FEASIBILITY_ROUTE`).  Scores run 2.05 to 6.56 with a
-    #: median of 3.34, against poly(ethylene terephthalate) at 2.50 - higher
+    #: median of 3.35, against poly(ethylene terephthalate) at 2.50 - higher
     #: than the condensation family's 2.42 and rightly so, because half of this
     #: module needs a C1 unit, an equilibration or a 300 C dipolar aprotic
     #: solvent that a polyester does not.
-    "feasibility_scored": 144,
+    "feasibility_scored": 143,
     "feasibility_refused": 27,
-    "feasibility_median": 3.34,
+    "feasibility_median": 3.35,
     "feasibility_max": 6.56,
 }

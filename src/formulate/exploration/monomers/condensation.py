@@ -19,14 +19,26 @@ What this module is careful about
 ---------------------------------
 **It gates.**  A grammar that emits syntactically valid nonsense is worse than
 57 real entries, because the nonsense fills the ranking and buries the
-candidates that can exist.  Five things are refused, and every one of them names
-the reaction that happens *instead* of polymerisation rather than calling the
-combination unusual.  Three act on pairs and remove **64** of the 350 the
-templates would otherwise write - :data:`GATE_ETHYLENEDIAMINE` (14),
-:data:`GATE_PHENOL_ALIPHATIC_ACID` (30), :data:`GATE_ARYLAMINE_ALIPHATIC_ACID`
-(20) - and :func:`refusals` returns them with their reason, so a test can assert
-on what the grammar will not say.  Two remove a monomer from the library
-outright: :data:`GATE_MALONIC` and :data:`GATE_ALPHA_AMINO`.
+candidates that can exist.  Seven things are refused, and every one of them
+names the reaction that happens *instead* of polymerisation, with its ring size
+where the competitor is a ring, rather than calling the combination unusual.
+Five act on pairs and remove **100** of the 350 the templates would otherwise
+write - :data:`GATE_PHENOL_ALIPHATIC_ACID` (30), :data:`GATE_CYCLIC_IMIDE` (22),
+:data:`GATE_ARYLAMINE_ALIPHATIC_ACID` (20), :data:`GATE_ETHYLENEDIAMINE` (14),
+:data:`GATE_PROPANEDIAMINE` (14) - and :func:`refusals` returns them with their
+reason, so a test can assert on what the grammar will not say.  Two remove a
+monomer from the library outright: :data:`GATE_MALONIC` and
+:data:`GATE_ALPHA_AMINO`.
+
+Three of the five pair gates name one competing ring, as does
+:data:`GATE_ALPHA_AMINO`, and the ring sizes are the whole argument: five- and
+six-membered rings close in preference to chain growth, which is Carothers'
+rule, and seven-membered ones do not.  That is why
+the commercial AA+BB nylon series starts at 1,4-butanediamine and at adipic acid
+and not one carbon short of either - a shorter diamine closes an amidine on the
+amide it just made, a shorter diacid closes an imide - and why the same two
+diacids are perfectly good on the ester side, where the ring that closes is an
+anhydride and an anhydride goes on reacting.
 
 **It says what is real.**  Every unit carries an :class:`Availability`, written
 into the name, separating polymers that are sold (PET, nylon-6,6, Kevlar) from
@@ -51,10 +63,10 @@ they were fitted over.
 
 Measured on this installation
 -----------------------------
-:func:`units` returns **307** repeat units: 110 polyesters, 176 polyamides, 11
-AB polyesters and 10 AB polyamides.  **35** are polymers that are or have been
-sold, **28** have been made and published, and **244** are constructible pairs
-nobody appears to have made; 195 are built from two commodity monomers and 112
+:func:`units` returns **271** repeat units: 110 polyesters, 140 polyamides, 11
+AB polyesters and 10 AB polyamides.  **34** are polymers that are or have been
+sold, **29** have been made and published, and **208** are constructible pairs
+nobody appears to have made; 168 are built from two commodity monomers and 103
 need at least one catalogue chemical.
 
 *Rediscovery.*  Of the 57 bundled reference polymers, **12** belong to this
@@ -69,23 +81,25 @@ spellings score 2.20 on ``PolymerFeasibilityExpert``, from the same
 caprolactone - and :func:`periodic_key` is phase-invariant so that a caller
 deduplicating against the bundled file does not count that polymer twice.
 
-*Feasibility.*  Run through ``PolymerFeasibilityExpert``, **307 of 307** units
+*Feasibility.*  Run through ``PolymerFeasibilityExpert``, **271 of 271** units
 get a polymerisation route and a score; none is refused.  Scores run 1.80 to
 4.42 with a median of 2.42, against poly(ethylene terephthalate) at 2.50 -
-which is the right answer, since every unit here is made by the same
-polycondensation PET is.  Only 16 units score above 3.0 and 14 of those are the
-isophorone-diamine polyamides, all at 4.42.  That number is the Ertl fragment
-prior charging a gem-dimethyl cycloaliphatic diamine for being unusual in
+which is the right answer, since every unit here but the eighteen oxalates and
+oxamides is made by the same polycondensation PET is, and those are made the
+same way from the oxalate diester (:data:`OXALATE_ROUTE`).  Only 14 units score
+above 3.0 and 12 of those are the isophorone-diamine polyamides, all at 4.42.
+That number is the Ertl fragment prior charging a gem-dimethyl cycloaliphatic
+diamine for being unusual in
 ChEMBL, not a statement about isophorone diamine, which is made at roughly
-100 kt/yr for epoxy curing and for isophorone diisocyanate.  It is reported
+100 kt/yr.  It is reported
 rather than corrected, because correcting it would mean fitting the expert to
 this library.
 
-*What the panel then refuses.*  **67 of 307** get no glass transition, because
+*What the panel then refuses.*  **63 of 271** get no glass transition, because
 the Tg group-contribution table has no coefficient for the furan ring, the
 1,4-cyclohexylene ring or the isophorone skeleton.  That is the engine refusing
 rather than guessing, which is the correct direction to fail in, but it is not
-free: the default missing-objective policy penalises, so those 67 candidates
+free: the default missing-objective policy penalises, so those 63 candidates
 enter the ranking handicapped for a reason that is about the table rather than
 about the polymer.
 
@@ -235,6 +249,17 @@ AB_AMIDE = "[*]N{core}C(=O)[*]"
 #: that silently dropped them would hide that from the search rather than let
 #: it be measured.  Azelaic acid is in fact a commodity - it is ozonolysed from
 #: oleic acid - and nylon-6,9 was sold.
+#:
+#: Oxalic acid is kept and is the one diacid here whose *free acid* is not the
+#: reagent: it decomposes to CO2 and formic acid around 190 C, below where a
+#: melt polycondensation runs.  The polymers are real anyway - poly(ethylene
+#: oxalate) and the nylon-n,2 polyoxamides are a published family - because they
+#: are made from dimethyl or dibutyl oxalate by transesterification or
+#: aminolysis instead.  :data:`OXALATE_ROUTE` says so on every unit it touches,
+#: because the reconstruction downstream will hand back oxalic acid and that is
+#: not the bottle you would order.  Nothing cyclises here: an oxamide would have
+#: to close a four-membered ring, which is why the C2 diacid escapes the imide
+#: gate the C4 and C5 ones do not.
 DIACIDS: tuple[Monomer, ...] = (
     Monomer("oxalic acid", "", Scale.BULK, code="2"),
     Monomer("succinic acid", "CC", Scale.BULK, code="4"),
@@ -260,6 +285,35 @@ DIACIDS: tuple[Monomer, ...] = (
     Monomer("furan-2,5-dicarboxylic acid", "c1ccc(o1)", Scale.CATALOGUE, code="F", aromatic=True),
 )
 
+#: Succinic and glutaric acid are kept as *diols'* partners and refused as
+#: *diamines'*, and the asymmetry is the whole chemistry of the C4/C5 diacids.
+#: Once one carboxyl of a succinic unit has become an amide, the second one is
+#: three atoms from the amide nitrogen: it closes to the N-substituted
+#: succinimide, a five-membered ring, and glutaric closes the same way to the
+#: six-membered glutarimide.  Both rings are what you get when you heat the
+#: diacid with a primary amine on purpose - that *is* the standard synthesis of
+#: an N-alkylsuccinimide - and a nylon-salt melt runs at 210-280 C with the
+#: water pulled off, which is the same condition.  The ring caps the chain end
+#: it forms on, and a mid-chain one cleaves the backbone: it is the aspartyl
+#: succinimide that cuts peptides at Asn-Gly, one ring size up from nothing.
+#:
+#: The ester side is untouched because the ester analogue is not a dead end.
+#: An oxygen closing on the second carboxyl gives succinic *anhydride*, which
+#: is still an acylating agent and still reacts on with the diol - which is why
+#: poly(butylene succinate) is sold by the kilotonne while no AA+BB polyamide
+#: anyone has sold uses a diacid shorter than adipic.  Adipic is where the imide
+#: would have to be seven-membered, and that is the whole reason the commercial
+#: nylon series starts there.
+#:
+#: An acid chloride at 0 C would reach these polyamides, since the ring needs
+#: the heat.  That route is real and it is how the aramids below are made, but
+#: it is not run for an aliphatic nylon, so it does not rescue the pair here.
+GATE_CYCLIC_IMIDE = (
+    "succinic or glutaric acid with any diamine: the second carboxyl closes onto "
+    "the amide nitrogen to give the N-substituted succinimide or glutarimide, "
+    "which caps the chain end it forms on"
+)
+
 #: Malonic acid is the one member of the linear series that is deliberately
 #: absent, and it is absent for a reason a search should not have to rediscover:
 #: a carboxyl beta to a second carbonyl decarboxylates, and malonic acid does
@@ -273,6 +327,15 @@ DIACIDS: tuple[Monomer, ...] = (
 GATE_MALONIC = (
     "malonic acid and its amide analogue: a carboxyl beta to a second carbonyl "
     "decarboxylates near 140 C, below any melt polycondensation"
+)
+
+#: Carried on every oxalate and oxamide unit.  It is not a caveat about whether
+#: the polymer exists - poly(ethylene oxalate) does - but about which bottle the
+#: route starts from, which is the one thing a structure-only reconstruction
+#: downstream cannot tell you.
+OXALATE_ROUTE = (
+    "made from dimethyl or dibutyl oxalate, not from oxalic acid, which "
+    "decomposes below polycondensation temperature"
 )
 
 
@@ -351,9 +414,18 @@ GATE_PHENOL_ALIPHATIC_ACID = (
 #: stop (nylon-12,12 is the last one anyone has sold) and because the longer a
 #: methylene run gets the more the chain behaves like polyethylene with
 #: occasional amides, which the engine can already reach from the short members.
+#: It *starts* at C2 even though the C2 and C3 members are refused by the gates
+#: below, so that the refusal is a statement the grammar makes rather than a
+#: monomer quietly missing from a list.
 #: m-Xylylenediamine earns its place by being the monomer of nylon-MXD6, the
-#: barrier polyamide, and isophorone diamine by being the standard way of
-#: making a polyamide transparent.
+#: barrier polyamide.  Isophorone diamine earns its place as a commodity
+#: cycloaliphatic diamine - roughly 100 kt/yr, for epoxy curing and for
+#: isophorone diisocyanate - whose gem-dimethyl ring cannot pack into a crystal,
+#: which is the structural trick the transparent polyamides use.  It is not the
+#: diamine they are actually built from: Trogamid is trimethylhexamethylene-
+#: diamine and Grilamid TR is bis(4-amino-3-methylcyclohexyl)methane, neither of
+#: which is here, so the isophorone polyamides in this library are constructible
+#: and are labelled that way rather than being sold as the transparent nylons.
 DIAMINES: tuple[Monomer, ...] = (
     Monomer("1,2-ethanediamine", "CC", Scale.BULK, code="2", adjective="ethylene"),
     Monomer("1,3-propanediamine", "CCC", Scale.BULK, code="3", adjective="trimethylene"),
@@ -425,14 +497,31 @@ GATE_ARYLAMINE_ALIPHATIC_ACID = (
 #: 2-substituted imidazoline, which is a five-membered aromatic ring and a chain
 #: terminator.  That reaction is run deliberately, at scale, to make imidazoline
 #: surfactants, and it is the reason there is no commercial nylon-2,n.
-#:
-#: 1,3-Propanediamine has the same problem one ring size up (a
-#: tetrahydropyrimidine) and is *kept*, because it is markedly slower and
-#: nylon-3,n polyamides have been made and published.  That is the honest
-#: boundary of this gate and it is stated rather than hidden.
 GATE_ETHYLENEDIAMINE = (
     "1,2-ethanediamine with any diacid: the second nitrogen closes onto the amide "
     "and dehydrates to a 2-substituted imidazoline, which terminates the chain"
+)
+
+#: 1,3-Propanediamine is refused for the same reason one ring size up, and the
+#: ring size is the argument rather than an aggravation of it.  Its cyclisation
+#: product is a 2-substituted 1,4,5,6-tetrahydropyrimidine, a *six*-membered
+#: amidine, and six-membered rings are the ones Carothers found form in
+#: preference to chain growth - the same rule that puts the alpha-amino acids
+#: out through the diketopiperazine.  Refusing the five-ring and keeping the
+#: six-ring would have had the rule backwards.
+#:
+#: The corroboration is negative and worth stating as such: the commercial
+#: AA+BB nylon series starts at 1,4-butanediamine (PA46), and no nylon-3,n
+#: appears in the tables below under any supplier or any paper, while
+#: 2-substituted tetrahydropyrimidines are made deliberately from
+#: 1,3-diaminopropane and a carboxylic acid at 150-200 C - melt-polycondensation
+#: conditions.  A low-temperature acid-chloride route would give the polyamide,
+#: since the amidine needs the dehydration, but that route is not run for an
+#: aliphatic nylon and it is not counted here.
+GATE_PROPANEDIAMINE = (
+    "1,3-propanediamine with any diacid: the second nitrogen closes onto the amide "
+    "and dehydrates to a 2-substituted tetrahydropyrimidine, the six-membered "
+    "amidine, which terminates the chain"
 )
 
 
@@ -460,9 +549,10 @@ HYDROXY_ACIDS: tuple[tuple[str, str, Availability, str, str, Scale], ...] = (
     (
         "3-hydroxyvaleric acid",
         "C(CC)C",
-        Availability.COMMERCIAL,
-        "PHV",
-        "sold only as the PHBV copolymer",
+        Availability.REPORTED,
+        "P3HV",
+        "bacterial polyester; the homopolymer is published but only the PHBV "
+        "copolymer is sold, so this is not a product",
         Scale.CATALOGUE,
     ),
     (
@@ -554,9 +644,9 @@ COMMERCIAL_POLYESTERS: dict[tuple[str, str], str] = {
     ("1,4-cyclohexanedimethanol", "terephthalic acid"): "PCT",
     ("1,4-cyclohexanedimethanol", "1,4-cyclohexanedicarboxylic acid"): "PCCD",
     ("1,4-butanediol", "succinic acid"): "PBS",
-    ("1,4-butanediol", "adipic acid"): "PBA",
+    ("1,4-butanediol", "adipic acid"): "PBA polyol",
     ("ethylene glycol", "adipic acid"): "PEA polyol",
-    ("1,6-hexanediol", "adipic acid"): "PHA polyol",
+    ("1,6-hexanediol", "adipic acid"): "hexanediol adipate polyol",
     ("neopentyl glycol", "adipic acid"): "NPG adipate polyol",
     ("neopentyl glycol", "isophthalic acid"): "powder-coating polyester",
     ("bisphenol A", "terephthalic acid"): "polyarylate",
@@ -604,10 +694,27 @@ REPORTED_POLYAMIDES: dict[tuple[str, str], str] = {
     ("m-xylylenediamine", "sebacic acid"): "nylon-MXD10",
 }
 
+#: The adipate polyols are sold, which is why they are COMMERCIAL, but they are
+#: sold as hydroxyl-terminated oligomers for polyurethane rather than as
+#: thermoplastics in their own right.  A ranking that reads "commercial" off the
+#: label and expects a moulding resin would be misreading it.
+_POLYOL_NOTE = (
+    "sold as a hydroxyl-terminated oligomer for polyurethane, not as a "
+    "high-molar-mass thermoplastic"
+)
+
 #: Notes attached to specific pairs where the availability flag alone would
 #: mislead.  A homopolymer that melts above its own decomposition temperature is
 #: not a material, however commercial its name is.
 PAIR_NOTES: dict[tuple[str, str], str] = {
+    ("ethylene glycol", "adipic acid"): _POLYOL_NOTE,
+    ("1,4-butanediol", "adipic acid"): _POLYOL_NOTE,
+    ("1,6-hexanediol", "adipic acid"): _POLYOL_NOTE,
+    ("neopentyl glycol", "adipic acid"): _POLYOL_NOTE,
+    ("neopentyl glycol", "isophthalic acid"): (
+        "sold as a saturated coating resin: the linear diol-terminated chain, "
+        "usually copolymerised with terephthalic acid and branched with a triol"
+    ),
     ("1,6-hexanediamine", "terephthalic acid"): (
         "the homopolymer melts near 370 C, above where it decomposes; PA6T is sold "
         "only as a copolymer"
@@ -682,8 +789,12 @@ def _gate(partner: Monomer, diacid: Monomer, *, amide: bool) -> str | None:
     if amide:
         if partner.name == "1,2-ethanediamine":
             return GATE_ETHYLENEDIAMINE
+        if partner.name == "1,3-propanediamine":
+            return GATE_PROPANEDIAMINE
         if partner.aromatic and not diacid.aromatic:
             return GATE_ARYLAMINE_ALIPHATIC_ACID
+        if diacid.name in ("succinic acid", "glutaric acid"):
+            return GATE_CYCLIC_IMIDE
     else:
         if partner.aromatic and not diacid.aromatic:
             return GATE_PHENOL_ALIPHATIC_ACID
@@ -748,6 +859,9 @@ def _polyesters() -> Iterator[CondensationUnit]:
             availability, common = _availability(
                 key, COMMERCIAL_POLYESTERS, REPORTED_POLYESTERS, ""
             )
+            note = PAIR_NOTES.get(key, "")
+            if diacid.name == "oxalic acid":
+                note = f"{note}; {OXALATE_ROUTE}" if note else OXALATE_ROUTE
             yield CondensationUnit(
                 name=name,
                 smiles=POLYESTER.format(partner=diol.core, acid=diacid.core),
@@ -755,7 +869,7 @@ def _polyesters() -> Iterator[CondensationUnit]:
                 subfamily="polyester",
                 monomers=(diol.name, diacid.name),
                 common_name=common,
-                note=PAIR_NOTES.get(key, ""),
+                note=note,
                 monomer_scale=_scale(diol, diacid),
             )
 
@@ -771,6 +885,9 @@ def _polyamides() -> Iterator[CondensationUnit]:
             availability, common = _availability(
                 key, COMMERCIAL_POLYAMIDES, REPORTED_POLYAMIDES, _nylon_code(diamine, diacid)
             )
+            note = PAIR_NOTES.get(key, "")
+            if diacid.name == "oxalic acid":
+                note = f"{note}; {OXALATE_ROUTE}" if note else OXALATE_ROUTE
             yield CondensationUnit(
                 name=name,
                 smiles=POLYAMIDE.format(partner=diamine.core, acid=diacid.core),
@@ -778,7 +895,7 @@ def _polyamides() -> Iterator[CondensationUnit]:
                 subfamily="polyamide",
                 monomers=(diamine.name, diacid.name),
                 common_name=common,
-                note=PAIR_NOTES.get(key, ""),
+                note=note,
                 monomer_scale=_scale(diamine, diacid),
             )
 

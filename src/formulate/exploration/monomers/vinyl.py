@@ -18,8 +18,8 @@ The gates are not decoration.  :func:`refusals` returns the proposals the
 grammar built and then refused, each with the reason, and the probe set at the
 bottom of this module exists so that the refusals are exercised rather than
 asserted: allyl alcohol, divinylbenzene, 1,1-diphenylethylene, vinyl bromide,
-2-butene, trichloroethylene, hexafluoropropylene, acrolein and vinyl isocyanate
-are all built here and all refused.
+2-butene, trichloroethylene, hexafluoropropylene, acrolein, 4-vinylphenol,
+styrenesulfonic acid and vinyl isocyanate are all built here and all refused.
 
 Three deliberate positions, because each looks like a bug otherwise:
 
@@ -36,11 +36,19 @@ to rigid rod-like polymers (Otsu's poly(dialkyl fumarate)s), and they are the
 only family here where a name can be put to the polymer.
 
 *Poly(vinyl alcohol), poly(vinylamine) and poly(4-hydroxystyrene) are emitted,
-but vinyl alcohol and vinylamine are not monomers.*  Those three polymers are
-made by hydrolysing a polymer - poly(vinyl acetate), poly(N-vinylformamide),
-poly(4-acetoxystyrene) - so they carry ``route="post-polymerisation"`` and the
-free-monomer gate refuses the same structures when anything proposes them as
-direct polymerisations.
+but vinyl alcohol, vinylamine and 4-vinylphenol are not monomers you can buy in
+a bottle.*  The first two tautomerise and the third polymerises on standing, so
+it is sold only as a dilute solution.  All three polymers are made by
+hydrolysing a polymer instead - poly(vinyl acetate), poly(N-vinylformamide),
+poly(4-acetoxystyrene) - so they carry ``route="post-polymerisation"``, and the
+free-monomer gate refuses all three structures, the vinylphenols included, when
+anything proposes them as direct polymerisations.
+
+``availability`` is a fact about the *monomer*; ``product`` is a fact about the
+*polymer*.  A catalogue monomer does not make a polymer anybody ships, and a
+ranking that cannot tell "you could make this" from "you can buy this" answers
+the wrong question.  :data:`COMMERCIAL_POLYMERS` carries the second claim, keyed
+to the grade or trade name that makes it checkable.
 
 Elements are confined to the set the density and Tg models were fitted over
 (:data:`ELEMENT_BUDGET`), which is why poly(vinyl bromide), poly(methyl vinyl
@@ -48,10 +56,12 @@ sulfide) and the styrenesulfonates - all real - are absent and listed as
 refusals rather than quietly dropped.
 
 Measured on this installation.  137 repeat units, of which 40 have a commodity
-monomer, 94 a catalogue monomer and 3 a monomer you would have to have made.
-38 of the 57 bundled reference polymers are vinyl-family and all 38 are
-regenerated, canonical SMILES against canonical SMILES.  All 24 probes are
-refused.  ``PolymerFeasibilityExpert`` scores all 137 and refuses none, median
+monomer, 94 a catalogue monomer and 3 a monomer you would have to have made; 37
+of the 137 are sold as polymers and the other 100 are constructible.  38 of the
+57 bundled reference polymers are vinyl-family and all 38 are regenerated,
+canonical SMILES against canonical SMILES.  All 26 probes are refused, and none
+of them can reach :func:`units` even if one stops being refused.
+``PolymerFeasibilityExpert`` scores all 137 and refuses none, median
 2.00 on its 1-to-10 scale, 120 at or below 3.0; the ten above 3.5 are the two
 exceptions this module argues for (the fumarates charged 3.5 for
 1,2-substitution, the itaconates 3.0 for gem bulk), alpha-methylstyrene's
@@ -63,7 +73,7 @@ and that disagreement is worth leaving visible.
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterator
 
 #: Elements the downstream models were fitted over.  This mirrors
@@ -107,6 +117,13 @@ class RepeatUnit:
     #: means the chain is made from a different monomer and converted afterwards,
     #: which is the only honest way to write poly(vinyl alcohol).
     route: str = "direct"
+    #: The product that makes this a polymer somebody *sells*, or "" for a unit
+    #: that is merely constructible.  :data:`availability` is a fact about the
+    #: monomer and answers a different question: 2-methylstyrene and vinyl
+    #: laurate are both catalogue monomers, and neither poly(2-methylstyrene)
+    #: nor poly(vinyl laurate) is an article of commerce.  A ranking that cannot
+    #: tell the two apart will happily return the second as "the best polymer".
+    product: str = ""
     note: str = ""
 
 
@@ -156,13 +173,15 @@ class Group:
     note: str = ""
 
 
-#: Alkyl substituents: the polyolefins, from 1-alkenes by coordination
-#: catalysis.  Radical initiation gives only oligomer here - the allylic
-#: hydrogen transfers - so every one of these needs a Ziegler-Natta or
-#: metallocene catalyst, which is a fact about the plant rather than about the
-#: structure and so is not charged.  2-ethylhexyl is deliberately absent: it
-#: appears below as an ester alcohol, because the alkene that would put it
-#: directly on the backbone is 3-ethyl-1-heptene, which nobody sells.
+#: Alkyl substituents: the polyolefins.  Radical initiation gives only oligomer
+#: here - the allylic hydrogen transfers - so the 1-alkenes need a Ziegler-Natta
+#: or metallocene catalyst and the two 1,1-dialkyl members of the alpha-methyl
+#: column, isobutylene and 2-methyl-1-butene, need a cationic one instead, since
+#: coordination catalysis does not touch a 1,1-dialkylethylene.  Which of the
+#: two it is is a fact about the plant rather than about the structure, so
+#: neither is charged.  2-ethylhexyl is deliberately absent: it appears below as
+#: an ester alcohol, because the alkene that would put it directly on the
+#: backbone is 3-ethyl-1-heptene, which nobody sells.
 _ALKYL: tuple[Group, ...] = (
     Group("C", "alkyl", "polypropylene", "propylene", "commodity",
           ("polyisobutylene", "isobutylene"), "commodity"),
@@ -449,6 +468,56 @@ _POST_POLYMERISATION: tuple[RepeatUnit, ...] = (
 )
 
 
+#: The units that are sold *as polymers*, each keyed to the product that makes
+#: the claim checkable rather than to a bare True.  The bar is deliberately one
+#: a reader can argue with: the homopolymer is bought under a grade or a trade
+#: name.  Everything not listed here is constructible from a monomer somebody
+#: sells, which is a much weaker claim and is the one :data:`availability`
+#: makes.  Absence is therefore not a statement that the polymer is unreal -
+#: poly(N-isopropylacrylamide) and the poly(dialkyl fumarate)s are real and are
+#: not listed - only that nobody ships it.
+COMMERCIAL_POLYMERS: dict[str, str] = {
+    "polyethylene": "every grade from LDPE to UHMWPE",
+    "polypropylene": "isotactic PP",
+    "polyisobutylene": "BASF Oppanol B; butyl rubber is its copolymer with isoprene",
+    "poly(1-butene)": "isotactic PB-1, LyondellBasell Toppyl, hot-water pipe",
+    "poly(4-methyl-1-pentene)": "Mitsui TPX",
+    "poly(1-decene)": "the polyalphaolefin base oils, sold as oligomer rather than as "
+                      "high polymer",
+    "polystyrene": "GPPS and HIPS",
+    "poly(alpha-methylstyrene)": "the AMS tackifier resins (Eastman Kristalex)",
+    "poly(4-hydroxystyrene)": "the 248 nm photoresist resin",
+    "poly(vinyl chloride)": "PVC",
+    "poly(vinylidene chloride)": "Saran",
+    "poly(vinyl fluoride)": "Tedlar film",
+    "poly(vinylidene fluoride)": "Arkema Kynar, Solvay Solef",
+    "polytetrafluoroethylene": "Teflon PTFE",
+    "poly(chlorotrifluoroethylene)": "Daikin Neoflon PCTFE, 3M Kel-F",
+    "polyacrylonitrile": "acrylic fibre and the carbon-fibre precursor",
+    "poly(acrylic acid)": "Lubrizol Carbopol; the superabsorbents are its crosslinked salt",
+    "polyacrylamide": "the SNF and Kemira flocculants",
+    "poly(methyl methacrylate)": "Perspex, Plexiglas, Lucite",
+    "poly(ethyl methacrylate)": "Lucite Elvacite 2042",
+    "poly(n-butyl methacrylate)": "Lucite Elvacite 2044",
+    "poly(isobutyl methacrylate)": "Lucite Elvacite 2045",
+    "poly(2-hydroxyethyl methacrylate)": "the poly-HEMA soft contact lens hydrogel",
+    "poly(vinyl acetate)": "the wood-glue and gum-base homopolymer",
+    "poly(vinyl alcohol)": "Kuraray Poval, Sekisui Selvol",
+    "poly(vinylamine)": "BASF Lupamin",
+    "poly(N-vinylpyrrolidone)": "Ashland PVP K-grades, BASF Luvitec",
+    "poly(N-vinylcaprolactam)": "BASF Luvicap",
+    "poly(N-vinylcarbazole)": "Luvican M170, the photoconductor",
+    "poly(methyl vinyl ether)": "BASF Lutonal M",
+    "poly(ethyl vinyl ether)": "BASF Lutonal A",
+    "poly(isobutyl vinyl ether)": "BASF Lutonal I",
+    "1,4-polybutadiene": "BR, the tyre and HIPS-toughening rubber",
+    "1,4-polyisoprene": "synthetic IR (Goodyear Natsyn); natural rubber is the same chain",
+    "polychloroprene": "Neoprene, Arlanxeo Baypren",
+    "1,2-polybutadiene": "JSR RB, the syndiotactic 1,2 grade",
+    "3,4-polyisoprene": "the high-3,4 tread rubbers",
+}
+
+
 # --------------------------------------------------------------------------
 # Gates
 # --------------------------------------------------------------------------
@@ -617,6 +686,34 @@ def _acylated(mol: Any, atom: Any) -> bool:
     return False
 
 
+def _aromatic_hydroxyl(mol: Any, atom: Any) -> bool:
+    """True when this ring atom belongs to a ring system carrying a free phenol.
+
+    The ring is walked rather than pattern-matched on one atom because the
+    hydroxyl of a vinylphenol need not sit on the carbon the vinyl is attached
+    to - ortho, meta and para are all the same monomer problem - and because a
+    fused system (a vinylnaphthol) is the same problem again.
+    """
+    seen: set[int] = set()
+    stack = [atom.GetIdx()]
+    while stack:
+        idx = stack.pop()
+        if idx in seen:
+            continue
+        seen.add(idx)
+        current = mol.GetAtomWithIdx(idx)
+        for bond in current.GetBonds():
+            neighbour = bond.GetOtherAtom(current)
+            # Aromatic *bonds*, not aromatic atoms: the single bond of a
+            # biphenyl joins two ring systems, and a hydroxyl on the far ring of
+            # one is a different molecule's problem.
+            if bond.GetIsAromatic():
+                stack.append(neighbour.GetIdx())
+            elif neighbour.GetAtomicNum() == 8 and neighbour.GetTotalNumHs() > 0:
+                return True
+    return False
+
+
 def _gate_free_monomer(unit: RepeatUnit, mol: Any) -> tuple[str, str] | None:
     """An -OH or a free amine on the backbone means the monomer is an enol or enamine."""
     if unit.route == "post-polymerisation":
@@ -626,6 +723,14 @@ def _gate_free_monomer(unit: RepeatUnit, mol: Any) -> tuple[str, str] | None:
         return None
     for idx in path:
         for neighbour in _off_path(mol, idx, path):
+            if neighbour.GetIsAromatic() and _aromatic_hydroxyl(mol, neighbour):
+                return "free-monomer", (
+                    "the monomer would be a vinylphenol. The ring hydroxyl initiates the "
+                    "monomer's own double bond, so 4-vinylphenol polymerises in the bottle "
+                    "and is sold only as a dilute solution, never neat; the real chain is "
+                    "made by polymerising 4-acetoxystyrene and hydrolysing it afterwards, "
+                    "which is what the post-polymerisation records in this module say"
+                )
             element = neighbour.GetAtomicNum()
             if element == 8 and neighbour.GetTotalNumHs() > 0:
                 kind = "an enol"
@@ -880,6 +985,11 @@ PROBES: tuple[RepeatUnit, ...] = (
                "vinyl alcohol", "probe", "literature"),
     RepeatUnit("poly(vinylamine) proposed as a direct polymerisation", "[*]CC(N)[*]",
                "vinylamine", "probe", "literature"),
+    RepeatUnit("poly(4-hydroxystyrene) proposed as a direct polymerisation",
+               "[*]CC(c1ccc(O)cc1)[*]", "4-vinylphenol", "probe", "literature"),
+    RepeatUnit("poly(sodium styrenesulfonate) as the free acid",
+               "[*]CC(c1ccc(S(=O)(=O)O)cc1)[*]", "4-styrenesulfonic acid", "probe",
+               "commodity"),
     RepeatUnit("poly(allyl alcohol)", "[*]CC(CO)[*]", "allyl alcohol", "probe", "commodity"),
     RepeatUnit("poly(allyl acetate)", "[*]CC(COC(C)=O)[*]", "allyl acetate", "probe",
                "commercial"),
@@ -984,11 +1094,22 @@ def _proposals() -> Iterator[RepeatUnit]:
 
 
 @functools.lru_cache(maxsize=1)
-def _built() -> tuple[tuple[RepeatUnit, ...], tuple[Refusal, ...]]:
+def _built() -> tuple[tuple[RepeatUnit, ...], tuple[Refusal, ...], tuple[RepeatUnit, ...]]:
+    """The library, the refusals, and any probe that got past the gates.
+
+    The probes are gated in a loop of their own rather than concatenated onto
+    the proposals, because a probe is a structure this module asserts is *not* a
+    polymer: if a gate regresses, the old arrangement shipped it to the ranker
+    under a name like "poly(vinyl bromide)" and the only thing standing between
+    that and a search result was a test remembering to look.  Now a probe that
+    escapes goes in the third tuple, where :func:`escapes` and a test can find
+    it, and never into :func:`units`.
+    """
     kept: list[RepeatUnit] = []
     refused: list[Refusal] = []
+    escaped: list[RepeatUnit] = []
     seen: dict[str, str] = {}
-    for proposal in (*_proposals(), *PROBES):
+    for proposal in _proposals():
         verdict = gate(proposal)
         if verdict is not None:
             refused.append(verdict)
@@ -999,8 +1120,14 @@ def _built() -> tuple[tuple[RepeatUnit, ...], tuple[Refusal, ...]]:
         if key in seen:
             continue
         seen[key] = proposal.name
-        kept.append(proposal)
-    return tuple(kept), tuple(refused)
+        kept.append(replace(proposal, product=COMMERCIAL_POLYMERS.get(proposal.name, "")))
+    for candidate in PROBES:
+        verdict = gate(candidate)
+        if verdict is None:
+            escaped.append(candidate)
+        else:
+            refused.append(verdict)
+    return tuple(kept), tuple(refused), tuple(escaped)
 
 
 def records() -> list[RepeatUnit]:
@@ -1011,6 +1138,16 @@ def records() -> list[RepeatUnit]:
 def refusals() -> list[Refusal]:
     """Every structure the grammar built and then refused, with the reason."""
     return list(_built()[1])
+
+
+def escapes() -> list[RepeatUnit]:
+    """Probes that got past every gate.  Non-empty means a gate has regressed."""
+    return list(_built()[2])
+
+
+def commercial() -> list[RepeatUnit]:
+    """The units somebody sells as a polymer, as opposed to merely being able to make."""
+    return [record for record in _built()[0] if record.product]
 
 
 def units() -> list[tuple[str, str]]:

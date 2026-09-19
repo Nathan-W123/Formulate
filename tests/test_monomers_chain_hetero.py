@@ -48,10 +48,12 @@ from formulate.exploration.monomers.chain_hetero import (
     OXETANE,
     PARA,
     PHENYLENE_OXIDE,
+    SAME_CHAIN_TWICE,
     Availability,
     HeteroUnit,
     Melt,
     Scale,
+    periodic_identity,
     records,
     refusals,
     units,
@@ -235,6 +237,85 @@ def test_polycaprolactone_is_the_one_deliberate_overlap_with_condensation():
     assert shared == {condensation.periodic_key(bundled)}
 
 
+def test_no_two_units_are_the_same_chain_written_at_two_cuts():
+    """Canonical SMILES is an identity for a molecule, not for a chain.
+
+    A repeat unit records where someone chose to cut a periodic chain, so
+    ``-O-A-O-B-`` and ``-O-B-O-A-`` are one polymer with two canonical SMILES.
+    The bisphenol x dihaloarene grid reaches both spellings of one chain, and
+    emitting both would put that material in a ranking twice under two names -
+    which is worse than missing it, because it doubles its share of the answer.
+    """
+    by_chain = collections.defaultdict(list)
+    for name, smiles in units():
+        by_chain[periodic_identity(smiles)].append(name)
+    assert None not in by_chain, "a unit has no readable chain identity"
+    twice = {chain: names for chain, names in by_chain.items() if len(names) > 1}
+    assert not twice, list(twice.values())
+    assert len(by_chain) == len(units())
+
+
+def test_the_duplicate_cut_the_grid_actually_reaches_is_the_named_one():
+    """Named rather than discovered, so that a second one fails loudly.
+
+    4,4'-dihydroxybenzophenone with 4,4'-dichlorodiphenyl sulfone writes the same
+    chain as bisphenol S with 4,4'-difluorobenzophenone: SNAr does not care which
+    half of the pair arrived carrying the halide, so the grid reaches the chain
+    from both corners.  Both routes are real; only one name reaches the ranking.
+    """
+    dropped, kept = SAME_CHAIN_TWICE
+    names = {r.name for r in records()}
+    assert kept in names and dropped not in names
+    refusal = next(r for r in refusals() if r.name == dropped)
+    assert refusal.gate == "duplicate-cut"
+    assert kept in refusal.reason
+    assert periodic_identity(refusal.smiles) == periodic_identity(
+        next(r.smiles for r in records() if r.name == kept)
+    )
+    # ...and the two canonical SMILES really do differ, which is why canonical
+    # deduplication could not have caught it.
+    assert canon(refusal.smiles) != canon(
+        next(r.smiles for r in records() if r.name == kept)
+    )
+
+
+def test_periodic_identity_forgets_the_cut_and_nothing_else():
+    """The two polycaprolactone spellings agree; two real polymers do not."""
+    assert periodic_identity("[*]CCCCCC(=O)O[*]") == periodic_identity("[*]OCCCCCC(=O)[*]")
+    assert periodic_identity("[*]CCO[*]") != periodic_identity("[*]CCCO[*]")
+    # A two-atom backbone has no ring to close and no cut left to choose, so the
+    # canonical SMILES already is the identity.
+    assert periodic_identity("[*]CO[*]") == periodic_identity("[*]OC[*]")
+    assert periodic_identity("[*][Si](C)(C)O[*]") == periodic_identity("[*]O[Si](C)(C)[*]")
+    assert periodic_identity("c1ccccc1") is None
+
+
+def test_a_monomer_that_is_sold_is_not_a_polymer_that_is_sold():
+    """Three places the two are easy to confuse, and all three say reported.
+
+    Allyl glycidyl ether, methylvinyldichlorosilane and sodium disulfide are all
+    bought in bulk, and in every case what is sold is a *copolymer* carrying a
+    few per cent of the unit, or a chain of a different sulfur rank.  Calling the
+    homopolymer commercial would be the claim a ranking cannot check.
+    """
+    by_name = {r.name: r for r in records()}
+    for name, must_say in (
+        ("poly(allyl glycidyl ether)", "termonomer"),
+        ("poly(methylvinylsiloxane)", "VMQ"),
+        ("poly(ethylene disulfide)", "tetra"),
+    ):
+        record = by_name[name]
+        assert record.availability is Availability.REPORTED, name
+        assert must_say in record.note, name
+        assert "commercial" not in record.label
+    # The rubber sold as Thiokol A is the tetrasulfide, so no unit may claim it.
+    assert not any("Thiokol A" in label for label, _ in units())
+    # LARC-TPI is BTDA with 3,3'-diaminobenzophenone, which is not a diamine in
+    # this library, so no unit may claim that name either.
+    assert not any("Larc" in label or "LARC" in label for label, _ in units())
+    assert by_name["poly(BTDA-MDA imide)"].availability is Availability.REPORTED
+
+
 def test_the_named_high_performance_polymers_are_reachable_by_name():
     """PEEK, Udel, Radel, Lexan, Kapton and Ultem, because they are the point.
 
@@ -280,6 +361,7 @@ def test_every_gate_has_at_least_one_refusal_to_its_name():
     fired = collections.Counter(r.gate for r in refusals())
     assert set(fired) == {
         "unstrained-ring",
+        "five-ring-lactone",
         "cyclic-carbonate",
         "aryl-carbamate",
         "aryl-ether",
@@ -287,6 +369,9 @@ def test_every_gate_has_at_least_one_refusal_to_its_name():
         "pendant-polymerisable",
         "backbone-bond",
         "no-homopolymer",
+        # Not a chemistry gate: the library-level check that one polymer does not
+        # reach the ranking twice under two names.  See SAME_CHAIN_TWICE.
+        "duplicate-cut",
     }
     assert sum(fired.values()) == MEASURED["refusals"]
 
@@ -309,6 +394,9 @@ def test_nothing_the_library_proposes_is_refused():
         "poly(HDI-bisphenol A urethane)",
         "poly(IPDI-bisphenol A urethane)",
         "poly(H12MDI-bisphenol A urethane)",
+        # Not refused for being unmakeable - refused for being the polymer two
+        # rows above it, written at the other cut.
+        SAME_CHAIN_TWICE[0],
     }
     surprises = [r for r in refusals() if r.name not in expected]
     assert not surprises, [(r.name, r.gate, r.reason) for r in surprises]
@@ -347,6 +435,10 @@ def test_nothing_the_library_proposes_is_refused():
         # A peroxide is an initiator and a hydrazine is a reducing agent.
         ("ethylene peroxide", "[*]CCOO[*]", "backbone-bond"),
         ("ethylene hydrazine", "[*]CCNNCC[*]", "backbone-bond"),
+        # The five-membered lactone is the gap in the series: the four-ring and
+        # the seven-ring open, gamma-butyrolactone is a solvent.
+        ("gamma-butyrolactone", "[*]CCCC(=O)O[*]", "five-ring-lactone"),
+        ("gamma-valerolactone", "[*]C(C)CCC(=O)O[*]", "five-ring-lactone"),
         # Curated: real rings, real compounds, no homopolymer.
         ("2-methyltetrahydrofuran", "[*]C(C)CCCO[*]", "no-homopolymer"),
         ("tetrahydrothiophene", "[*]CCCCS[*]", "no-homopolymer"),
@@ -371,6 +463,13 @@ def test_the_gate_that_fires_is_the_right_one(name, smiles, gate):
         # commercial, bioresorbable monomer and shares the gate's ring size.
         ("trimethylene carbonate", "[*]OC(=O)OCCC[*]"),
         ("epsilon-caprolactone", "[*]CCCCCC(=O)O[*]"),
+        # The lactones either side of the five-ring, which both open: the strain
+        # of the four-ring pays for it and the seven-ring is strained again.
+        ("beta-propiolactone", "[*]CCC(=O)O[*]"),
+        ("delta-valerolactone", "[*]CCCCC(=O)O[*]"),
+        # A five-atom backbone with one oxygen and no ester: an ether, not a
+        # lactone, and tetrahydrofuran is the monomer the whole family starts at.
+        ("tetrahydrofuran again", "[*]CCCCO[*]"),
         # The S-S of the Thiokols and the Si-O of the silicones are the two
         # heteroatom-heteroatom bonds that are real polymer linkages.
         ("Thiokol A", "[*]CCSS[*]"),
@@ -422,6 +521,34 @@ def test_the_co2_route_is_what_admits_poly_propylene_carbonate():
         r.name == "poly(propylene carbonate)" and r.gate == "cyclic-carbonate"
         for r in refusals()
     )
+
+
+def test_the_five_ring_lactone_gate_refuses_the_monomer_and_not_the_chain():
+    """poly(4-hydroxybutyrate) is this chain, is sold, and is not refused anywhere.
+
+    The gate's claim is about gamma-butyrolactone, which does not open, and not
+    about the polymer it would give if it did: ``condensation.py`` writes the
+    same chain from 4-hydroxybutyric acid and it is a bioresorbable product. A
+    unit carrying a route other than ``direct`` is therefore exempt, which is the
+    device the CO2 carbonates already use.
+    """
+    from formulate.exploration.monomers import condensation
+
+    smiles = "[*]CCCC(=O)O[*]"
+    direct = hetero.gate(probe("gamma-butyrolactone", smiles))
+    assert direct is not None and direct.gate == "five-ring-lactone"
+    assert "4-hydroxybutyrate" in direct.reason
+    assert hetero.gate(probe("from the hydroxy acid", smiles, route="hydroxy acid")) is None
+
+    # ...and the chain really is one condensation.py emits, at its own cut.
+    elsewhere = [
+        n
+        for n, s in condensation.units()
+        if condensation.periodic_key(s) == condensation.periodic_key(smiles)
+    ]
+    assert elsewhere, "condensation.py no longer writes poly(4-hydroxybutyrate)"
+    # This module does not write it, so the two families still share one chain only.
+    assert smiles not in {s for _, s in units()}
 
 
 def test_the_curated_refusal_table_parses():

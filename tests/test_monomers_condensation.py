@@ -40,6 +40,7 @@ from formulate.exploration.monomers.condensation import (
     DIAMINES,
     DIOLS,
     DIPHENOLS,
+    OXALATE_ROUTE,
     POLYAMIDE,
     POLYESTER,
     Scale,
@@ -176,7 +177,7 @@ def test_only_the_alpha_substituted_polyesters_are_handed():
     assert handed == {
         "poly(lactic acid) (PLA, commercial)",
         "poly(3-hydroxybutyric acid) (PHB, commercial, catalogue monomer)",
-        "poly(3-hydroxyvaleric acid) (PHV, commercial, catalogue monomer)",
+        "poly(3-hydroxyvaleric acid) (P3HV, reported, catalogue monomer)",
     }
 
 
@@ -257,7 +258,7 @@ def test_the_aramids_are_reachable():
 def test_refusals_are_specific_and_are_actually_refused():
     """Every refused pair names a reason and is absent from the output."""
     listed = refusals()
-    assert len(listed) == 64
+    assert len(listed) == 100
     emitted = {canonical(s) for _, s in units()}
     partners = {m.name: m for m in DIOLS + DIPHENOLS + DIAMINES + AROMATIC_DIAMINES}
     acids = {m.name: m for m in DIACIDS}
@@ -294,6 +295,86 @@ def test_no_ethylenediamine_polyamide_is_emitted():
     # ...and ethylene glycol, the same carbon skeleton with oxygen, is not
     # refused: poly(ethylene terephthalate) is the most made polyester there is.
     assert canonical(POLYESTER.format(partner="CC", acid="c1ccc(cc1)")) in emitted
+
+
+def test_no_propanediamine_polyamide_is_emitted():
+    """The second nitrogen closes to a six-membered amidine, the easier ring.
+
+    This is the gate that has to be argued from ring size rather than from
+    speed: refusing the five-membered imidazoline from 1,2-ethanediamine and
+    keeping the six-membered tetrahydropyrimidine from 1,3-propanediamine would
+    have had Carothers' rule backwards, since six is the ring that closes best.
+    """
+    emitted = {canonical(s) for _, s in units()}
+    for acid in DIACIDS:
+        would_be = POLYAMIDE.format(partner="CCC", acid=acid.core)
+        assert canonical(would_be) not in emitted, acid.name
+    # ...and 1,3-propanediol, the same skeleton with oxygen, is not refused:
+    # poly(trimethylene terephthalate) is sold as Sorona.
+    assert canonical(POLYESTER.format(partner="CCC", acid="c1ccc(cc1)")) in emitted
+
+
+def test_no_succinamide_or_glutaramide_is_emitted():
+    """A C4 or C5 diacid closes an imide onto the amide it just made.
+
+    The asymmetry with the ester side is the point and is asserted here: the
+    same two diacids are kept for the diols, because the ring an oxygen closes
+    is the anhydride and an anhydride goes on acylating.  Poly(butylene
+    succinate) is sold by the kilotonne; no AA+BB polyamide anyone has sold
+    uses a diacid shorter than adipic.
+    """
+    emitted = {canonical(s) for _, s in units()}
+    for amine in DIAMINES + AROMATIC_DIAMINES:
+        for core in ("CC", "CCC"):  # succinic, glutaric
+            would_be = POLYAMIDE.format(partner=amine.core, acid=core)
+            assert canonical(would_be) not in emitted, f"{amine.name} + C{len(core) + 2}"
+    assert canonical(POLYESTER.format(partner="CCCC", acid="CC")) in emitted  # PBS
+    assert canonical(POLYESTER.format(partner="CC", acid="CCC")) in emitted
+
+
+def test_adipic_is_where_the_imide_stops_being_a_ring():
+    """The gate is a ring-size rule, so the first acid that escapes it is named.
+
+    Adipic acid's imide would be seven-membered and does not close, which is
+    why nylon-6,6 exists and nylon-6,4 does not.  If this ever fails the gate
+    has become a blanket ban on short diacids instead of an argument.
+    """
+    emitted = {canonical(s) for _, s in units()}
+    assert canonical(POLYAMIDE.format(partner="CCCCCC", acid="CCCC")) in emitted
+    assert canonical(POLYAMIDE.format(partner="CCCCCC", acid="")) in emitted  # oxamide
+
+
+def test_the_oxalates_name_the_bottle_they_are_made_from():
+    """Every oxalate and oxamide says it starts from the diester, not the acid.
+
+    Oxalic acid decomposes below polycondensation temperature, so the
+    reconstruction downstream - which hands back the free acid, because that is
+    what the structure says - would send someone to the wrong shelf.  The
+    polymers are real; the route is the caveat, and it is carried on the unit.
+    """
+    oxalates = [u for u in catalogue() if "oxalic acid" in u.monomers]
+    assert len(oxalates) == 18, len(oxalates)
+    for unit in oxalates:
+        assert OXALATE_ROUTE in unit.note, unit.name
+
+
+def test_no_homopolymer_sold_only_as_a_copolymer_is_called_commercial():
+    """COMMERCIAL has to mean the polymer is sold, not that its family is.
+
+    Poly(3-hydroxyvalerate) is the case that motivated this: it is bought only
+    inside PHBV, and a ranking that reads "commercial" off the label would be
+    told a product exists that does not.  Any unit whose own note says it is
+    sold only copolymerised has to be REPORTED, and the note is the place the
+    contradiction shows up, so the note is what this reads.
+    """
+    for unit in catalogue():
+        note = unit.note.lower()
+        if "only" in note and "copolymer" in note:
+            assert unit.availability is not Availability.COMMERCIAL, unit.name
+    by_name = {u.name: u for u in catalogue()}
+    assert by_name["poly(3-hydroxyvaleric acid)"].availability is Availability.REPORTED
+    assert by_name["poly(6-hydroxy-2-naphthoic acid)"].availability is Availability.REPORTED
+    assert by_name["poly(lactic acid)"].availability is Availability.COMMERCIAL
 
 
 def test_no_phenol_is_paired_with_an_aliphatic_diacid():
