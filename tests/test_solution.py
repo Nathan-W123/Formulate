@@ -312,23 +312,54 @@ def test_a_dope_can_be_proposed_at_all():
 
 
 @requires_rdkit
-def test_a_truncated_draw_spans_chemistries_not_dilutions():
-    """Concentration is the outermost loop, so twenty draws are twenty
-    polymers rather than twenty dilutions of the first one in the file."""
+def test_a_truncated_draw_spans_every_axis():
+    """The bug this replaced, and it produced a whole false finding.
+
+    The first version nested the loops - concentration, then solvent, then
+    chain length, then chemistry - with fifty solvents in the second position
+    and over five hundred repeat units in the fourth. A draw of two and a half
+    THOUSAND never reached a second solvent: every candidate was in water,
+    which the Orrick-Erbar viscosity correlation refuses outright because it is
+    built on a carbon count and water has no carbon. The run came back
+    reporting 2500 candidates whose viscosity could not be predicted, which
+    reads as a finding about polymers and was a finding about loop order.
+
+    The product is now walked diagonally first, so a truncated draw spans
+    solvents, concentrations, chain lengths and chemistries together.
+    """
     from formulate.exploration.solutions import PolymerSolutionExplorer
 
-    proposed = PolymerSolutionExplorer().propose(_mixture_spec(), 20)
-    units = {
-        c.polymer.monomers[0].smiles
-        for cand in proposed
-        for c in cand.mixture.components
-        if c.polymer is not None
-    }
-    fractions = {
-        c.fraction for cand in proposed for c in cand.mixture.components if c.polymer is not None
-    }
+    proposed = PolymerSolutionExplorer().propose(_mixture_spec(), 60)
+
+    solvents, units, masses, fractions = set(), set(), set(), set()
+    for candidate in proposed:
+        for component in candidate.mixture.components:
+            if component.polymer is not None:
+                units.add(component.polymer.monomers[0].smiles)
+                masses.add(component.polymer.number_average_molar_mass.to("kg/mol").value)
+                fractions.add(component.fraction)
+            else:
+                solvents.add(component.molecule.smiles)
+
+    # Every axis moves inside sixty draws, and the solvent axis - the one that
+    # was stuck - moves most, because it is the longest.
+    assert len(solvents) >= 20
     assert len(units) >= 10
-    assert len(fractions) == 1
+    assert len(masses) == 4
+    assert len(fractions) == 4
+
+
+@requires_rdkit
+def test_the_spread_ordering_drops_nothing():
+    """Reordering a product must not shrink it."""
+    from itertools import product
+
+    from formulate.exploration.solutions import _spread
+
+    axes = (("a", "b"), (1, 2, 3), ("x", "y", "z", "w"))
+    spread = list(_spread(*axes))
+    assert len(spread) == len(set(spread)) == 2 * 3 * 4
+    assert set(spread) == set(product(*axes))
 
 
 @requires_rdkit

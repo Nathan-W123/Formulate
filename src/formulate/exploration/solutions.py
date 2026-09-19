@@ -15,6 +15,10 @@ The axes are three and they are not interchangeable:
   because in a melt chain length also sets the viscosity
 * **which solvent and how much**, which decides whether it is a fluid at all
 
+The cross product is walked DIAGONALLY rather than as nested loops, so a
+pool that gets cut off still spans every axis - see ``_spread``, and the
+two-and-a-half-thousand-candidate run in water that produced it.
+
 Concentration is swept low, because that is where a solution dope lives.
 Above about a third the solution is a gel rather than a liquid and the
 viscosity climbs out of any pressure a person can carry; below a few per cent
@@ -96,6 +100,43 @@ def _repeat_units() -> list[tuple[str, str]]:
     return units
 
 
+def _spread(*axes):
+    """The cross product, ordered so a truncated draw spans every axis.
+
+    Nested loops were the first version and they are wrong for a pool that
+    gets cut off. With fifty solvents in the second loop and five hundred
+    repeat units in the fourth, a draw of two thousand five hundred never
+    reached a second solvent: every candidate was in WATER, which the
+    Orrick-Erbar viscosity correlation refuses outright because it is built on
+    a carbon count and water has no carbon. The run reported two and a half
+    thousand candidates whose viscosity could not be predicted, and read like
+    a finding about polymers when it was a finding about loop order.
+
+    This walks the product diagonally first - taking index k from every axis at
+    once, so after a handful of draws every solvent, every concentration and
+    every chain length has appeared - and only then fills in the rest. Nothing
+    is dropped; the ordering changes and the set does not.
+    """
+    lengths = [len(a) for a in axes]
+    if not lengths or any(n == 0 for n in lengths):
+        return
+    seen: set[tuple[int, ...]] = set()
+    for step in range(max(lengths)):
+        index = tuple(step % n for n in lengths)
+        if index in seen:
+            continue
+        seen.add(index)
+        yield tuple(axis[i] for axis, i in zip(axes, index))
+
+    from itertools import product
+
+    for index in product(*(range(n) for n in lengths)):
+        if index in seen:
+            continue
+        seen.add(index)
+        yield tuple(axis[i] for axis, i in zip(axes, index))
+
+
 class PolymerSolutionExplorer(Explorer):
     """Proposes polymer-in-solvent dopes across chemistry, chain length and concentration."""
 
@@ -148,63 +189,54 @@ class PolymerSolutionExplorer(Explorer):
         units = _repeat_units()
         solvents = self.solvents()
 
-        # Concentration outermost, then solvent, then chain length, then
-        # chemistry. A truncated draw then spans chemistries rather than
-        # returning sixteen dilutions of the first polymer in the file.
-        for fraction in self.mass_fractions:
-            for solvent_name, solvent_smiles in solvents:
-                for mass in self.molar_masses:
-                    for polymer_name, repeat in units:
-                        for tacticity in self._tacticities(repeat):
-                            if len(out) >= count:
-                                return out
-                            components = (
-                                MixtureComponent(
-                                    role=ComponentRole.SOLUTE,
-                                    fraction=fraction,
-                                    polymer=PolymerSpec(
-                                        monomers=(MonomerUnit(smiles=repeat),),
-                                        tacticity=tacticity,
-                                        number_average_molar_mass=Quantity(
-                                            value=mass, unit="kg/mol"
-                                        ),
-                                    ),
-                                ),
-                                MixtureComponent(
-                                    role=ComponentRole.SOLVENT,
-                                    fraction=1.0 - fraction,
-                                    molecule=MoleculeSpec(smiles=solvent_smiles),
-                                ),
-                            )
-                            label = (
-                                f"{fraction:.0%} {polymer_name} {mass:g} kg/mol "
-                                f"in {solvent_name}"
-                            )
-                            if tacticity is not Tacticity.UNSPECIFIED:
-                                label = f"{label}, {tacticity.value}"
-                            candidate = Candidate(
-                                material_class=MaterialClass.MIXTURE,
-                                mixture=MixtureSpec(
-                                    components=components, basis=FractionBasis.MASS
-                                ),
-                                conditions=spec.conditions,
-                                generation_strategy=self.id,
-                                label=label,
-                                provenance=ProvenanceRecord(
-                                    kind=ProvenanceKind.RETRIEVAL,
-                                    producer=self.id,
-                                    producer_version=self.version,
-                                    parameters={
-                                        "polymer": polymer_name,
-                                        "solvent": solvent_name,
-                                        "mass_fraction": fraction,
-                                        "number_average_molar_mass_kg_mol": mass,
-                                        "tacticity": tacticity.value,
-                                    },
-                                ),
-                            )
-                            if candidate.structure_id in seen:
-                                continue
-                            seen.add(candidate.structure_id)
-                            out.append(candidate)
+        for fraction, (solvent_name, solvent_smiles), mass, (polymer_name, repeat) in _spread(
+            self.mass_fractions, solvents, self.molar_masses, units
+        ):
+            for tacticity in self._tacticities(repeat):
+                if len(out) >= count:
+                    return out
+                components = (
+                    MixtureComponent(
+                        role=ComponentRole.SOLUTE,
+                        fraction=fraction,
+                        polymer=PolymerSpec(
+                            monomers=(MonomerUnit(smiles=repeat),),
+                            tacticity=tacticity,
+                            number_average_molar_mass=Quantity(value=mass, unit="kg/mol"),
+                        ),
+                    ),
+                    MixtureComponent(
+                        role=ComponentRole.SOLVENT,
+                        fraction=1.0 - fraction,
+                        molecule=MoleculeSpec(smiles=solvent_smiles),
+                    ),
+                )
+                label = (
+                    f"{fraction:.0%} {polymer_name} {mass:g} kg/mol in {solvent_name}"
+                )
+                if tacticity is not Tacticity.UNSPECIFIED:
+                    label = f"{label}, {tacticity.value}"
+                candidate = Candidate(
+                    material_class=MaterialClass.MIXTURE,
+                    mixture=MixtureSpec(components=components, basis=FractionBasis.MASS),
+                    conditions=spec.conditions,
+                    generation_strategy=self.id,
+                    label=label,
+                    provenance=ProvenanceRecord(
+                        kind=ProvenanceKind.RETRIEVAL,
+                        producer=self.id,
+                        producer_version=self.version,
+                        parameters={
+                            "polymer": polymer_name,
+                            "solvent": solvent_name,
+                            "mass_fraction": fraction,
+                            "number_average_molar_mass_kg_mol": mass,
+                            "tacticity": tacticity.value,
+                        },
+                    ),
+                )
+                if candidate.structure_id in seen:
+                    continue
+                seen.add(candidate.structure_id)
+                out.append(candidate)
         return out
