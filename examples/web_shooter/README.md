@@ -1213,6 +1213,108 @@ spun. It does not say whether the fibre it produces reaches 300 MPa or holds a
 hanging load without cold-flowing, and the 106 lb above assumes the first of
 those.
 
+## Can the engine name the OPTIMAL fluid?
+
+No. It can rank, and it does, and the ranking is worth reading - but "optimal"
+is a stronger claim than anything here supports, and the engine's own output
+says why rather than leaving it to be assumed.
+
+`optimal.yaml` is the whole ask in one specification, which was not previously
+possible. Three things had to change first: a polymer can now be asked how hard
+it sticks (the Owens-Wendt split is predicted from polar surface area rather
+than looked up for nine polymers), whether it can be made (the repeat unit is
+reconstructed to its monomer and scored), and what it costs to push (the
+entrance pressure no longer vanishes with the die land). Eleven requirements,
+546 candidates, the geometry the sweep found.
+
+```
+formulate run examples/web_shooter/optimal.yaml --top 8
+python examples/web_shooter/robustness.py
+```
+
+### The ranking
+
+```
+Ranked 546 candidates (12 feasible, 534 infeasible)
+
+#1  poly(vinyl methyl ether) 400 kg/mol      [*]CC(OC)[*]
+#2  poly(1-butene) 400 kg/mol                [*]CC(CC)[*]
+#3  poly(alpha-methylstyrene) 20 kg/mol      [*]CC(C)(c1ccccc1)[*]
+#5  poly(methacrylonitrile) 2 kg/mol         [*]CC(C)(C#N)[*]
+```
+
+### Why that is not an optimum
+
+```
+12 feasible of 546 evaluated
+0 clear every hard bound robustly, i.e. one sigma the wrong way too
+
+requirements that hold only inside their own error bar:
+   extensional_strain_hardening      12 / 12
+   shear_thinning_ratio              12 / 12
+   terminal_relaxation_time          12 / 12
+   shear_viscosity                   12 / 12
+   work_of_separation                12 / 12
+   extrusion_pressure                 8 / 12
+```
+
+Not one of the twelve survives a single standard deviation in the unfavourable
+direction, and five requirements are marginal for **every** one of them. A
+ranking whose whole feasible set sits inside its own error bars is ordering
+noise, and the first entry beats the second by an amount smaller than either
+one's uncertainty.
+
+The relative one-sigma on the leader says where it comes from:
+
+```
+   shear_viscosity                      2515%   via polymer_melt
+   terminal_relaxation_time              100%   via spinline
+   extensional_strain_hardening           60%   via spinline
+   shear_thinning_ratio                   50%   via spinline
+   extrusion_pressure                     50%   via spinline
+   ...
+   glass_transition_temperature           14%   via polymer_tg
+   amorphous_density                       4%   via polymer_density
+```
+
+One number, and four of the five universally-marginal requirements are its
+children. The relaxation time is `eta0 / G_N`; strain hardening is that time
+against the spinline strain rate; the shear-thinning ratio is the zero-shear
+viscosity over the apparent one; the extrusion pressure is linear in it. So
+this is not five uncertain properties. It is one uncertain property, counted
+five times.
+
+That 2515% is a factor of ten in each direction and it is not a defect to be
+tuned away. It is what the universal WLF constants cost: checked against
+polystyrene at 200 C the form lands about an order of magnitude low, and
+`melt.py` says so rather than claiming better. Getting a real optimum out of
+this specification means cutting that bar, and there are only two ways to do
+it - measure the melt viscosity of the shortlist, or replace universal WLF
+constants with polymer-specific ones, which is the same thing done once per
+polymer instead of once per candidate.
+
+**So the engine's answer is a shortlist of four chemistries and an instruction:
+measure their melt viscosity at 200 C.** That is a smaller and more useful
+answer than a name, and it is the one the numbers support.
+
+### Three further reasons the word "optimal" does not apply
+
+**The search space is 57 repeat units.** Ranked over 57 chemistries, the best
+of 57 is what you get. The property predictors no longer need a lookup for
+anything on the gating path, so this limit is now the explorer's rather than
+the panel's - which is the one place left where "everything" could actually
+mean everything.
+
+**The leader would cold-flow.** Poly(vinyl methyl ether) has a glass transition
+near -31 C, so at room temperature under a hanging load it creeps. It is sold
+as an adhesive tackifier, which is exactly why it scores well on the
+requirement that is in the registry. Creep is not in the registry, so nothing
+penalised it. The engine is not wrong here; it answered the question it was
+asked, and the question was incomplete.
+
+**Tensile strength and chain orientation are also absent.** The 106 lb figure
+assumes a drawn fibre reaches 300 MPa. Nothing here establishes that.
+
 ## Verdict
 
 The engine handled the parts it covers and refused the rest legibly rather than
