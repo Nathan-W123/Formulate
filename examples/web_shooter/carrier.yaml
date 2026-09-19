@@ -1,0 +1,113 @@
+# The fluid half of a web shooter: what the cartridge actually holds.
+#
+# A web shooter cannot store a fibre - a fibre cannot be pumped. It stores a
+# polymer dissolved in a solvent and makes the fibre at the nozzle, which is
+# how cellulose acetate and acrylic fibres have been dry-spun since the 1920s.
+# So the solvent has three jobs at once, and this spec is one requirement per
+# job:
+#
+#   dissolve the strand polymer   -> solubility_red, from conditions.solutes
+#   wet whatever is being stuck   -> work_of_separation, from conditions.surfaces
+#   leave before the strand lands -> normal_boiling_point
+#
+# The three fight each other, which is the point of asking the engine rather
+# than picking a solvent by hand.
+name: web shooter carrier solvent (strand polymer = PMMA, target = steel)
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  # The thing the web has to stick to. One at a time: a work of adhesion is
+  # defined for one interface.
+  surfaces: [steel]
+  # The polymer the strand is made of, named rather than given as a Hansen
+  # window, so the engine supplies what "dissolves PMMA" implies.
+  solutes: [pmma]
+
+material_classes: [molecule]
+
+structural:
+  # No heavy halogens: this is fired from a wrist, next to skin, indoors.
+  forbidden_elements: [Cl, Br, I, S, P]
+  allow_charged: false
+  max_heavy_atoms: 12
+
+requirements:
+  # Has to actually be a solvent for the strand polymer, not a swelling agent.
+  # RED below 1 is inside the solubility sphere.
+  - property: solubility_red
+    direction: in_range
+    upper: 1.0
+    hard: true
+    rationale: a dope that is not a solution cannot be extruded as one phase
+
+  # Flash off between the nozzle and the wall. Too low and it boils in the
+  # cartridge on a warm day; too high and the strand arrives wet and slumps.
+  - property: normal_boiling_point
+    direction: in_range
+    lower: 50 degC
+    upper: 105 degC
+    hard: true
+    rationale: dry in flight, stable in a cartridge carried at body temperature
+
+  # Adhesion. This is the reversible work of separation, which is a screening
+  # proxy and not a peel strength - see the assumptions.
+  - property: work_of_separation
+    direction: maximize
+    lower: 0.060 N/m
+    upper: 0.110 N/m
+    weight: 3.0
+    rationale: the web is useless if it does not grip the target
+
+  # Low surface tension spreads the fluid on the target instead of beading it.
+  # It enters the spreading coefficient S = W - 2*gamma with the opposite sign
+  # to the work of adhesion, so it is asked for separately.
+  - property: surface_tension
+    direction: minimize
+    lower: 0.018 N/m
+    upper: 0.030 N/m
+    weight: 2.0
+    rationale: wet the target on contact rather than bead and roll off
+
+  # A cheap device wants a cheap fluid. There is no cost property in the
+  # registry, so this stands in for it - badly, and the assumption says so.
+  - property: synthetic_accessibility
+    direction: minimize
+    lower: 1
+    upper: 4
+    weight: 1.0
+    rationale: stand-in for bulk price, which the engine does not model
+
+assumptions:
+  - statement: >-
+      "High adhesion" was read as thermodynamic work of separation on one named
+      substrate. That is a screening quantity only: a real joint dissipates one
+      to three orders of magnitude more energy than the reversible work, and the
+      two are not related by a constant, so nothing here predicts how many
+      pounds a pad will hold.
+    source: inferred
+    made_by: operator
+    affects: [work_of_separation]
+  - statement: >-
+      The strand polymer was fixed as PMMA before the solvent was chosen,
+      because the solvent's first job is to dissolve it. PMMA was picked as the
+      one polymer that is both in the Hansen sphere table and in the chain
+      dimension table, so the strand spec can be scored end to end.
+    source: inferred
+    made_by: operator
+    affects: [solubility_red]
+  - statement: >-
+      Steel stands for "a lamp post, a railing, a car". Its tabulated surface
+      energy is for a surface in laboratory air with an adsorbed layer, not a
+      clean one, and carries a 15 mJ/m^2 spread that is surface state rather
+      than measurement precision.
+    source: default
+    made_by: operator
+    affects: [work_of_separation]
+  - statement: >-
+      Synthetic accessibility is being used as a price proxy. It scores how hard
+      a molecule is to make from scratch, which says almost nothing about what a
+      drum of a commodity solvent costs.
+    source: inferred
+    made_by: operator
+    affects: [synthetic_accessibility]
