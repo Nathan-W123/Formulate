@@ -787,7 +787,38 @@ own** - it has its crystalline component's, depressed by dilution, and the
 depression is carried as uncertainty because Flory's expression needs an
 interaction parameter this repository does not have.
 
-And one thing the blend spec cannot ask: **adhesion**. No expert serves
+### Is it a wax? Does it stretch?
+
+The first blend spec could not say, because moving to mixtures had quietly
+dropped `entanglement_molar_mass` - the only ductility axis the registry has,
+and the one that separates a polymer that draws under load from a wax that
+crumbles. It is served for a blend now, and not by averaging: a short chain
+does not join the network, it **dilutes** it, so the blend's entanglement mass
+is the entangling fraction's divided by how much of the blend that fraction is.
+
+| blend | blend Me | entanglements per chain | |
+|---|---|---|---|
+| 20k + 15% of 0.8k | 986 g/mol | 20.3x | stretches |
+| **20k + 30% of 0.8k** | **1197 g/mol** | **16.7x** | **stretches** |
+| 20k + 45% of 0.8k | 1523 g/mol | 13.1x | stretches |
+| 20k + 75% of 0.8k | 3351 g/mol | 6.0x | stretches |
+| 20k + 95% of 0.8k | 16756 g/mol | 1.2x | brittle, snaps |
+| 2k + 30% of 0.8k | 1197 g/mol | 1.7x | brittle, snaps |
+
+So the working blend is not a wax. 30% diluent leaves the backbone sixteen
+entanglements long, against the two a load-bearing network needs, and the wax
+only wins above about 90%. A blend with no entangling component at all is
+refused outright - "it is a wax, not a polymer, whatever its stiffness says" -
+which is a different answer from failing the requirement, and the two read
+differently on purpose.
+
+What this still does not establish is how far it stretches. Entanglement says a
+network exists, not that a specimen elongates by any particular percentage, and
+there is no elongation at break, yield stress or fracture toughness in the
+registry. A semicrystalline polymer also draws by crystal slip, which nothing
+here models - so the real ductility is under-described rather than predicted.
+
+And one thing the blend spec still cannot ask: **adhesion**. No expert serves
 `work_of_separation` for a mixture, so the blend is scored without the
 requirement the whole device rests on. That axis still only exists on the
 single-polymer spec.

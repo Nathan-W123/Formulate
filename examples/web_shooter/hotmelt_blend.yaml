@@ -54,6 +54,14 @@ requirements:
   upper: 1400 kg/m^3
   weight: 1.0
   rationale: metres of web per gram carried
+- property: entanglement_molar_mass
+  direction: in_range
+  upper: 10.0 kg/mol
+  hard: true
+  rationale: 'the question a blend has to answer: does it still stretch, or has
+    the diluent turned it into a wax. A short chain does not join the network, it
+    dilutes it, so this is the long fraction''s entanglement mass divided by how
+    much of the blend that fraction is'
 assumptions:
 - statement: 'The hot-melt route replaces cure with cooling, so the strand solidifies
     from a skin inward rather than by reacting through. Nothing in this spec models
@@ -68,15 +76,22 @@ assumptions:
   made_by: operator
   affects:
   - theoretical_strength
-- statement: Adhesion, the flaw-free strength bound and the entanglement mass are
-    dropped from the blend spec because no expert serves them for a mixture. Adhesion
-    in particular is the requirement the device rests on, and a blend is scored
-    without it here - the single-polymer spec is where that axis lives.
-  source: inferred
-  made_by: operator
 - statement: The blend is bimodal by construction - one chemistry at two chain lengths
     - so miscibility is not in question. A blend of two different polymers is usually
     immiscible and the expert refuses it, which is the physically correct default.
+  source: inferred
+  made_by: operator
+- statement: 'Entanglement molar mass is the only ductility axis the registry has,
+    and it is indirect: it says a chain tangles often enough to carry load through
+    a network, not that a specimen elongates by any particular percentage. A semicrystalline
+    polymer draws by crystal slip as well, which nothing here models, so the real
+    elongation is under-described rather than predicted.'
+  source: inferred
+  made_by: operator
+  affects:
+  - entanglement_molar_mass
+- statement: 'Adhesion is still absent: no expert serves work_of_separation for
+    a mixture, so the blend is scored without the requirement the device rests on.'
   source: inferred
   made_by: operator
 structural:

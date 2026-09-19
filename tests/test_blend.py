@@ -257,3 +257,40 @@ def test_the_explorer_declines_a_spec_that_did_not_ask_for_mixtures():
         }
     )
     assert PolymerBlendExplorer().propose(spec, 5) == []
+
+
+# -- does it still stretch, or has the diluent made a wax? -----------------
+
+
+@requires_rdkit
+def test_a_short_chain_dilutes_the_network_rather_than_joining_it():
+    """The question a blend has to answer. A wax of the same chemistry is
+    still a diluent: it pushes the surviving entanglements further apart."""
+    neat = _predict(_blend((PE, 20.0, 0.95), (PE, 0.8, 0.05)), "entanglement_molar_mass", 298.15)
+    cut = _predict(_blend((PE, 20.0, 0.55), (PE, 0.8, 0.45)), "entanglement_molar_mass", 298.15)
+    assert cut.quantity.value > neat.quantity.value, "more diluent, sparser network"
+
+
+@requires_rdkit
+def test_the_working_blend_is_a_polymer_and_not_a_wax():
+    """30% of a wax leaves the 20 kg/mol backbone many entanglements long,
+    which is what says it draws under load instead of snapping."""
+    prediction = _predict(_blend((PE, 20.0, 0.7), (PE, 0.8, 0.3)), "entanglement_molar_mass", 298.15)
+    entanglements = 20.0 / prediction.quantity.to_canonical().value
+    assert entanglements > 10.0
+
+
+@requires_rdkit
+def test_a_blend_of_nothing_but_short_chains_is_refused_as_having_no_network():
+    prediction = _predict(_blend((PE, 1.0, 0.7), (PE, 0.8, 0.3)), "entanglement_molar_mass", 298.15)
+    assert prediction.status is PredictionStatus.UNSUPPORTED
+    assert "wax, not a polymer" in " ".join(prediction.notes)
+
+
+@requires_rdkit
+def test_drowning_the_backbone_in_wax_loses_the_network():
+    """Not a refusal - a number that fails the requirement, which is the
+    difference between 'cannot say' and 'says no'."""
+    prediction = _predict(_blend((PE, 20.0, 0.05), (PE, 0.8, 0.95)), "entanglement_molar_mass", 298.15)
+    entanglements = 20.0 / prediction.quantity.to_canonical().value
+    assert entanglements < 2.0

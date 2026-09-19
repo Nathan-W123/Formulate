@@ -68,11 +68,31 @@ MELT_PROPERTIES = frozenset({"shear_viscosity", "surface_tension"})
 
 #: Properties of the blend *as a solid*, wanted at the temperature of use.
 SOLID_PROPERTIES = frozenset(
-    {"youngs_modulus", "glass_transition_temperature", "melting_point", "amorphous_density"}
+    {
+        "youngs_modulus",
+        "glass_transition_temperature",
+        "melting_point",
+        "amorphous_density",
+        "entanglement_molar_mass",
+    }
 )
 
 #: Both, for anything that needs to know what a blend can be asked.
 BLEND_PROPERTIES = MELT_PROPERTIES | SOLID_PROPERTIES
+
+#: Exponent in the entanglement dilution law, ``Me(phi) = Me / phi^alpha``.
+#:
+#: This is the rule that decides whether a blend is still a polymer or has
+#: become a wax, and it is why a blend cannot simply average its components'
+#: entanglement masses. A short chain does not join the network - it dilutes
+#: it, pushing the surviving entanglements further apart, exactly as a solvent
+#: does. So the blend's entanglement mass is the *entangling* fraction's,
+#: divided by how much of the blend that fraction is.
+#:
+#: The exponent is 1 for a theta diluent and about 1.3 in a good one. A low
+#: oligomer of the same chemistry as the matrix is the theta-like case, so 1 is
+#: used and the spread to 1.3 is carried as uncertainty.
+ENTANGLEMENT_DILUTION_EXPONENT = 1.0
 
 #: Hansen distance, MPa^0.5, beyond which two polymers are taken as immiscible.
 #: Polymer-polymer miscibility is far stricter than polymer-solvent: the
@@ -334,6 +354,44 @@ class _BlendExpert(Expert):
                 f"Reuss bound ({reuss/1e9:.2f} GPa, uniform stress). Where a real blend "
                 "falls between them is a question about morphology, which is not "
                 "predicted here, so the uncertainty spans the bounds"
+            )
+        elif prop == "entanglement_molar_mass":
+            masses = [
+                c.polymer.number_average_molar_mass.to_canonical().value
+                if c.polymer.number_average_molar_mass is not None
+                else None
+                for c in mixture.components
+            ]
+            if any(m is None for m in masses):
+                return Prediction.unsupported(
+                    prop, self.id,
+                    "a component states no molar mass, so whether it entangles at all "
+                    "cannot be decided, and it is that which sets the blend's network",
+                )
+            # Only components long enough to entangle are part of the network.
+            # The rest are diluent, however chemically identical they are.
+            entangling = [
+                (value, fraction)
+                for value, fraction, mass in zip(values, fractions, masses)
+                if mass >= 2.0 * value
+            ]
+            if not entangling:
+                return Prediction.unsupported(
+                    prop, self.id,
+                    "no component in this blend is long enough to entangle, so it has no "
+                    "load-bearing network at all: it is a wax, not a polymer, whatever "
+                    "its stiffness says",
+                )
+            network_fraction = sum(f for _, f in entangling)
+            base = min(v for v, _ in entangling)
+            value = base / network_fraction**ENTANGLEMENT_DILUTION_EXPONENT
+            high = base / network_fraction**1.3
+            spread = abs(high - value)
+            note = (
+                f"{network_fraction:.0%} of this blend is long enough to entangle; the "
+                f"rest dilutes the network rather than joining it, pushing the "
+                f"entanglement mass from {base*1e3:.0f} to {value*1e3:.0f} g/mol. A "
+                "short chain of the same chemistry is still a diluent"
             )
         elif prop == "glass_transition_temperature":
             value = fox_glass_transition(values, fractions)
