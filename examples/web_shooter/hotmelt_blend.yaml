@@ -1,0 +1,84 @@
+# The blend version of the hot-melt strand.
+#
+# The single-polymer spec next door found polyethylene at 5-8 kg/mol, and that
+# answer is forced rather than chosen: melt viscosity goes as the 3.4 power of
+# chain length, so the only chain thin enough to extrude is also the weakest
+# one that will still entangle. Strength and processability hang off one knob.
+#
+# A blend gives a second knob. The long fraction carries load, the short one
+# thins the melt, and the ratio sets where between them the blend lands. That
+# is what every hot-melt adhesive is, and it is what bimodal polyethylene is
+# inside one reactor.
+name: web shooter strand, hot melt blend
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  surfaces:
+  - steel
+material_classes:
+- mixture
+requirements:
+- property: shear_viscosity
+  direction: in_range
+  lower: 1.0 Pa*s
+  upper: 20.0 Pa*s
+  hard: true
+  conditions:
+    temperature: 200 degC
+  rationale: below 1 Pa.s the jet pinches off in centimetres, above 20 it will not
+    pass a 4.4 mm orifice at the 6 bar available
+- property: surface_tension
+  direction: minimize
+  lower: 0.020 N/m
+  upper: 0.045 N/m
+  weight: 1.0
+  conditions:
+    temperature: 200 degC
+  rationale: surface tension is what pinches the jet; less of it is better
+- property: melting_point
+  direction: in_range
+  lower: 120 degC
+  upper: 210 degC
+  hard: true
+  rationale: must melt below what a cartridge heater reaches, and freeze well above
+    the temperature the web is used at
+- property: youngs_modulus
+  direction: maximize
+  lower: 0.5 GPa
+  upper: 3.0 GPa
+  weight: 1.0
+  rationale: a strand that creeps under load lowers the target
+- property: amorphous_density
+  direction: minimize
+  lower: 900 kg/m^3
+  upper: 1400 kg/m^3
+  weight: 1.0
+  rationale: metres of web per gram carried
+assumptions:
+- statement: 'The hot-melt route replaces cure with cooling, so the strand solidifies
+    from a skin inward rather than by reacting through. Nothing in this spec models
+    that: there is no thermal conductivity or heat capacity in the registry, so
+    the skin-growth clock is outside the engine.'
+  source: inferred
+  made_by: operator
+- statement: Tensile strength is not in the registry by design, so the 50 lb requirement
+    is screened through theoretical_strength, which is a flaw-free bound and two-valued.
+    No run here predicts a breaking load.
+  source: inferred
+  made_by: operator
+  affects:
+  - theoretical_strength
+- statement: Adhesion, the flaw-free strength bound and the entanglement mass are
+    dropped from the blend spec because no expert serves them for a mixture. Adhesion
+    in particular is the requirement the device rests on, and a blend is scored
+    without it here - the single-polymer spec is where that axis lives.
+  source: inferred
+  made_by: operator
+- statement: The blend is bimodal by construction - one chemistry at two chain lengths
+    - so miscibility is not in question. A blend of two different polymers is usually
+    immiscible and the expert refuses it, which is the physically correct default.
+  source: inferred
+  made_by: operator
+structural:
+  min_components: 2
+  max_components: 2

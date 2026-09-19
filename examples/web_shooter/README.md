@@ -744,6 +744,79 @@ so nothing here predicts a breaking load, and at 8 kg/mol a real polyethylene is
 much weaker than a commercial grade - low molar mass buys pumpability by
 spending strength. The adhesion figure meets its bound only within uncertainty.
 
+## Blends, and what the single-polymer answer was hiding
+
+The polyethylene answer above is forced rather than chosen. Melt viscosity goes
+as the 3.4 power of chain length and strength rises with it too, so on one knob
+the only chain thin enough to extrude is also the weakest one that will still
+entangle. 5-8 kg/mol was not a design; it was the width of a trap.
+
+A blend gives a second knob, which is what every hot-melt adhesive is and what
+bimodal polyethylene is inside one reactor. The engine could already
+*represent* one - `MixtureComponent` has carried a `polymer` field since Phase
+4 - but nothing proposed a polymer blend and no expert scored one. The existing
+`mixture` expert declares a polymer component out of domain in as many words,
+correctly: its rules are volume fractions of small-molecule liquids.
+
+`PolymerBlendExplorer` proposes bimodal blends - one chemistry, two chain
+lengths, and the ratio - plus cross-polymer pairs that mostly get refused.
+`polymer_blend_melt` and `polymer_blend_solid` score them: log-additive
+viscosity, Voigt-Reuss modulus bounds, Fox glass transition, the crystalline
+component's melting point, additive density and surface tension.
+
+**What it buys, which is the whole point:**
+
+| | melt viscosity at 200 C | load-bearing chain |
+|---|---|---|
+| single polyethylene, 8 kg/mol | 3.8 Pa.s | 8 kg/mol |
+| single polyethylene, 20 kg/mol | 87 Pa.s - will not extrude | - |
+| **20 kg/mol + 30% of a 0.8 kg/mol wax** | **16 Pa.s** | **20 kg/mol** |
+
+Two and a half times the backbone at a viscosity that still goes through the
+nozzle. `hotmelt_blend.yaml` returns 3 feasible of 120, led by exactly that
+blend.
+
+Three things the rules deliberately will not do. **Modulus is bounded, not
+predicted** - Voigt and Reuss are rigorous for any two-phase arrangement, and
+where a real blend falls between them is a question about morphology that
+nothing here knows, so the uncertainty spans the bounds instead of a point
+estimate implying one. **An immiscible pair is refused** rather than averaged:
+a chain gains almost no entropy on mixing, so most polymer pairs form two
+phases and track the continuous one. **A blend has no melting point of its
+own** - it has its crystalline component's, depressed by dilution, and the
+depression is carried as uncertainty because Flory's expression needs an
+interaction parameter this repository does not have.
+
+And one thing the blend spec cannot ask: **adhesion**. No expert serves
+`work_of_separation` for a mixture, so the blend is scored without the
+requirement the whole device rests on. That axis still only exists on the
+single-polymer spec.
+
+### Two more bugs, both the same shape
+
+Adding the blend expert turned up the condition-resolution problem twice more,
+in the same shape as the one below.
+
+An expert is evaluated **once, at one set of conditions**. The first blend
+expert served melt viscosity at 200 C *and* modulus at 25 C, so whichever
+condition won, the other property was answered at the wrong temperature - and
+what came back was a density refused for being asked at 200 C, correctly, since
+its packing factor was fitted at room temperature. That refusal then took out
+the entanglement mass and the viscosity behind it. The fix is that they are two
+experts, because they are two states of the same material.
+
+The same thing again one level down: a delegating expert must resolve
+conditions for its *components*. Passing the melt temperature to every
+sub-expert refused the density for the same reason. A dependency is now
+evaluated at the candidate's own conditions and only the requested property
+carries the requirement's.
+
+Also fixed: a delegating expert has to compute its own dependency closure.
+Asking the panel for `shear_viscosity` alone selects only the expert that
+serves it, whose dependencies then arrive empty and which correctly refuses.
+The engine does this closure for a top-level run; nothing was doing it for a
+sub-run.
+
 ### A bug the exercise found
 
 Two requirements on one expert both stating `temperature: 200 degC` were

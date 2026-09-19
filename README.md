@@ -154,6 +154,8 @@ where they exist:
 | `polymer_density` | mechanical | polymer | amorphous density from van der Waals volume and a fitted packing factor |
 | `polymer_mechanical` | mechanical | polymer | Young's and shear modulus, entanglement molar mass, flaw-free strength bound |
 | `polymer_melt` | interfacial | polymer | crystalline melting point, melt viscosity, melt surface tension |
+| `polymer_blend_melt` | interfacial | mixture | blend melt viscosity and surface tension by mixing rules |
+| `polymer_blend_solid` | mechanical | mixture | blend modulus bounds, glass transition, melting point, density |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation

@@ -244,6 +244,7 @@ def default_iterative_coordinator(
     molecule-only search it returns nothing and costs nothing.
     """
     from formulate.exploration.bayesopt import BayesOptExplorer
+    from formulate.exploration.blends import PolymerBlendExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
     from formulate.exploration.mixtures import MixtureSeedExplorer
@@ -252,6 +253,7 @@ def default_iterative_coordinator(
         explorers=[
             ReferenceDatabaseExplorer(),
             MixtureSeedExplorer(),
+            PolymerBlendExplorer(),
             EvolutionaryExplorer(),
             BayesOptExplorer(),
         ],
@@ -392,6 +394,7 @@ def default_validating_coordinator(
 ) -> "ValidatingCoordinator":
     """Retrieval, evolution and composition search, then a bounded physics stage."""
     from formulate.exploration.bayesopt import BayesOptExplorer
+    from formulate.exploration.blends import PolymerBlendExplorer
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
     from formulate.exploration.mixtures import MixtureSeedExplorer
@@ -400,6 +403,7 @@ def default_validating_coordinator(
         explorers=[
             ReferenceDatabaseExplorer(),
             MixtureSeedExplorer(),
+            PolymerBlendExplorer(),
             EvolutionaryExplorer(),
             BayesOptExplorer(),
         ],

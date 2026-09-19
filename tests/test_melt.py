@@ -140,13 +140,38 @@ def test_viscosity_without_a_chain_length_is_refused_not_guessed():
 
 
 @requires_rdkit
-def test_an_unentangled_chain_is_refused_because_the_power_law_does_not_hold():
+def test_an_unentangled_chain_gets_rouse_not_the_reptation_power():
+    """A wax lives below the entanglement threshold, so a blend cannot be
+    scored without this branch - but it is the other law, not an
+    extrapolation of the 3.4 power into a regime it does not hold in."""
     prediction = _predict(
         _polymer(PS, mn_kg_mol=12.0), "shear_viscosity", temperature_k=423.15,
         context=_context(373.0, 18.1),
     )
-    assert prediction.status is PredictionStatus.UNSUPPORTED
-    assert "entanglement threshold" in " ".join(prediction.notes)
+    assert prediction.quantity is not None
+    joined = " ".join(prediction.notes)
+    assert "unentangled" in joined
+    assert "carries no load" in joined
+
+
+def test_the_two_chain_length_branches_join_at_the_threshold():
+    """Rouse and reptation agree at the critical mass, which is where both hold."""
+    from formulate.experts.melt import CRITICAL_OVER_ENTANGLEMENT, melt_viscosity
+
+    me = 1.15
+    critical = CRITICAL_OVER_ENTANGLEMENT * me
+    below = melt_viscosity(critical * 0.999, me, 198.0, 250.0)
+    above = melt_viscosity(critical * 1.001, me, 198.0, 250.0)
+    assert below == pytest.approx(above, rel=5e-3)
+
+
+def test_a_wax_is_orders_of_magnitude_thinner_than_the_polymer():
+    """Which is the whole reason a blend can carry a longer backbone."""
+    from formulate.experts.melt import melt_viscosity
+
+    wax = melt_viscosity(0.8, 1.15, 198.0, 473.15, 27.0e3)
+    polymer = melt_viscosity(20.0, 1.15, 198.0, 473.15, 27.0e3)
+    assert polymer / wax > 1000.0
 
 
 @requires_rdkit

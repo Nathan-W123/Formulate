@@ -82,6 +82,14 @@ CRITICAL_OVER_ENTANGLEMENT = 2.0
 #: Melt viscosity scales as this power of molar mass above the threshold.
 REPTATION_EXPONENT = 3.4
 
+#: And as this power below it. An unentangled chain drags through its
+#: neighbours rather than reptating along a tube, and the Rouse result is
+#: linear in molar mass. This is not an extrapolation of the 3.4 law into a
+#: regime it does not hold in - it is the other law, joined at the threshold
+#: where both are valid. A wax lives entirely on this branch, which is why a
+#: blend cannot be scored without it.
+ROUSE_EXPONENT = 1.0
+
 #: One-sigma on the viscosity, in decades. See the module docstring: universal
 #: WLF constants are worth about an order of magnitude, and claiming better
 #: would be worse than claiming this.
@@ -294,7 +302,8 @@ def melt_viscosity(
     introduces no fitted constant beyond the tabulated activation energy.
     """
     critical = CRITICAL_OVER_ENTANGLEMENT * entanglement
-    chain_factor = (molar_mass / critical) ** REPTATION_EXPONENT
+    exponent = REPTATION_EXPONENT if molar_mass >= critical else ROUSE_EXPONENT
+    chain_factor = (molar_mass / critical) ** exponent
 
     def wlf(t: float) -> float:
         delta = t - tg
@@ -468,13 +477,7 @@ class PolymerMeltExpert(Expert):
         me_kg = me.quantity.to_canonical().value
 
         critical = CRITICAL_OVER_ENTANGLEMENT * me_kg
-        if mass < critical:
-            return Prediction.unsupported(
-                prop, self.id,
-                f"this chain is below the entanglement threshold ({mass*1e3:.1f} against "
-                f"{critical*1e3:.1f} g/mol), where the melt is Rouse-like and the 3.4 "
-                "power does not hold",
-            )
+        entangled = mass >= critical
 
         temperature = request.conditions.temperature
         if temperature is None:
@@ -533,8 +536,13 @@ class PolymerMeltExpert(Expert):
                 "propagated through the exponential and added in quadrature"
             ),
             notes=(
-                f"chain {mass*1e3:.0f} g/mol against a critical mass of {critical*1e3:.0f}, "
-                f"so {(mass/critical)**REPTATION_EXPONENT:.1f}x the threshold viscosity",
+                f"chain {mass*1e3:.0f} g/mol against a critical mass of {critical*1e3:.0f}: "
+                + (
+                    f"entangled, so reptation at the {REPTATION_EXPONENT} power"
+                    if entangled
+                    else f"unentangled, so Rouse drag at the {ROUSE_EXPONENT:.0f} power - "
+                    "this is a wax, not a polymer, and carries no load"
+                ),
                 branch,
                 "an order of magnitude still separates a melt that will pass a "
                 "millimetre orifice from one that will not, because melt viscosity "

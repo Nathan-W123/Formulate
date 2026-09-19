@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .activity import UNIFACActivityExpert
 from .adhesion import AdhesionExpert
+from .blend import PolymerBlendMeltExpert, PolymerBlendSolidExpert
 from .melt import PolymerMeltExpert
 from .base import Expert, PredictionRequest
 from .critical import AtomicCriticalExpert
@@ -59,7 +60,25 @@ PHASE4_EXPERTS = (
     PolymerDensityExpert,
     PolymerMechanicalExpert,
     PolymerMeltExpert,
+    PolymerBlendMeltExpert,
+    PolymerBlendSolidExpert,
 )
+
+
+#: The polymer-only panel, used by the blend expert for its components. Kept
+#: separate for the same reason the molecular one is: a blend delegates to it,
+#: and including the blend expert would make that circular.
+POLYMER_EXPERTS = (
+    PolymerGlassTransitionExpert,
+    PolymerDensityExpert,
+    PolymerMechanicalExpert,
+    PolymerMeltExpert,
+)
+
+
+def polymer_registry() -> ExpertRegistry:
+    """The polymer-only panel, used by the blend expert for its components."""
+    return ExpertRegistry(cls() for cls in POLYMER_EXPERTS)
 
 
 def molecular_registry() -> ExpertRegistry:
@@ -73,9 +92,9 @@ def default_registry() -> ExpertRegistry:
 
 
 __all__ = [
-    "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
+    "PHASE1_EXPERTS", "PHASE4_EXPERTS", "POLYMER_EXPERTS", "polymer_registry", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
     "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
-    "PolymerMechanicalExpert", "PolymerMeltExpert",
+    "PolymerMechanicalExpert", "PolymerMeltExpert", "PolymerBlendMeltExpert", "PolymerBlendSolidExpert",
     "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",
