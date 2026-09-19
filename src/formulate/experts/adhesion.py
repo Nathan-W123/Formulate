@@ -113,6 +113,30 @@ SUBSTRATES: dict[str, SurfaceEnergy] = {
     "steel": SurfaceEnergy(30.0, 15.0, "steel in air, with an adsorbed layer", 15.0),
 }
 
+#: The same table read from the other side, keyed by repeat-unit SMILES.
+#:
+#: Eight of the substrates above are polymers, and a polymer is a thing this
+#: engine proposes as well as a thing it sticks to. Nothing new is measured
+#: here: a clean polystyrene surface has one surface energy whether the
+#: polystyrene is the wall or the web. The entry exists so that a polymer
+#: candidate can be asked the question, which until now only a liquid could be.
+#:
+#: Which side of the interface matters. For a dry-spun strand the liquid wets
+#: the target for the instant before the solvent leaves, and what is left
+#: holding is the polymer. So the solvent's work of adhesion describes the
+#: contact and the polymer's describes the joint, and it is the second one that
+#: decides whether the web holds.
+POLYMER_SURFACES: dict[str, str] = {
+    "[*]CC[*]": "polyethylene",
+    "[*]CC(C)[*]": "polypropylene",
+    "[*]CC(c1ccccc1)[*]": "polystyrene",
+    "[*]CC(Cl)[*]": "pvc",
+    "[*]CC(C)(C(=O)OC)[*]": "pmma",
+    "[*]OCCOC(=O)c1ccc(cc1)C(=O)[*]": "pet",
+    "[*]NCCCCCCNC(=O)CCCCC(=O)[*]": "nylon-6,6",
+    "[*]C(F)(F)C(F)(F)[*]": "ptfe",
+}
+
 #: Aliases, so a recipe may say what a person would say.
 SUBSTRATE_ALIASES: dict[str, str] = {
     "teflon": "ptfe",
@@ -133,6 +157,38 @@ def resolve_substrate(name: str) -> tuple[str, SurfaceEnergy] | None:
     key = SUBSTRATE_ALIASES.get(key, key)
     entry = SUBSTRATES.get(key)
     return (key, entry) if entry is not None else None
+
+
+def polymer_energy(candidate: "Candidate") -> tuple[str, SurfaceEnergy] | None:
+    """Tabulated components for a homopolymer candidate, or None.
+
+    Only a single-repeat-unit chain is answered. A copolymer's surface is not
+    the mole-weighted average of its components' - the lower-energy unit
+    enriches at the surface, by a factor that depends on block length and on
+    how the sample was cooled - so a mixing rule here would be a guess with a
+    systematic direction to its error.
+    """
+    from formulate import chem
+
+    polymer = candidate.polymer
+    if polymer is None:
+        return None
+    chain = [m for m in polymer.monomers if m.role is not MonomerRole.END_GROUP]
+    if len(chain) != 1:
+        return None
+
+    smiles = chain[0].smiles
+    key = None
+    if chem.rdkit_available():
+        canonical = chem.canonical_smiles(smiles)
+        if canonical is not None:
+            for repeat, name in POLYMER_SURFACES.items():
+                if chem.canonical_smiles(repeat) == canonical:
+                    key = name
+                    break
+    if key is None:
+        key = POLYMER_SURFACES.get(smiles)
+    return (key, SUBSTRATES[key]) if key is not None else None
 
 
 def liquid_energy(smiles: str) -> SurfaceEnergy | None:
@@ -185,7 +241,7 @@ def spreading_coefficient(liquid: SurfaceEnergy, solid: SurfaceEnergy) -> float:
 # --------------------------------------------------------------------------
 
 
-from formulate.core.candidate import Candidate, MaterialClass  # noqa: E402
+from formulate.core.candidate import Candidate, MaterialClass, MonomerRole  # noqa: E402
 from formulate.core.prediction import Prediction  # noqa: E402
 from formulate.core.properties import PropertyFamily  # noqa: E402
 from formulate.core.quantity import ApplicabilityDomain, UncertaintyKind  # noqa: E402
@@ -208,8 +264,17 @@ class AdhesionExpert(Expert):
     version = "1"
     method = "Owens-Wendt two-component work of adhesion from tabulated surface energies"
     family = PropertyFamily.INTERFACIAL
-    supported_classes = frozenset({MaterialClass.MOLECULE})
+    supported_classes = frozenset({MaterialClass.MOLECULE, MaterialClass.POLYMER})
     supported_properties = frozenset({"work_of_separation"})
+
+    def _adherend(self, candidate: Candidate) -> tuple[str, SurfaceEnergy] | None:
+        """The candidate's own surface energy, whichever class it is."""
+        if candidate.material_class is MaterialClass.POLYMER:
+            return polymer_energy(candidate)
+        if candidate.molecule is None:
+            return None
+        found = liquid_energy(candidate.molecule.smiles)
+        return (candidate.molecule.smiles, found) if found is not None else None
 
     def _substrate(self, request):
         surfaces = request.conditions.surfaces
@@ -233,59 +298,90 @@ class AdhesionExpert(Expert):
 
     def assess_domain(self, candidate: Candidate) -> ApplicabilityDomain:
         basis = "measured dispersive and polar surface energies, Owens-Wendt convention"
-        if candidate.molecule is None:
-            return ApplicabilityDomain.outside("candidate carries no molecule", basis=basis)
-        if liquid_energy(candidate.molecule.smiles) is None:
+        if self._adherend(candidate) is not None:
+            return ApplicabilityDomain(basis=basis)
+        if candidate.material_class is MaterialClass.POLYMER:
+            if candidate.polymer is None:
+                return ApplicabilityDomain.outside("candidate carries no polymer", basis=basis)
             return ApplicabilityDomain.outside(
-                "this liquid's dispersive and polar components are not tabulated, and "
-                "they cannot be derived from a total surface tension or from Hansen "
-                "parameters",
+                "no measured surface energy is tabulated for this polymer, or the "
+                "candidate is a copolymer, whose surface is not the average of its "
+                "components' because the lower-energy unit enriches there",
                 basis=basis,
             )
-        return ApplicabilityDomain(basis=basis)
+        if candidate.molecule is None:
+            return ApplicabilityDomain.outside("candidate carries no molecule", basis=basis)
+        return ApplicabilityDomain.outside(
+            "this liquid's dispersive and polar components are not tabulated, and "
+            "they cannot be derived from a total surface tension or from Hansen "
+            "parameters",
+            basis=basis,
+        )
 
     def _predict_one(self, prop, request, domain):
-        molecule = request.candidate.molecule
-        if molecule is None:
-            return Prediction.unsupported(prop, self.id, "candidate carries no molecule")
+        candidate = request.candidate
+        is_polymer = candidate.material_class is MaterialClass.POLYMER
 
-        liquid = liquid_energy(molecule.smiles)
-        if liquid is None:
-            return Prediction.unsupported(
-                prop,
-                self.id,
-                "no measured dispersive/polar split is tabulated for this liquid; the "
-                "split cannot be derived from a total surface tension, and the Hansen "
-                "route was tested and puts water's dispersive part at half its measured "
-                "value",
-            )
+        adherend = self._adherend(candidate)
+        if adherend is None:
+            if is_polymer:
+                reason = (
+                    "no measured surface energy is tabulated for this polymer, or it is a "
+                    "copolymer; a copolymer's surface is not the mole-weighted average of "
+                    "its components' because the lower-energy unit enriches there by an "
+                    "amount that depends on block length and thermal history"
+                )
+            elif candidate.molecule is None:
+                reason = "candidate carries no molecule"
+            else:
+                reason = (
+                    "no measured dispersive/polar split is tabulated for this liquid; the "
+                    "split cannot be derived from a total surface tension, and the Hansen "
+                    "route was tested and puts water's dispersive part at half its measured "
+                    "value"
+                )
+            return Prediction.unsupported(prop, self.id, reason)
+        adherend_name, phase = adherend
 
         found, reason = self._substrate(request)
         if found is None:
             return Prediction.unsupported(prop, self.id, reason)
         name, solid = found
 
-        work = work_of_adhesion(liquid, solid)
-        spreading = spreading_coefficient(liquid, solid)
+        work = work_of_adhesion(phase, solid)
+        spreading = spreading_coefficient(phase, solid)
         # A geometric mean of two uncertain numbers; the relative errors add in
         # quadrature and the solid usually dominates.
         relative = (
-            (liquid.spread / max(liquid.total, 1e-9)) ** 2
+            (phase.spread / max(phase.total, 1e-9)) ** 2
             + (solid.spread / max(solid.total, 1e-9)) ** 2
         ) ** 0.5
 
         notes = [
             f"substrate {name}: {solid.basis}",
-            f"liquid components {liquid.dispersive:.1f} dispersive, "
-            f"{liquid.polar:.1f} polar mJ/m^2",
-            (
+            f"{'polymer' if is_polymer else 'liquid'} components {phase.dispersive:.1f} "
+            f"dispersive, {phase.polar:.1f} polar mJ/m^2",
+        ]
+        if is_polymer:
+            notes.append(
+                f"the adherend is the solid polymer ({phase.basis}), so this is the joint "
+                "that remains after any carrier solvent has left, not the wetting of the "
+                "target at the moment of contact"
+            )
+            notes.append(
+                "a solid does not spread, so no contact angle follows from this; the "
+                "number says how much reversible work the finished interface is worth"
+            )
+        else:
+            notes.append(
                 f"spreading coefficient {spreading:+.1f} mJ/m^2: the liquid "
                 + ("spreads" if spreading > 0 else "beads and shows a finite contact angle")
-            ),
+            )
+        notes.append(
             "this is the reversible thermodynamic work, not a peel strength or a lap "
             "shear: a real joint dissipates one to three orders of magnitude more energy "
-            "deforming the adherends, and the two are not related by a constant",
-        ]
+            "deforming the adherends, and the two are not related by a constant"
+        )
         if solid.spread >= 10.0:
             notes.append(
                 "the substrate is an inorganic surface whose energy is set by what is "
@@ -308,4 +404,5 @@ class AdhesionExpert(Expert):
             ),
             notes=tuple(notes),
             substrate=name,
+            adherend=adherend_name,
         )

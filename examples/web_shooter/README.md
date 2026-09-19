@@ -55,12 +55,14 @@ which is a reasonable sign the pipeline is not lost.
 2 of 57 feasible: **polystyrene** and **PMMA** - which are the only two
 polymers in the bundled set that are both glassy at 25 degC and have tabulated
 chain dimensions, so the result is as much a statement about coverage as about
-polymers.
+polymers. Polystyrene leads; PMMA grips steel harder but is denser and closer
+to its glass transition.
 
 ## The three refusals
 
-**1. Adhesion cannot be scored for any solvent that works.** This is the
-headline, because adhesion is the requirement the whole idea rests on.
+**1. Adhesion cannot be scored for any solvent that works** - and asking the
+solvent was the wrong question. Resolved; the history is kept because the
+diagnosis is the useful part.
 
 `work_of_separation` comes from the Owens-Wendt expert, which needs a measured
 dispersive/polar split for the liquid. Ten liquids have one. Seven polymers
@@ -94,6 +96,33 @@ Constraints never satisfied together by any candidate in this pool:
 It also distinguishes the two ways a candidate can fail - "eliminated 39
 candidate(s), 37 of them because the value could not be predicted" - which is
 the difference between a bad solvent and an unknown one.
+
+**The fix, and why it needed no new measurements.** The solvent is not what
+holds. It wets the target for the instant before it evaporates; what is left
+gripping the wall is the solid strand. So the adhesion question belongs to the
+polymer, and eight polymer surface energies were already in the repository -
+sitting in the substrate table, usable only as the thing being stuck *to*.
+
+The expert now accepts a polymer candidate and reads that same table from the
+other side: a clean polystyrene surface has one surface energy whether the
+polystyrene is the wall or the web. Same Owens-Wendt physics, same measured
+data, no new correlation. It still refuses an untabulated polymer, and it
+refuses copolymers outright, because the lower-energy unit enriches at the
+surface and a mole-weighted average would be biased in a known direction.
+
+With `surfaces: [steel]` in `strand.yaml`, the strand ranking now scores it:
+
+| polymer | steel | glass | polyethylene |
+|---|---|---|---|
+| polystyrene | 76.5 | 84.3 | 73.9 |
+| PMMA | 81.7 | 96.7 | 68.8 |
+
+mN/m. PMMA grips steel and glass better; polystyrene wins on plastics. The
+substrate finally changes the answer.
+
+This still predicts no pounds. It is reversible work, and a real joint
+dissipates one to three orders of magnitude more, so it ranks polymers against
+each other and says nothing about whether the web holds.
 
 **2. The polymer branch is unreachable from the CLI.** `formulate run
 strand.yaml` proposes zero candidates. There are two polymer experts and 57
@@ -189,6 +218,11 @@ Total, well under $50, and none of it is the hard part.
 The engine handled the parts it covers and refused the rest legibly rather than
 guessing - the infeasibility diagnosis found the solvency/adhesion gap on its
 own, and the uncertainty reporting made clear that neither surviving polymer
-clears its bounds robustly. The unreachable polymer class is a plumbing gap
-worth closing; the empty adhesion overlap is a coverage limit that only new
-measured data fixes.
+clears its bounds robustly.
+
+The adhesion gap turned out not to be a data gap at all: the question had been
+put to the wrong phase, and asking the polymer instead needed only an existing
+table read from the other side. The unreachable polymer class remains a
+plumbing gap worth closing. What no amount of data fixes is that reversible
+work is not peel strength, so the engine still cannot say whether the web
+holds - only which polymer holds better.

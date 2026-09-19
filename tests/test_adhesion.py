@@ -13,12 +13,19 @@ import pytest
 
 from conftest import requires_rdkit
 
-from formulate.core.candidate import molecule_candidate
+from formulate.core.candidate import (
+    Candidate,
+    MaterialClass,
+    MonomerUnit,
+    PolymerSpec,
+    molecule_candidate,
+)
 from formulate.core.conditions import Conditions
 from formulate.core.prediction import PredictionStatus
 from formulate.core.quantity import Quantity
 from formulate.experts.adhesion import (
     LIQUIDS,
+    POLYMER_SURFACES,
     SUBSTRATES,
     AdhesionExpert,
     liquid_energy,
@@ -158,3 +165,77 @@ def test_every_tabulated_liquid_and_substrate_states_its_basis():
         assert entry.basis
         assert entry.dispersive >= 0 and entry.polar >= 0
         assert entry.spread > 0
+
+
+# --------------------------------------------------------------------------
+# A polymer is a thing this engine proposes as well as a thing it sticks to.
+# --------------------------------------------------------------------------
+
+
+def _polymer(*repeat_units: str):
+    monomers = tuple(
+        MonomerUnit(smiles=s, mole_fraction=1.0 / len(repeat_units)) for s in repeat_units
+    )
+    return Candidate(
+        material_class=MaterialClass.POLYMER,
+        polymer=PolymerSpec(monomers=monomers),
+        conditions=Conditions.standard(),
+    )
+
+
+def _predict_polymer(candidate, surfaces):
+    request = PredictionRequest(
+        candidate=candidate,
+        properties=frozenset({"work_of_separation"}),
+        conditions=Conditions(temperature=Quantity(value=298.15, unit="K"), surfaces=tuple(surfaces)),
+    )
+    return AdhesionExpert().predict(request)[0]
+
+
+@requires_rdkit
+def test_a_polymer_candidate_is_answered_from_the_same_measured_table():
+    """The wall and the web are the same material read from opposite sides."""
+    prediction = _predict_polymer(_polymer("[*]CC(c1ccccc1)[*]"), ["steel"])
+    expected = work_of_adhesion(
+        resolve_substrate("polystyrene")[1], resolve_substrate("steel")[1]
+    )
+    assert prediction.quantity is not None
+    assert prediction.quantity.value == pytest.approx(expected / 1000.0)
+
+
+@requires_rdkit
+def test_a_polymer_adherend_reports_no_spreading_coefficient():
+    """A solid does not spread, so no contact angle follows from the number."""
+    notes = " ".join(_predict_polymer(_polymer("[*]CC(c1ccccc1)[*]"), ["steel"]).notes)
+    assert "spreading coefficient" not in notes
+    assert "does not spread" in notes
+    assert "peel strength" in notes  # the practical-adhesion caveat still applies
+
+
+@requires_rdkit
+def test_an_untabulated_polymer_is_refused():
+    prediction = _predict_polymer(_polymer("[*]CC(C#N)[*]"), ["steel"])
+    assert prediction.status is PredictionStatus.UNSUPPORTED
+    assert prediction.quantity is None
+
+
+@requires_rdkit
+def test_a_copolymer_is_refused_rather_than_averaged():
+    """The lower-energy unit enriches at the surface; a mixing rule would bias."""
+    copolymer = _polymer("[*]CC(c1ccccc1)[*]", "[*]CC[*]")
+    prediction = _predict_polymer(copolymer, ["steel"])
+    assert prediction.status is PredictionStatus.UNSUPPORTED
+    assert "copolymer" in " ".join(prediction.notes).lower() or prediction.quantity is None
+
+
+@requires_rdkit
+def test_pmma_grips_glass_better_than_polyethylene_does():
+    """The polar term again: PMMA has one and polyethylene has none."""
+    pmma = _predict_polymer(_polymer("[*]CC(C)(C(=O)OC)[*]"), ["glass"]).quantity.value
+    pe = _predict_polymer(_polymer("[*]CC[*]"), ["glass"]).quantity.value
+    assert pmma > pe
+
+
+def test_every_tabulated_polymer_surface_resolves_to_a_measured_entry():
+    for repeat, name in POLYMER_SURFACES.items():
+        assert resolve_substrate(name) is not None, repeat

@@ -23,6 +23,10 @@ conditions:
   temperature: 25 degC
   pressure: 1 atm
   processing: [solvent dry-spun from a nozzle, not melt drawn]
+  # What the web has to hold onto. The adherend is the dried strand, not the
+  # carrier solvent: the solvent wets the target for the instant before it
+  # leaves, and the polymer is what is still there holding.
+  surfaces: [steel]
 
 material_classes: [polymer]
 
@@ -62,6 +66,15 @@ requirements:
     upper: 20.0 kg/mol
     weight: 3.0
     rationale: a brittle strand fails at the knot, not in the span
+
+  # The joint that remains once the solvent has gone. Reversible work only -
+  # it ranks which polymer grips steel best, and predicts no pounds at all.
+  - property: work_of_separation
+    direction: maximize
+    lower: 0.060 N/m
+    upper: 0.100 N/m
+    weight: 3.0
+    rationale: the web is useless if the dried strand does not grip the target
 
   # A cartridge on a wrist holds a fixed volume. Lighter polymer, more metres.
   - property: amorphous_density
