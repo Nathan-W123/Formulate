@@ -402,8 +402,64 @@ gives the jet 2.2 ms of light; a UV acrylate wants 0.3-1 J/cm2, which demands
 about 225 W/cm2 - a few hundred times what a cheap LED array delivers.
 
 Flight time and gel time are within about a factor of three to ten of each
-other, so more accelerator might close it. Might. It is not demonstrated here
-and should not be assumed.
+other, so more accelerator looked like it might close it. It cannot, and the
+reason is heat rather than chemistry.
+
+### Why full cure in flight is thermally impossible
+
+Anionic cyanoacrylate polymerisation is initiation-limited and essentially
+non-terminating, so doubling the accelerator halves the set time. The chemistry
+allows any speed you like. The heat does not.
+
+Propagation releases about 60 kJ/mol over a 125 g/mol monomer - 480 J/g - and
+at a specific heat near 1.5 J/g/K that is an **adiabatic rise of 320 K at full
+conversion**. Whether the rope actually sees that rise is a race between curing
+and shedding heat:
+
+| section | heat escapes in |
+|---|---|
+| 0.1 mm glue bond line | 25 ms |
+| 4.4 mm rope | 48 s |
+
+A bond line dumps its heat before it can warm up, which is exactly why
+cyanoacrylate is well behaved in a joint and smokes on a cotton ball. Our rope
+needs 48 s to shed heat and would cure in 0.33 s, so it is adiabatic by a
+factor of 145. Every joule stays in:
+
+| conversion | rise | reaches | |
+|---|---|---|---|
+| 10% | +32 K | 57 C | fine |
+| 20% | +64 K | 89 C | hot but survivable |
+| 30% | +96 K | 121 C | boils the monomer, foams the rope |
+| 100% | +320 K | 345 C | polycyanoacrylate unzips above ~200 C |
+
+**The ceiling is 55% conversion**, and full cure in a thick section is ruled
+out by thermodynamics, not by slow chemistry. Both inputs were taken at the
+conservative end - a higher enthalpy or a lower specific heat makes it worse,
+not better.
+
+### What survives, and how tight it is
+
+The rope does not need to cure. It needs to stop flowing. Chain growth reaches
+high molar mass at low conversion, so a few percent converted is already
+high-MW polymer dissolved in its own monomer - and that is a gel:
+
+| conversion | viscosity (Mw 1e5 to 1e6) | temperature |
+|---|---|---|
+| 5% | 2 - 849 Pa.s | 41 C |
+| 10% | 24 - 12700 Pa.s | 57 C |
+| 15% | 116 - 61600 Pa.s | 73 C |
+
+5% is marginal - at the low end of molar mass it lands under the ~5 Pa.s the
+jet calculation wanted. **10% clears it for every molar mass here**, by a
+factor of five at worst, at +32 K.
+
+So the operating window is: gel to roughly 10% in flight, land, and finish
+curing on the wall over minutes where the heat has time to leave. The window is
+real and it is not wide, and the tight side is thermal, not rheological.
+
+This is a calculation and not an experiment. What it settles is which claim is
+worth testing: full cure in flight is dead, and partial gelation is live.
 
 Honest caveats beyond that: cured cyanoacrylate is brittle unless it is the
 rubber-toughened grade, which is again a two-phase material the engine cannot
