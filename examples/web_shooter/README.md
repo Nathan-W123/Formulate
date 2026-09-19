@@ -461,6 +461,74 @@ real and it is not wide, and the tight side is thermal, not rheological.
 This is a calculation and not an experiment. What it settles is which claim is
 worth testing: full cure in flight is dead, and partial gelation is live.
 
+### Correction: partial gelation was not live either
+
+"Arrives liquid, bonds on contact, cures while hanging" is wrong, and checking
+it is what closed the question. A hanging rope carries its own weight: 3 m of
+15.2 mm2 masses 50 g and puts 32 kPa on its own top section. A viscous fluid
+under that stress extends at `sigma/3eta`:
+
+| viscosity | strain rate | |
+|---|---|---|
+| 5 Pa.s | 2200 /s | falls instantly |
+| 1e3 Pa.s | 11 /s | falls |
+| 1e5 Pa.s | 0.11 /s | falls |
+| 1e8 Pa.s | 1.1e-4 /s | holds |
+
+It needs about 1e8 Pa.s, which is a solid, not a gel. The 10% gel of the
+previous section is six orders short. A liquid rope does not bridge a gap - it
+runs down the wall and drips. **So it must be solid when it lands, which means
+full cure in flight, which the exotherm forbids at 4.4 mm.**
+
+### The feasible region, and why it was empty
+
+Four constraints at once, with the filament count always set to give the 15.2
+mm2 that carries 50 lb: pressure under 3 bar, jet intact for 3 m, and thin
+enough to shed its cure heat within the 333 ms flight (`R^2/alpha <= t`, so
+diameter at or under 0.37 mm).
+
+Scanned over diameter from 0.2 to 4.4 mm and viscosity from 0.1 to 20 Pa.s,
+**every combination fails at least one**. The bind is structural: shedding heat
+wants thin filaments, thin filaments break up unless they are viscous, and
+viscous thin filaments need hundreds of bar. Thin, coherent, and pushable are
+three properties no geometry holds together.
+
+### What actually opens it
+
+Pressure and breakup are geometry and viscosity, and the single 4.4 mm stream
+already passes both - the table shows it failing on the thermal column alone.
+So the thermal column is the only one chemistry can move, and it has two terms:
+shed the heat, or make less of it.
+
+Making less of it is the available one. The adiabatic rise is heat-per-gram
+over specific heat, and heat-per-gram scales with the **reactive mass
+fraction**. Neat monomer is all reactive. An oligomer is not:
+
+| reactive fraction | heat/g | adiabatic rise | reaches | |
+|---|---|---|---|---|
+| 100% (neat monomer) | 480 J | +320 K | 345 C | cooks |
+| 50% | 240 J | +160 K | 185 C | hot |
+| 30% | 144 J | +96 K | 121 C | edge |
+| 20% | 96 J | +64 K | 89 C | fine |
+
+And a 70-80% oligomer loading still extrudes, because an oligomer's overlap
+concentration is high - at Mn ~ 3000, 70% gives about 6 Pa.s, which is the
+viscosity the jet calculation wanted anyway. At Mn 10000 it is 650 Pa.s and far
+too stiff, so the molar mass is a real design variable, not a detail.
+
+Re-testing the 4.4 mm single stream at 20-30% reactive oligomer resin: **1.9
+bar of 3, intact for 29 m of the 3 needed, +96 K, 15.2 mm2.** All four pass.
+
+The fix was never a different reaction. It was reacting less of the mass. Same
+cyanoacrylate chemistry and same cure speed, but with most of the mass arriving
+already polymerised, so it carries the load without having to generate the heat
+of making itself.
+
+The window is narrow - 20% reactive is comfortable thermally and near the
+pressure limit, 30% is comfortable on pressure and near the thermal limit - and
+a thickener loading that high is past what gel cyanoacrylate is sold at, so
+this is a formulation direction rather than something off a shelf.
+
 Honest caveats beyond that: cured cyanoacrylate is brittle unless it is the
 rubber-toughened grade, which is again a two-phase material the engine cannot
 represent; and CA bonds skin instantly, which is the real safety issue.
