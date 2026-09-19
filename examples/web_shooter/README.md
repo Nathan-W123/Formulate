@@ -246,6 +246,71 @@ Every axis on both winners scores 0.000 at the pessimistic bound and is flagged
 molar mass carries a factor of 1.74. Neither polymer survives its own error
 bars, and the engine says so on the same line as the number.
 
+## The four questions the engine cannot answer at all
+
+Whether the thing works is decided by transport and kinetics, and there is no
+expert for either. Worked outside the engine, in
+`scratchpad/web_physics.py` terms:
+
+**Strength.** Cross-section for 50 lb at a safety factor of 2, and what 3 m of
+it weighs:
+
+| material | UTS | area | single strand | 3 m dry | dope at 25% solids |
+|---|---|---|---|---|---|
+| unvulcanised natural rubber (rubber cement) | ~2 MPa | 297 mm2 | 19.4 mm | 836 g | 3.3 kg |
+| SBS block copolymer (contact cement) | 20 MPa | 22 mm2 | 5.3 mm | 63 g | 251 g |
+| cast PMMA | 70 MPa | 6.4 mm2 | 2.8 mm | 22 g | 90 g |
+| nylon-6,6 drawn fibre | 700 MPa | 0.6 mm2 | 0.9 mm | 2 g | 9 g |
+
+This kills rubber cement outright. Unvulcanised rubber has no permanent
+network - the chains slide - so it creeps under sustained load, and its useful
+strength is a couple of MPa rather than the 25 MPa a vulcanised rubber reaches
+by strain-induced crystallisation. A 19 mm rope needing 3.3 kg of dope per shot
+is not a wrist device. SBS is the one that survives, and it survives precisely
+because its glassy polystyrene domains act as physical crosslinks - the
+two-phase structure the engine pointed at and cannot represent.
+
+**Drying.** No, and not by a small margin. Solvent leaving a filament is
+diffusion-limited at `t ~ R^2/D`, with `D ~ 1e-10 m^2/s` in a concentrated
+solution:
+
+| filament | evaporation-limited | diffusion-limited | fits 0.6 s flight |
+|---|---|---|---|
+| 50 um | 0.02 s | 6 s | no |
+| 300 um | 0.37 s | 225 s | no |
+| 3000 um | 12 s | 22500 s | no |
+
+The surface skins over in milliseconds and the core stays liquid for minutes.
+Drying in flight would need filaments around 15 um - which is what a real
+textile spinneret makes, and why industrial dry-spinning columns are metres
+tall - and 125,000 of them to reach 22 mm2.
+
+**Sticking.** Yes, ironically *because* it does not dry. It arrives wet and
+tacky, which is a good adhesive contact and a terrible structural one.
+
+**Clogging.** Yes, in seconds. A stagnant meniscus in still air skins to a
+tenth of the orifice radius in 1.4 s at 300 um, 3.3 s at 700 um.
+
+### What the numbers point at instead
+
+Drop the solvent. Heat diffuses about a thousand times faster than solvent
+does, so a melt freezes on the timescale a solution cannot dry on:
+
+| filament | freezes | would dry in |
+|---|---|---|
+| 100 um | 0.02 s | 25 s |
+| 300 um | 0.22 s | 225 s |
+| 1000 um | 2.5 s | 2500 s |
+
+A 300 um hot-melt filament solidifies in 0.22 s, inside the flight time, and
+314 of them give the 22 mm2 SBS needs. No solvent to evaporate, no skinning in
+the nozzle, and it bonds on contact because it lands molten - which is how a
+glue gun works. The nozzle now freezes rather than skins, which is a heater
+problem rather than a chemistry one.
+
+None of this is in the engine's reach: no evaporation kinetics, no heat
+transfer, no viscosity for a polymer solution, no creep.
+
 ## Hardware, which the engine says nothing about
 
 No cost property exists in the registry; `synthetic_accessibility` stands in for
