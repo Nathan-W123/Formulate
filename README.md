@@ -127,7 +127,9 @@ Phase 5's deliverable is a measurement, not a coordinator: the adaptive policy
 is benchmarked against the fixed pipeline at equal wall-clock, and currently
 **does not** earn its complexity, which the benchmark reports plainly.
 
-Search iterates: retrieval seeds a population, evolution mutates and
+Search iterates: retrieval seeds a population - molecules from the reference
+set, single polymers from the repeat-unit library swept across chain length
+and, where it decides crystallinity, tacticity - evolution mutates and
 recombines it, Bayesian optimisation tunes the continuous composition of the
 blends it finds, and scores feed back each round. Physics validation then spends
 a bounded budget on the few candidate-property pairs where uncertainty could
@@ -152,18 +154,32 @@ where they exist:
 | `adhesion` | interfacial | molecule, polymer | work of separation on a named substrate, Owens-Wendt, with the split predicted from polar surface area where no measurement exists |
 | `polymer_tg` | thermal | polymer | glass transition from an additive molar function over repeat-unit groups |
 | `polymer_density` | mechanical | polymer | amorphous density from van der Waals volume and a fitted packing factor |
-| `polymer_mechanical` | mechanical | polymer | Young's and shear modulus, entanglement molar mass, flaw-free strength bound |
+| `polymer_mechanical` | mechanical | polymer | Young's and shear modulus, entanglement molar mass, flaw-free strength bound; chain dimension predicted from side-group bulk where none is measured |
 | `polymer_melt` | interfacial | polymer | crystalline melting point, melt viscosity, melt surface tension from the Sugden parachor where no measurement exists |
 | `polymer_blend_melt` | interfacial | mixture | blend melt viscosity and surface tension by mixing rules |
 | `polymer_blend_solid` | mechanical | mixture | blend modulus bounds, glass transition, melting point, density |
 | `spinline` | mechanical | polymer, mixture | solidification time, extrusion pressure, capillary survival, relaxation time, strain hardening and shear thinning of a filament, at a stated geometry |
 
-The two polymer experts are the only ones whose coefficients are fitted in this
-repository rather than published elsewhere, so they carry their own validation
-set: ten polymers withheld from the fit and from the choice of descriptors,
-against which the glass transition comes out at 22 K RMSE and the density at
-3.7%. In-sample agreement is not reported as evidence, because a fitted model
-reproduces what it was fitted to by construction.
+Several coefficients here are fitted in this repository rather than published
+elsewhere, and each carries the number it was checked against rather than the
+number it reproduces in sample, because a fitted model reproduces what it was
+fitted to by construction:
+
+| Fitted here | Checked against | Held out |
+|---|---|---|
+| glass transition, group contributions | ten withheld polymers | 22 K RMSE |
+| amorphous density, one packing factor | ten withheld polymers | 3.7% |
+| entanglement mass from packing length | the fit's own split | 1.60x |
+| characteristic ratio from side-group bulk | leave-one-out | 1.05x on `<R^2>/M` |
+| flow activation energy from Tg | leave-one-out | 1.66x |
+| polar fraction of a surface energy | leave-one-out | 0.068, worst 0.155 |
+
+Two structure-based routes to a melting *temperature* were fitted and rejected
+here — cohesive energy over backbone flexibility, and a group-contribution
+melt transition function — at 250 to 350 K of error. That is reported rather
+than shipped: thirteen measurements cannot support a group fit, and a melting
+point good to 250 K is worse than no melting point at all. Whether a polymer
+melts at all *is* computed, from chain regularity.
 
 `formulate calibrate` measures both accuracy and whether the stated uncertainty
 is honest — a model with a 3 K error claiming 1 K is more dangerous to a

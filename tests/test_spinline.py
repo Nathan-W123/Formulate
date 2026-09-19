@@ -180,11 +180,39 @@ def test_an_undrawn_jet_gets_no_stabilisation_and_says_so():
 
 
 def test_extrusion_pressure_matches_hagen_poiseuille_by_hand():
+    """Land plus the Bagley entrance, which is five radii of equivalent land."""
+    from formulate.experts.spinline import BAGLEY_END_CORRECTION
+
     value = extrusion_pressure(
         diameter=1e-3, land=2e-3, speed=0.02, viscosity=1000.0, density=910.0
     )
-    expected = 8 * 1000.0 * 2e-3 * 0.02 / (0.5e-3) ** 2 + 910.0 * 0.02**2 / 2
+    effective = 2e-3 + BAGLEY_END_CORRECTION * 0.5e-3
+    expected = 8 * 1000.0 * effective * 0.02 / (0.5e-3) ** 2 + 910.0 * 0.02**2 / 2
     assert value == pytest.approx(expected)
+
+
+def test_a_zero_length_die_still_costs_pressure():
+    """The escape hatch this model used to have: shorten the land, pay nothing.
+
+    A search given that hatch takes it, and this one did - it proposed a 50 um
+    orifice plate for a 400 um hole and reported a comfortable pressure. The
+    melt pays to converge into the hole whatever the land is.
+    """
+    orifice = extrusion_pressure(
+        diameter=400e-6, land=0.0, speed=0.02, viscosity=1000.0, density=910.0
+    )
+    kinetic = 910.0 * 0.02**2 / 2
+    assert orifice > 100.0 * kinetic
+
+
+def test_the_entrance_dominates_a_short_die_and_not_a_long_one():
+    short = extrusion_pressure(400e-6, 50e-6, 0.02, 1000.0, 910.0)
+    long = extrusion_pressure(400e-6, 5e-3, 0.02, 1000.0, 910.0)
+    # 5 radii is 1 mm of equivalent land: twenty times the 50 um land, and a
+    # fifth of the 5 mm one. So the short die pays mostly for its entrance and
+    # the long one mostly for its land, and they are within a factor of six.
+    assert short > 10.0 * (8 * 1000.0 * 50e-6 * 0.02 / (200e-6) ** 2)
+    assert long / short < 6.0
 
 
 def test_a_missing_dependency_is_refused_rather_than_assumed():

@@ -137,12 +137,35 @@ def solidification_time(
     return max(conduction, convection) if biot >= 1.0 else convection
 
 
+#: Bagley end correction, in die radii.
+#:
+#: The first version of this function was Hagen-Poiseuille through the land
+#: plus the kinetic head, and it had an escape hatch: shorten the land and the
+#: pressure goes to nothing. A search given that hatch walks straight into it,
+#: and this one did - it proposed a 50 um orifice plate and reported a
+#: comfortable pressure, which is not a design but a division by a length that
+#: was allowed to reach zero.
+#:
+#: A real die costs pressure at its entrance whatever its land is. The melt
+#: converges into the hole, and the extensional work of that convergence plus
+#: the entry vortex is the Bagley end correction: the total drop is
+#: ``2 tau_w (L/R + e)``, which is the same as adding ``e`` radii to the land.
+#: For polymer melts ``e`` runs from about 2 at low rates to 10 or more for an
+#: elastic melt at high rate; 5 is the usual working figure and is used here.
+#:
+#: For a 400 um hole that is a millimetre of equivalent land, which is longer
+#: than the land the search wanted. So this is not a refinement - it is the
+#: term that decides the answer for any short die.
+BAGLEY_END_CORRECTION = 5.0
+
+
 def extrusion_pressure(
     diameter: float, land: float, speed: float, viscosity: float, density: float
 ) -> float:
-    """Hagen-Poiseuille through the die land, plus the kinetic head."""
+    """Hagen-Poiseuille through the land and entrance, plus the kinetic head."""
     radius = diameter / 2.0
-    return 8.0 * viscosity * land * speed / radius**2 + density * speed**2 / 2.0
+    effective = land + BAGLEY_END_CORRECTION * radius
+    return 8.0 * viscosity * effective * speed / radius**2 + density * speed**2 / 2.0
 
 
 def breakup_length(
@@ -370,6 +393,10 @@ class SpinlineExpert(Expert):
                     f"die {spinline.die_diameter.to('m').value*1e6:.0f} um, land "
                     f"{land*1e3:.2f} mm, melt moving {die_speed*1e3:.2f} mm/s in the die "
                     f"against {speed:g} m/s on the line, {viscosity:.3g} Pa.s",
+                    f"plus a Bagley end correction of {BAGLEY_END_CORRECTION:.0f} radii "
+                    f"= {BAGLEY_END_CORRECTION * spinline.die_diameter.to('m').value / 2 * 1e3:.2f} "
+                    "mm of equivalent land, which is what the melt pays converging into "
+                    "the hole. Shortening the land does not remove it",
                     "one over radius squared: a finer die costs pressure exactly as fast "
                     "as it buys solidification time",
                 ),
