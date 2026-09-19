@@ -248,11 +248,13 @@ def default_iterative_coordinator(
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
     from formulate.exploration.mixtures import MixtureSeedExplorer
+    from formulate.exploration.polymers import PolymerLibraryExplorer
 
     return IterativeCoordinator(
         explorers=[
             ReferenceDatabaseExplorer(),
             MixtureSeedExplorer(),
+            PolymerLibraryExplorer(),
             PolymerBlendExplorer(),
             EvolutionaryExplorer(),
             BayesOptExplorer(),
@@ -398,11 +400,13 @@ def default_validating_coordinator(
     from formulate.exploration.database import ReferenceDatabaseExplorer
     from formulate.exploration.evolutionary import EvolutionaryExplorer
     from formulate.exploration.mixtures import MixtureSeedExplorer
+    from formulate.exploration.polymers import PolymerLibraryExplorer
 
     return ValidatingCoordinator(
         explorers=[
             ReferenceDatabaseExplorer(),
             MixtureSeedExplorer(),
+            PolymerLibraryExplorer(),
             PolymerBlendExplorer(),
             EvolutionaryExplorer(),
             BayesOptExplorer(),

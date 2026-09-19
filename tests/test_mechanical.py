@@ -75,13 +75,19 @@ def test_the_entanglement_constant_transfers_to_withheld_polymers():
     assert model.validation_spread < 2.0
 
 
-def test_a_repeat_unit_with_no_measured_chain_dimension_is_refused():
-    """It comes from scattering or an RIS calculation, not from the structure."""
+def test_a_repeat_unit_with_no_measured_chain_dimension_is_predicted_not_refused():
+    """It used to be refused, because a chain dimension comes from scattering.
+
+    It still does - but a measured table answers for the dozen polymers that
+    have been measured, and refusing every other repeat unit makes the whole
+    mechanical family unreachable for anything new. The predictor from
+    side-group bulk answers for any structure and says that it is a prediction.
+    """
     from formulate.experts.mechanical import PolymerMechanicalExpert
 
     expert = PolymerMechanicalExpert()
     domain = expert.assess_domain(polymer_candidate("[*]CC(Cl)[*]"))  # PVC, untabulated
-    assert not domain.in_domain
+    assert domain.in_domain
 
 
 # -- the branch that decides everything -----------------------------------

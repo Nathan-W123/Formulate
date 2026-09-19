@@ -95,6 +95,80 @@ ROUSE_EXPONENT = 1.0
 #: would be worse than claiming this.
 VISCOSITY_LOG_SIGMA = 1.0
 
+#: Sugden parachor increments, per atom, in the usual mixed units.
+#:
+#: This is what replaces the tabulated polymer surface energies as a *gate*.
+#: The table answered for nine polymers; the parachor answers for any organic
+#: structure, because it is additive over atoms and bonds rather than looked up
+#: per substance - the same kind of scheme as the Joback groups this repository
+#: already leans on.
+#:
+#: ``gamma = (P rho / M)^4``. Checked against the eight tabulated polymer
+#: surface energies it reproduces them between 0.90x and 1.34x, worst case
+#: poly(ethylene terephthalate). That is far looser than a measurement and far
+#: better than nothing, and the prediction says so.
+PARACHOR_ATOMS: dict[int, float] = {
+    1: 17.1, 6: 4.8, 7: 12.5, 8: 20.0, 9: 27.5,
+    14: 25.0, 16: 48.2, 17: 54.3, 35: 68.0, 53: 91.0,
+}
+PARACHOR_DOUBLE_BOND = 23.2
+PARACHOR_TRIPLE_BOND = 46.4
+PARACHOR_RING = 11.6
+PARACHOR_SMALL_RING = 16.7
+
+#: Worst ratio of the parachor route against the tabulated surface energies.
+PARACHOR_SPREAD = 1.34
+
+
+def parachor_surface_tension(repeat_unit: str, density_g_cm3: float) -> float | None:
+    """Surface tension of a polymer from structure, mJ/m^2.
+
+    Sugden's parachor is additive over atoms, unsaturation and rings, so this
+    covers any repeat unit RDKit can parse instead of the nine that had a
+    measured surface energy.
+    """
+    from rdkit import Chem
+
+    # Capped rather than deleted: deleting an attachment point that sits inside
+    # a branch leaves an empty "()" that RDKit refuses, which silently cost
+    # every aromatic backbone - PEEK among them - its surface tension. The two
+    # capping hydrogens are subtracted again below.
+    mol = Chem.MolFromSmiles(repeat_unit.replace("[*]", "[H]"))
+    if mol is None:
+        return None
+    mol = Chem.AddHs(mol)
+
+    total = 0.0
+    for atom in mol.GetAtoms():
+        increment = PARACHOR_ATOMS.get(atom.GetAtomicNum())
+        if increment is None:
+            return None
+        total += increment
+    for bond in mol.GetBonds():
+        if bond.GetIsAromatic():
+            continue
+        if bond.GetBondType() == Chem.BondType.DOUBLE:
+            total += PARACHOR_DOUBLE_BOND
+        elif bond.GetBondType() == Chem.BondType.TRIPLE:
+            total += PARACHOR_TRIPLE_BOND
+    for ring in mol.GetRingInfo().AtomRings():
+        if all(mol.GetAtomWithIdx(i).GetIsAromatic() for i in ring):
+            total += PARACHOR_RING + 3 * PARACHOR_DOUBLE_BOND
+        elif len(ring) == 3:
+            total += PARACHOR_SMALL_RING
+        else:
+            total += PARACHOR_RING
+
+    mass = sum(a.GetMass() for a in mol.GetAtoms())
+    # Dropping the attachment points added two capping hydrogens the repeat
+    # unit does not have; both the parachor and the mass must lose them.
+    total -= 2 * PARACHOR_ATOMS[1]
+    mass -= 2 * 1.008
+    if mass <= 0 or total <= 0:
+        return None
+    return (total * density_g_cm3 / mass) ** 4
+
+
 #: Temperature coefficient of a polymer melt's surface tension, N/m/K.
 SURFACE_TENSION_DGDT = -6.0e-5
 
@@ -133,6 +207,43 @@ FLOW_ACTIVATION_ENERGY: dict[str, float] = {
 
 #: Relative one-sigma on a tabulated activation energy.
 ACTIVATION_ENERGY_RTOL = 0.15
+
+#: Flow activation energy from the glass transition, for a polymer the table
+#: above does not carry.
+#:
+#: Both quantities measure the same thing from different ends: how much energy
+#: it costs to move a chain segment past its neighbours. A stiff, polar or
+#: bulky backbone raises the glass transition and raises the barrier to flow
+#: together. Over the fourteen polymers above the correlation is r = +0.87 and
+#: the fit is ``Ea(kJ/mol) = -47.3 + 0.403 Tg(K)``.
+#:
+#: Left out one polymer at a time and refitted, the worst held-out miss is
+#: 1.66x, on PMMA - the ester side group hinders rotation more than its glass
+#: transition alone reports. That ratio is carried as the one-sigma, which is
+#: deliberately pessimistic: a worst case is not a standard deviation, and a
+#: number that enters an exponential should be over-doubted rather than under.
+#:
+#: This is the difference between answering for fourteen polymers and
+#: answering for any polymer whose glass transition can be predicted - which
+#: is any polymer at all, since the group-contribution Tg expert has no table.
+ACTIVATION_FROM_TG_SLOPE = 402.8
+ACTIVATION_FROM_TG_INTERCEPT = -47.26e3
+
+#: Held-out worst ratio of the correlation above, used as its one-sigma.
+PREDICTED_ACTIVATION_RTOL = 0.66
+
+#: Below roughly this the correlation would return a negative barrier, which is
+#: not physics. A chain segment cannot flow more easily than a small molecule,
+#: and 12 kJ/mol is about where the simplest flexible chains sit.
+ACTIVATION_FLOOR = 12.0e3
+
+
+def predicted_activation_energy(tg_kelvin: float) -> float:
+    """Flow activation energy from the glass transition, J/mol."""
+    return max(
+        ACTIVATION_FLOOR,
+        ACTIVATION_FROM_TG_INTERCEPT + ACTIVATION_FROM_TG_SLOPE * tg_kelvin,
+    )
 
 #: Repeat units whose crystallinity is decided by tacticity rather than by the
 #: repeat unit alone, and which therefore cannot be answered from the SMILES.
@@ -339,13 +450,18 @@ class PolymerMeltExpert(Expert):
     version = "1"
     method = (
         "tabulated crystalline melting points; WLF-shifted reptation viscosity anchored "
-        "at the viscosity that defines Tg; surface tension from measured Owens-Wendt "
-        "components with a linear melt temperature correction"
+        "at the viscosity that defines Tg, handing over to Arrhenius on a flow "
+        "activation energy that is tabulated where known and predicted from the glass "
+        "transition otherwise; surface tension from measured Owens-Wendt components "
+        "where known and from the Sugden parachor otherwise, with a linear melt "
+        "temperature correction"
     )
     family = PropertyFamily.INTERFACIAL
     supported_classes = frozenset({MaterialClass.POLYMER})
     supported_properties = frozenset({"melting_point", "shear_viscosity", "surface_tension"})
-    dependencies = frozenset({"glass_transition_temperature", "entanglement_molar_mass"})
+    dependencies = frozenset(
+        {"glass_transition_temperature", "entanglement_molar_mass", "amorphous_density"}
+    )
 
     def is_available(self) -> bool:
         from formulate import chem
@@ -424,19 +540,43 @@ class PolymerMeltExpert(Expert):
     def _surface_tension(self, prop, request, domain, repeat):
         from .adhesion import POLYMER_SURFACES, SUBSTRATES
 
-        found = _match(repeat, POLYMER_SURFACES)
-        if found is None:
-            return Prediction.unsupported(
-                prop,
-                self.id,
-                "no measured surface energy is tabulated for this polymer; the "
-                "dispersive/polar split cannot be derived from structure",
-            )
-        energy = SUBSTRATES[found[1]]
         temperature = request.conditions.temperature
         t_kelvin = temperature.to_canonical().value if temperature is not None else 298.15
+
+        found = _match(repeat, POLYMER_SURFACES)
+        if found is not None:
+            energy = SUBSTRATES[found[1]]
+            room = energy.total
+            spread = energy.spread
+            source = f"measured at room temperature: {energy.basis}"
+        else:
+            density = request.dependency_value("amorphous_density", "g/cm^3")
+            if density is None:
+                return Prediction.unsupported(
+                    prop,
+                    self.id,
+                    "no measured surface energy is tabulated for this polymer, and the "
+                    "parachor that would replace it needs an amorphous density, which "
+                    "no upstream expert could supply",
+                )
+            room = parachor_surface_tension(repeat, density)
+            if room is None:
+                return Prediction.unsupported(
+                    prop,
+                    self.id,
+                    "no measured surface energy is tabulated for this polymer, and the "
+                    "parachor carries no increment for at least one element in this "
+                    "repeat unit",
+                )
+            spread = room * (PARACHOR_SPREAD - 1.0)
+            source = (
+                f"predicted: Sugden parachor over the repeat unit at "
+                f"{density:.3f} g/cm^3, reproducing the tabulated polymer surface "
+                f"energies between 0.90x and {PARACHOR_SPREAD:.2f}x"
+            )
+
         # mJ/m^2 is numerically N/m * 1000
-        gamma = energy.total / 1000.0 + SURFACE_TENSION_DGDT * (t_kelvin - 298.15)
+        gamma = room / 1000.0 + SURFACE_TENSION_DGDT * (t_kelvin - 298.15)
         if gamma <= 0:
             return Prediction.failed(
                 prop, self.id,
@@ -446,15 +586,15 @@ class PolymerMeltExpert(Expert):
         drift = SURFACE_TENSION_DGDT * (t_kelvin - 298.15)
         return self._make(
             prop, gamma, "N/m", request, domain,
-            std=(energy.spread / 1000.0) + abs(drift) * 0.25,
+            std=(spread / 1000.0) + abs(drift) * 0.25,
             kind=UncertaintyKind.COMBINED,
             basis=(
-                "measured spread on the surface energy, plus a quarter of the temperature "
-                "correction, because the coefficient is a typical value rather than this "
-                "polymer's own"
+                "spread on the room-temperature surface energy, plus a quarter of the "
+                "temperature correction, because the coefficient is a typical value "
+                "rather than this polymer's own"
             ),
             notes=(
-                f"measured at room temperature: {energy.basis}",
+                source,
                 f"corrected by {drift*1000:+.1f} mN/m to {t_kelvin:.0f} K at "
                 f"{SURFACE_TENSION_DGDT*1000:.2f} mN/m/K",
             ),
@@ -505,17 +645,21 @@ class PolymerMeltExpert(Expert):
             )
         above_wlf = t_kelvin > tg_k + WLF_RANGE_K
         activation = None
+        activation_rtol = ACTIVATION_ENERGY_RTOL
+        activation_source = ""
         if above_wlf:
             found = _match(repeat, FLOW_ACTIVATION_ENERGY)
             if found is None:
-                return Prediction.unsupported(
-                    prop, self.id,
-                    f"at {t_kelvin:.0f} K this melt is {t_kelvin - tg_k:.0f} K above its "
-                    f"glass transition, past the {WLF_RANGE_K:.0f} K that WLF is "
-                    "referenced over, and no flow activation energy is tabulated for it "
-                    "to carry the Arrhenius branch",
+                activation = predicted_activation_energy(tg_k)
+                activation_rtol = PREDICTED_ACTIVATION_RTOL
+                activation_source = (
+                    f"no flow activation energy is tabulated for this polymer, so it is "
+                    f"predicted from its glass transition at "
+                    f"{ACTIVATION_FROM_TG_SLOPE/1e3:.3f} kJ/mol/K"
                 )
-            activation = found[1]
+            else:
+                activation = found[1]
+                activation_source = "flow activation energy is tabulated for this polymer"
 
         eta = melt_viscosity(mass, me_kg, tg_k, t_kelvin, activation)
         # One decade of one-sigma, expressed in linear units for the ranker. The
@@ -524,14 +668,14 @@ class PolymerMeltExpert(Expert):
         log_sigma = VISCOSITY_LOG_SIGMA
         if activation is not None:
             exponent_sigma = (
-                activation * ACTIVATION_ENERGY_RTOL / GAS_CONSTANT
+                activation * activation_rtol / GAS_CONSTANT
                 * abs(1.0 / t_kelvin - 1.0 / (tg_k + WLF_RANGE_K))
             )
             log_sigma = math.sqrt(log_sigma**2 + (exponent_sigma / math.log(10.0)) ** 2)
         sigma = eta * (10.0**log_sigma - 1.0) / 2.0
         branch = (
             f"WLF from Tg = {tg_k:.0f} K to {tg_k + WLF_RANGE_K:.0f} K, then Arrhenius "
-            f"at {activation/1e3:.0f} kJ/mol to {t_kelvin:.0f} K"
+            f"at {activation/1e3:.0f} kJ/mol to {t_kelvin:.0f} K - {activation_source}"
             if activation is not None
             else f"WLF shift from Tg = {tg_k:.0f} K to {t_kelvin:.0f} K"
         )
@@ -542,8 +686,9 @@ class PolymerMeltExpert(Expert):
                 f"{log_sigma:.1f} decades, one sigma. The WLF constants used are the "
                 "universal ones, which against polystyrene at 200 C land about an order "
                 "of magnitude low; a tighter claim would be flattering rather than "
-                "honest. Above the WLF range the activation energy's own 15% is "
-                "propagated through the exponential and added in quadrature"
+                f"honest. Above the WLF range the activation energy's own "
+                f"{activation_rtol*100:.0f}% is propagated through the exponential and "
+                "added in quadrature"
             ),
             notes=(
                 f"chain {mass*1e3:.0f} g/mol against a critical mass of {critical*1e3:.0f}: "

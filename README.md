@@ -153,7 +153,7 @@ where they exist:
 | `polymer_tg` | thermal | polymer | glass transition from an additive molar function over repeat-unit groups |
 | `polymer_density` | mechanical | polymer | amorphous density from van der Waals volume and a fitted packing factor |
 | `polymer_mechanical` | mechanical | polymer | Young's and shear modulus, entanglement molar mass, flaw-free strength bound |
-| `polymer_melt` | interfacial | polymer | crystalline melting point, melt viscosity, melt surface tension |
+| `polymer_melt` | interfacial | polymer | crystalline melting point, melt viscosity, melt surface tension from the Sugden parachor where no measurement exists |
 | `polymer_blend_melt` | interfacial | mixture | blend melt viscosity and surface tension by mixing rules |
 | `polymer_blend_solid` | mechanical | mixture | blend modulus bounds, glass transition, melting point, density |
 | `spinline` | mechanical | polymer, mixture | solidification time, extrusion pressure, capillary survival, relaxation time, strain hardening and shear thinning of a filament, at a stated geometry |

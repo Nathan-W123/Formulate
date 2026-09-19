@@ -91,9 +91,14 @@ class DeterministicCoordinator:
     ) -> None:
         from formulate.experts import default_registry
         from formulate.exploration.database import ReferenceDatabaseExplorer
+        from formulate.exploration.polymers import PolymerLibraryExplorer
 
         self.registry = registry if registry is not None else default_registry()
-        self.explorers = list(explorers) if explorers is not None else [ReferenceDatabaseExplorer()]
+        self.explorers = (
+            list(explorers)
+            if explorers is not None
+            else [ReferenceDatabaseExplorer(), PolymerLibraryExplorer()]
+        )
         self.config = config or RunConfig()
         self.engine = EvaluationEngine(self.registry, self.config.evaluation, cache)
         self.ranker = Ranker(self.config.ranking)

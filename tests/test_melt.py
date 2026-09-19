@@ -58,9 +58,19 @@ def _predict(candidate, prop, *, temperature_k=298.15, context=None):
     return next(p for p in PolymerMeltExpert().predict(request) if p.property == prop)
 
 
-def _context(tg_k: float, me_kg_mol: float) -> dict[str, Prediction]:
+def _context(
+    tg_k: float, me_kg_mol: float, density_g_cm3: float | None = None
+) -> dict[str, Prediction]:
     """Stand in for the upstream experts this one depends on."""
+    extra = {}
+    if density_g_cm3 is not None:
+        extra["amorphous_density"] = Prediction(
+            property="amorphous_density",
+            quantity=Quantity(value=density_g_cm3, unit="g/cm^3"),
+            expert_id="stub",
+        )
     return {
+        **extra,
         "glass_transition_temperature": Prediction(
             property="glass_transition_temperature",
             quantity=Quantity(value=tg_k, unit="K"),
@@ -123,6 +133,83 @@ def test_surface_tension_is_corrected_from_room_temperature_to_the_melt():
 def test_a_copolymer_is_refused_rather_than_averaged():
     prediction = _predict(_polymer(PS, PE), "surface_tension")
     assert prediction.status is PredictionStatus.UNSUPPORTED
+
+
+@requires_rdkit
+def test_an_untabulated_surface_energy_falls_back_to_the_parachor():
+    """Nine polymers had a measured surface energy; every other repeat unit
+    used to get nothing, which took filament stability down with it."""
+    prediction = _predict(
+        _polymer("[*]CC(CC)[*]"), "surface_tension",
+        context=_context(200.0, 2.0, density_g_cm3=0.92),
+    )
+    assert prediction.quantity is not None
+    # Poly(1-butene) measures near 33 mN/m; this is the right neighbourhood.
+    assert 0.020 < prediction.quantity.to("N/m").value < 0.050
+    assert "parachor" in " ".join(prediction.notes)
+
+
+@requires_rdkit
+def test_the_parachor_is_doubted_more_than_a_measurement():
+    measured = _predict(
+        _polymer(PE), "surface_tension", context=_context(195.0, 1.15, density_g_cm3=0.855)
+    )
+    predicted = _predict(
+        _polymer("[*]CC(CC)[*]"), "surface_tension",
+        context=_context(200.0, 2.0, density_g_cm3=0.92),
+    )
+    assert predicted.uncertainty.std > measured.uncertainty.std
+
+
+@requires_rdkit
+def test_the_parachor_needs_a_density_and_says_so_rather_than_guessing():
+    prediction = _predict(_polymer("[*]CC(CC)[*]"), "surface_tension")
+    assert prediction.status is PredictionStatus.UNSUPPORTED
+    assert "amorphous density" in " ".join(prediction.notes)
+
+
+@requires_rdkit
+def test_the_parachor_reproduces_the_measured_polymer_surface_energies():
+    """Within a third, over every polymer that has both a measurement and a
+    tabulated density. Looser than an experiment, and it says so."""
+    import json
+    from importlib import resources
+
+    from formulate.experts.adhesion import POLYMER_SURFACES, SUBSTRATES
+    from formulate.experts.melt import PARACHOR_SPREAD, parachor_surface_tension
+
+    text = (
+        resources.files("formulate.data")
+        .joinpath("reference_polymers.json")
+        .read_text(encoding="utf-8")
+    )
+    density = {
+        p["repeat_unit"]: p["amorphous_density_g_cm3"]
+        for p in json.loads(text)["polymers"]
+        if p.get("amorphous_density_g_cm3") is not None
+    }
+    checked = 0
+    for repeat, key in POLYMER_SURFACES.items():
+        if repeat not in density:
+            continue
+        predicted = parachor_surface_tension(repeat, density[repeat])
+        assert predicted is not None, repeat
+        ratio = predicted / SUBSTRATES[key].total
+        assert 1.0 / PARACHOR_SPREAD <= ratio <= PARACHOR_SPREAD, repeat
+        checked += 1
+    assert checked >= 8
+
+
+@requires_rdkit
+def test_an_attachment_point_inside_a_branch_still_parses():
+    """PEEK's second [*] sits inside a parenthesis. Deleting it left an empty
+    "()" that RDKit refused, so every aromatic backbone lost its parachor."""
+    from formulate.experts.melt import parachor_surface_tension
+
+    peek = "[*]Oc1ccc(Oc2ccc(C(=O)c3ccc([*])cc3)cc2)cc1"
+    gamma = parachor_surface_tension(peek, 1.263)
+    assert gamma is not None
+    assert 30.0 < gamma < 70.0
 
 
 # -- melt viscosity --------------------------------------------------------
@@ -189,15 +276,73 @@ def test_above_the_wlf_range_arrhenius_carries_it_and_says_so():
 
 
 @requires_rdkit
-def test_without_an_activation_energy_the_melt_regime_is_refused():
-    """The Arrhenius branch is tabulated, so a polymer outside the table gets
-    a refusal rather than a WLF extrapolation two hundred degrees past its range."""
+def test_without_a_tabulated_activation_energy_the_barrier_is_predicted():
+    """A polymer outside the table used to be refused the Arrhenius branch.
+
+    It is now carried on a barrier predicted from its own glass transition,
+    which says so and which doubles its uncertainty to pay for the guess. The
+    alternative was that any repeat unit not in a fourteen-entry table had no
+    melt viscosity at processing temperature at all.
+    """
     prediction = _predict(
         _polymer("[*]CC(CC)[*]", mn_kg_mol=50.0), "shear_viscosity",
         temperature_k=473.15, context=_context(200.0, 2.0),
     )
-    assert prediction.status is PredictionStatus.UNSUPPORTED
-    assert "activation energy" in " ".join(prediction.notes)
+    assert prediction.status is PredictionStatus.OK
+    assert prediction.quantity is not None
+    notes = " ".join(prediction.notes)
+    assert "predicted from its glass transition" in notes
+
+
+def test_the_predicted_barrier_is_doubted_more_than_a_tabulated_one():
+    """Same polymer, same temperature; only the provenance of Ea differs."""
+    from formulate.experts.melt import (
+        ACTIVATION_ENERGY_RTOL,
+        PREDICTED_ACTIVATION_RTOL,
+    )
+
+    assert PREDICTED_ACTIVATION_RTOL > ACTIVATION_ENERGY_RTOL
+
+    tabulated = _predict(
+        _polymer("[*]CC[*]", mn_kg_mol=50.0), "shear_viscosity",
+        temperature_k=473.15, context=_context(195.0, 1.15),
+    )
+    predicted = _predict(
+        _polymer("[*]CC(CC)[*]", mn_kg_mol=50.0), "shear_viscosity",
+        temperature_k=473.15, context=_context(195.0, 1.15),
+    )
+    assert tabulated.status is PredictionStatus.OK
+    assert predicted.status is PredictionStatus.OK
+    relative = lambda p: p.uncertainty.std / p.quantity.to_canonical().value
+    assert relative(predicted) > relative(tabulated)
+
+
+def test_the_predicted_barrier_reproduces_the_tabulated_ones():
+    """Held out one at a time the correlation misses by at most 1.66x."""
+    from formulate.experts.melt import (
+        FLOW_ACTIVATION_ENERGY,
+        PREDICTED_ACTIVATION_RTOL,
+        predicted_activation_energy,
+    )
+    from formulate.experts.polymer import reference_polymers
+
+    tg = {p["repeat_unit"]: p["glass_transition_k"] for p in reference_polymers()}
+    worst = max(
+        max(predicted_activation_energy(tg[smi]) / ea, ea / predicted_activation_energy(tg[smi]))
+        for smi, ea in FLOW_ACTIVATION_ENERGY.items()
+        if smi in tg
+    )
+    # In sample, so this is the optimistic figure; the stated one-sigma is the
+    # held-out worst case, which is wider still.
+    assert worst <= 1.0 + PREDICTED_ACTIVATION_RTOL
+
+
+def test_the_predicted_barrier_has_a_floor():
+    """The straight line goes negative below about 117 K, which is not physics."""
+    from formulate.experts.melt import ACTIVATION_FLOOR, predicted_activation_energy
+
+    assert predicted_activation_energy(80.0) == ACTIVATION_FLOOR
+    assert predicted_activation_energy(400.0) > ACTIVATION_FLOOR
 
 
 @requires_rdkit
