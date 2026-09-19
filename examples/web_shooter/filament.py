@@ -111,7 +111,7 @@ for d_um in (50, 100, 200, 350, 700, 1500, 3000, 4400):
         ok_p = pressure(d, mu) <= 10e5
         if ok_set and ok_jet and ok_p:
             found.append((d_um, mu))
-print(f"  scanned 80 combinations of diameter and viscosity")
+print("  scanned 80 combinations of diameter and viscosity")
 print(f"  survivors: {found if found else 'NONE'}")
 
 print("""
