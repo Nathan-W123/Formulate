@@ -601,6 +601,70 @@ oligomer at Mn 3000 is not something sold in a bottle. Every number here is a
 calculation from handbook physical constants, and the gel clock against the
 333 ms flight is the one that most needs an experiment rather than an estimate.
 
+## Simulating it: `simulate.py`
+
+Everything above is a scaling argument, and scaling arguments treated three
+things separately that are in fact racing each other - cure makes heat, heat
+accelerates cure, and cure raises the viscosity that resists pinch-off. So
+`simulate.py` integrates a radial reaction-diffusion problem for one
+cross-section of the jet across the flight, with a Rayleigh perturbation
+growing against the viscosity the cure is producing. It is not a free-surface
+solver: the radius is fixed and breakup is judged by linear stability, which is
+the standard slender-jet treatment and is valid up to pinch-off, not through
+it.
+
+It reproduces both limits that can be solved by hand - the adiabatic peak at
+79.40 C and the uncured perturbation growth at 7.50% - so what the integrator
+adds is the coupling, not the arithmetic.
+
+**It corrected one prediction.** The surface was supposed to cure last, being
+the cooler part, and that would have mattered because surface tension acts on
+the surface. It does not happen: heat needs 48 s to cross the strand and the
+flight is 333 ms, so there is no time for a radial gradient to form at all.
+Core and surface converge together, 0.993 against 0.992.
+
+**And it found a constraint no scaling argument could see.** Cure starts where
+the two streams meet, not at the muzzle, and a 6 x 60 mm mixer at 137 mL/s
+holds the resin for 12 ms before it reaches the orifice. A fast accelerator
+wins the flight and loses the nozzle:
+
+| gel time | conversion at exit | viscosity there | pressure | |
+|---|---|---|---|---|
+| 50 ms | 0.158 | 46 Pa.s | 14.0 bar | stalls the flow |
+| 100 ms | 0.082 | 21 Pa.s | 6.6 bar | stalls the flow |
+| **150 ms** | 0.056 | 16 Pa.s | 5.2 bar | works |
+| **300 ms** | 0.028 | 13 Pa.s | 4.2 bar | works |
+| **500 ms** | 0.017 | 11 Pa.s | 3.9 bar | works |
+| 1000 ms | 0.009 | 11 Pa.s | 3.6 bar | lands liquid |
+
+**Working window: a gel time of 150-500 ms**, bounded below by the mixer and
+above by the flight. The two limits belong to different hardware, so both are
+tunable, and the cheapest move is a shorter mixer rather than a new resin.
+
+What the simulation does not do is check its own inputs. The cure kinetics, the
+gel exponent and the 30 J/g all went in as assumptions and all come back out
+inside the answer. It tests whether the physics is consistent, not whether the
+resin exists.
+
+### The cheap experiments that would test it
+
+Three, none of which need the exotic oligomer, because each isolates one
+mechanism at matched dimensionless groups:
+
+- **Jet coherence.** Fire glycerol or corn syrup at 10 Pa.s through the 4.4 mm
+  orifice at 9 m/s and photograph it. Same Ohnesorge and Weber numbers as the
+  real resin, no chemistry at all. If it does not fly as a rope, nothing
+  downstream matters.
+- **Exotherm.** Cure a known mass of plain cyanoacrylate in a vacuum flask with
+  a thermocouple. It should give 480 J/g and a ~320 K rise. This is the number
+  the whole oligomer argument rests on, and it is a one-afternoon measurement.
+- **Gel clock.** Mix cyanoacrylate and accelerator at several ratios and time
+  it to immobility with a stopwatch. Directly locates you inside or outside the
+  150-500 ms window.
+
+The first two are decisive and cost nothing. They should happen before anyone
+tries to source a trifunctional oligomer.
+
 Honest caveats beyond that: cured cyanoacrylate is brittle unless it is the
 rubber-toughened grade, which is again a two-phase material the engine cannot
 represent; and CA bonds skin instantly, which is the real safety issue.
