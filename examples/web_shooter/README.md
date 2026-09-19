@@ -340,6 +340,35 @@ at 100% solids there is no carrier to haul, so the same shot that cost 203 g as
 a 25% dope costs 51 g here. Cure is seconds, in bulk, and it bonds to steel,
 glass and skin - which is the safety problem, not a footnote.
 
+### Will it fly as a rope, or as a spray?
+
+The question the rest of this had been dodging. A liquid jet does not stay a
+jet: surface tension pinches it into drops, and the only defences are viscosity
+and getting solid first.
+
+| jet | viscosity | intact for |
+|---|---|---|
+| 40 x 0.7 mm bundle | 1 Pa.s | 0.5 m |
+| 40 x 0.7 mm bundle | 5 Pa.s | 2.5 m |
+| single 4.4 mm | 1 Pa.s | 3.5 m |
+| single 4.4 mm | 5 Pa.s | 16 m |
+
+So: **one thick stream, not forty filaments.** Thin jets pinch off in
+centimetres, and at a gel-grade viscosity a single 4.4 mm stream stays coherent
+far longer than it needs to - it has about 3 s before pinch-off and cures in
+about 1.
+
+This also corrects the bundle reasoning above. Small holes cost more pressure,
+not less, and the same throughput through one 4.4 mm orifice needs **0.83 bar**
+against the bundle's 32 - of the 13 available. The bundle existed only to beat
+the drying clock, and a reactive cure has no drying clock.
+
+What does cap it is the air. The gas Weber number reaches ~13 at 9 m/s on a
+4.4 mm stream, which is where bag breakup starts and the jet begins shedding
+its surface. So the useful muzzle velocity is about 9 m/s and the range is
+**4-8 m**, set by aerodynamics rather than by the 13 bar, which could otherwise
+push it to 20 m/s.
+
 Honest caveats: cured cyanoacrylate is brittle unless it is the
 rubber-toughened grade, which is again a two-phase material the engine cannot
 represent; the mixed stream sets in the static mixer, so that nozzle is a
@@ -384,9 +413,12 @@ orifice, which passes 132 mL/s at 5 m/s and empties a wrist cartridge in a
 quarter of a second. Shrink the orifice to 1 mm and a 10 Pa.s dope needs
 160 bar to push through it.
 
-**A bundle is the only way**, which is also what a spinneret and a spider's
-dragline both are. Load is carried by total cross-section, but pressure drop
-goes as `1/R^2` per hole, so many small holes beat one big one:
+**A bundle**, which is also what a spinneret and a spider's dragline both are.
+The reason is drying: solvent escapes a filament on a `R^2/D` clock, so thin
+beats thick. It costs pressure to do it - `dP` goes as `1/R^2` per hole, so
+small holes are *worse*, not better - and the bundle is worth that cost only
+while drying is what sets the strand. Under a reactive cure it is not, and the
+section below drops the bundle entirely.
 
 | filaments | dry filament | solids | viscosity | pressure | flow | holds at 100 MPa |
 |---|---|---|---|---|---|---|
