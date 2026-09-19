@@ -232,3 +232,28 @@ def test_every_tabulated_chain_states_where_it_came_from():
         assert entry.source
         assert entry.r2_per_mass > 0
         assert entry.split in {"fit", "validation"}
+
+
+def test_polycaprolactone_entanglement_reproduces_its_measured_value():
+    """Added as a held-out polymer, so this is the honest kind of check.
+
+    Its chain dimension was built from the characteristic ratio rather than
+    tabulated, and the measured 2500 g/mol played no part in choosing it. The
+    same construction reproduces polyethylene's tabulated 1.250 as 1.235.
+    """
+    from formulate.experts.mechanical import CHAIN_DIMENSIONS, entanglement_model
+
+    entry = CHAIN_DIMENSIONS["[*]CCCCCC(=O)O[*]"]
+    assert entry.split == "validation", "a fit point would prove nothing"
+    predicted = entanglement_model().entanglement(entry.r2_per_mass, 1.095)
+    ratio = predicted / entry.measured_entanglement
+    assert 1.0 / 1.6 < ratio < 1.6, f"off by {ratio:.2f}x, past the model's own spread"
+
+
+def test_the_characteristic_ratio_route_reproduces_polyethylene():
+    """The construction used for polycaprolactone, checked where the answer
+    is already tabulated."""
+    from formulate.experts.mechanical import CHAIN_DIMENSIONS
+
+    derived = 7.4 * 2 * 1.53**2 / 28.05
+    assert derived == pytest.approx(CHAIN_DIMENSIONS["[*]CC[*]"].r2_per_mass, rel=0.02)

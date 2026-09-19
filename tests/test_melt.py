@@ -295,17 +295,19 @@ def test_polycaprolactone_melts_low_enough_to_handle():
 @requires_rdkit
 def test_a_measured_modulus_does_not_need_a_chain_dimension():
     """Gating it there refused polycaprolactone a stiffness sitting in a table,
-    and with it the whole low-melting branch of the search."""
+    and with it the whole low-melting branch of the search. Polycaprolactone
+    has a chain dimension now, so nylon-6,6 stands in: same situation, a
+    measured modulus and no tabulated chain."""
     from formulate.core.candidate import Candidate, MaterialClass
     from formulate.experts import polymer_registry
     from formulate.experts.base import PredictionRequest as Req
     from formulate.experts.mechanical import CHAIN_DIMENSIONS
 
-    assert "[*]CCCCCC(=O)O[*]" not in CHAIN_DIMENSIONS, "the point of the test"
+    assert NYLON66 not in CHAIN_DIMENSIONS, "the point of the test"
 
     candidate = Candidate(
         material_class=MaterialClass.POLYMER,
-        polymer=PolymerSpec(monomers=(MonomerUnit(smiles="[*]CCCCCC(=O)O[*]"),)),
+        polymer=PolymerSpec(monomers=(MonomerUnit(smiles=NYLON66),)),
         conditions=Conditions.standard(),
     )
     registry = polymer_registry()
@@ -320,4 +322,4 @@ def test_a_measured_modulus_does_not_need_a_chain_dimension():
         ):
             if prediction.is_usable:
                 context.setdefault(prediction.property, prediction)
-    assert context["youngs_modulus"].quantity.to_canonical().value == pytest.approx(0.4e9)
+    assert context["youngs_modulus"].quantity.to_canonical().value == pytest.approx(2.8e9)

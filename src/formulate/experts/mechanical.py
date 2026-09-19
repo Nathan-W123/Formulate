@@ -104,6 +104,22 @@ CHAIN_DIMENSIONS: dict[str, ChainDimension] = {
     "[*][Si](C)(C)O[*]": ChainDimension(0.422, 12000, "validation", "PDMS at 298 K"),
     "[*]CC(C)[*]": ChainDimension(0.678, None, "fit", "atactic polypropylene"),
     "[*]CCO[*]": ChainDimension(0.805, None, "fit", "poly(ethylene oxide)"),
+    # Polycaprolactone, added because a 60 C melting point makes it the one
+    # polymer here that can be handled molten without a burn unit, and without
+    # a chain dimension the engine could not say whether it entangles.
+    #
+    # <R^2>/M is not tabulated for it, so it is built from the characteristic
+    # ratio the way the others could be: C_inf * n * <l^2> / M0, with C_inf ~ 5
+    # (simulation, against an experimental range of 3.9-6), 7 backbone bonds
+    # per 114.14 g/mol repeat, and bond lengths of 1.53 A for C-C and 1.40 for
+    # C-O. The same construction reproduces polyethylene's tabulated 1.250 as
+    # 1.235, which is what makes it usable here rather than a guess.
+    #
+    # It is a validation entry, not a fit one: the measured 2500 g/mol played
+    # no part in choosing 0.684, and the model predicts 3522 from it.
+    "[*]CCCCCC(=O)O[*]": ChainDimension(
+        0.684, 2500, "validation", "polycaprolactone, from C_inf ~ 5"
+    ),
 }
 
 
@@ -152,6 +168,7 @@ def entanglement_model() -> EntanglementModel:
         "[*]CC=CC[*]": 0.900,
         "[*]CC(C)(C(=O)OC)[*]": 1.13,
         "[*][Si](C)(C)O[*]": 0.970,
+        "[*]CCCCCC(=O)O[*]": 1.095,
     }
 
     def constants(split: str) -> list[float]:
