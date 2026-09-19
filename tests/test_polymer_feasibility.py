@@ -521,10 +521,19 @@ def test_a_ceiling_widens_the_error_bar():
 # --------------------------------------------------------------------------
 
 
-def test_this_expert_covers_polymers_only():
+def test_this_expert_covers_polymers_and_polymer_blends_but_not_molecules():
+    """The mixture case was added deliberately and is not a widening of scope.
+
+    A polymer BLEND is polymers, and nothing else could answer whether one can
+    be made: mixture_thermal covers the property for a formulation but
+    delegates to the molecular panel, which correctly refuses a polymer
+    component. A blend whose components are not all polymers is still refused
+    here - see the solution test below - so this is not a general mixture
+    expert, and the molecule case stays where it belongs.
+    """
     assert EXPERT.covers(PROP, MaterialClass.POLYMER)
+    assert EXPERT.covers(PROP, MaterialClass.MIXTURE)
     assert not EXPERT.covers(PROP, MaterialClass.MOLECULE)
-    assert not EXPERT.covers(PROP, MaterialClass.MIXTURE)
     assert EXPERT.family is PropertyFamily.FEASIBILITY
     assert EXPERT.dependencies == frozenset()
 
@@ -895,3 +904,167 @@ def test_the_generic_refusal_says_what_to_check_next():
     assert "smallest period" in reason
     assert "ring-opening" in reason and "polycondensation" in reason
     assert "nobody can make this" in reason
+
+
+# -- a blend has to be makeable too ----------------------------------------
+
+
+def _blend(*units):
+    """A polymer blend candidate from (repeat unit, kg/mol, mass fraction)."""
+    from formulate.core.candidate import (
+        Candidate,
+        ComponentRole,
+        FractionBasis,
+        MaterialClass,
+        MixtureComponent,
+        MixtureSpec,
+        MonomerUnit,
+        PolymerSpec,
+    )
+    from formulate.core.conditions import Conditions
+    from formulate.core.quantity import Quantity
+
+    components = tuple(
+        MixtureComponent(
+            role=ComponentRole.SOLUTE,
+            fraction=fraction,
+            polymer=PolymerSpec(
+                monomers=(MonomerUnit(smiles=smiles),),
+                number_average_molar_mass=Quantity(value=mass, unit="kg/mol"),
+            ),
+        )
+        for smiles, mass, fraction in units
+    )
+    return Candidate(
+        material_class=MaterialClass.MIXTURE,
+        mixture=MixtureSpec(components=components, basis=FractionBasis.MASS),
+        conditions=Conditions.standard(),
+    )
+
+
+def _score(candidate):
+    from formulate.core.conditions import Conditions
+    from formulate.experts.base import PredictionRequest
+    from formulate.experts.polymer_feasibility import PolymerFeasibilityExpert
+
+    request = PredictionRequest(
+        candidate=candidate,
+        properties=frozenset({"synthetic_accessibility"}),
+        conditions=Conditions.standard(),
+    )
+    return PolymerFeasibilityExpert().predict(request)[0]
+
+
+PE, PS, PTFE = "[*]CC[*]", "[*]CC(c1ccccc1)[*]", "[*]C(F)(F)C(F)(F)[*]"
+
+
+@requires_rdkit
+def test_a_polymer_blend_can_be_asked_whether_it_can_be_made():
+    """Nothing could, before. mixture_thermal covers synthetic_accessibility for
+    a formulation but delegates to the MOLECULAR panel, which correctly refuses
+    a polymer component - "a polymer has no critical point and no boiling
+    point". So a hard accessibility requirement eliminated every blend in the
+    pool for a value nobody could compute, which reads as "no blend can be
+    made" and is not that at all."""
+    prediction = _score(_blend((PE, 120.0, 0.7), (PE, 2.0, 0.3)))
+    assert prediction.quantity is not None
+    assert 1.0 <= prediction.quantity.value <= 10.0
+
+
+@requires_rdkit
+def test_blending_a_polymer_with_itself_does_not_make_it_harder_to_synthesise():
+    """A bimodal blend is one chemistry at two chain lengths. Blending is a
+    processing step; the monomer is the same monomer."""
+    from formulate.core.candidate import Candidate, MaterialClass, MonomerUnit, PolymerSpec
+    from formulate.core.conditions import Conditions
+    from formulate.core.quantity import Quantity
+
+    single = Candidate(
+        material_class=MaterialClass.POLYMER,
+        polymer=PolymerSpec(
+            monomers=(MonomerUnit(smiles=PE),),
+            number_average_molar_mass=Quantity(value=120.0, unit="kg/mol"),
+        ),
+        conditions=Conditions.standard(),
+    )
+    alone = _score(single)
+    blended = _score(_blend((PE, 120.0, 0.7), (PE, 2.0, 0.3)))
+    assert blended.quantity.value == pytest.approx(alone.quantity.value)
+
+
+@requires_rdkit
+def test_the_hardest_component_gates_the_blend():
+    """An average would let an easy component hide a hard one."""
+    easy = _score(_blend((PE, 50.0, 0.5), (PS, 50.0, 0.5)))
+    hard = _score(_blend((PE, 50.0, 0.5), (PTFE, 50.0, 0.5)))
+    assert hard.quantity.value > easy.quantity.value
+
+
+@requires_rdkit
+def test_a_blend_does_not_claim_a_narrower_bar_than_its_components():
+    blended = _score(_blend((PE, 50.0, 0.5), (PTFE, 50.0, 0.5)))
+    from formulate.core.candidate import Candidate, MaterialClass, MonomerUnit, PolymerSpec
+    from formulate.core.conditions import Conditions
+    from formulate.core.quantity import Quantity
+
+    widest = 0.0
+    for smiles in (PE, PTFE):
+        one = _score(
+            Candidate(
+                material_class=MaterialClass.POLYMER,
+                polymer=PolymerSpec(
+                    monomers=(MonomerUnit(smiles=smiles),),
+                    number_average_molar_mass=Quantity(value=50.0, unit="kg/mol"),
+                ),
+                conditions=Conditions.standard(),
+            )
+        )
+        widest = max(widest, one.uncertainty.std)
+    assert blended.uncertainty.std == pytest.approx(widest, rel=1e-6)
+
+
+@requires_rdkit
+def test_a_polymer_dissolved_in_a_solvent_is_refused_rather_than_charged_for_the_solvent():
+    """What has to be MADE is the polymer; the solvent is bought. Scoring the
+    formulation by the same rule would charge it for something nobody
+    synthesises."""
+    from formulate.core.candidate import (
+        Candidate,
+        ComponentRole,
+        FractionBasis,
+        MaterialClass,
+        MixtureComponent,
+        MixtureSpec,
+        MoleculeSpec,
+        MonomerUnit,
+        PolymerSpec,
+    )
+    from formulate.core.conditions import Conditions
+    from formulate.core.prediction import PredictionStatus
+    from formulate.core.quantity import Quantity
+
+    solution = Candidate(
+        material_class=MaterialClass.MIXTURE,
+        mixture=MixtureSpec(
+            components=(
+                MixtureComponent(
+                    role=ComponentRole.SOLUTE,
+                    fraction=0.2,
+                    polymer=PolymerSpec(
+                        monomers=(MonomerUnit(smiles=PS),),
+                        number_average_molar_mass=Quantity(value=100.0, unit="kg/mol"),
+                    ),
+                ),
+                MixtureComponent(
+                    role=ComponentRole.SOLVENT,
+                    fraction=0.8,
+                    molecule=MoleculeSpec(smiles="CC(C)=O"),
+                ),
+            ),
+            basis=FractionBasis.MASS,
+        ),
+        conditions=Conditions.standard(),
+    )
+    prediction = _score(solution)
+    assert prediction.status is PredictionStatus.UNSUPPORTED
+    assert "solvent is bought" in " ".join(prediction.notes)

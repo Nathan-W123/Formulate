@@ -107,6 +107,59 @@ def log_additive(values: list[float], weights: list[float]) -> float:
     return math.exp(sum(w * math.log(v) for v, w in zip(values, weights)))
 
 
+#: Relative one-sigma used for a component whose own expert reported none.
+#: A decade, because that is what the melt expert carries and a component with
+#: no stated bar is not a component with no error.
+_UNSTATED_COMPONENT_LOG_SIGMA = 1.0
+
+
+def blend_log_spread(
+    value: float,
+    values: list[float],
+    spreads: list[float | None],
+    fractions: list[float],
+) -> float:
+    """One-sigma on a log-additive blend property, in linear units.
+
+    The rule this accompanies is ``ln eta = sum w_i ln eta_i``, so the honest
+    place to combine the components' errors is log space, where the rule is
+    linear.
+
+    This used to be ``value * 1.5``, with a comment claiming it carried "the
+    components' own decade". It did not. It was a hardcoded 150% that never
+    looked at the components at all, and a decade in log space is a factor of
+    about 4.5 in linear units, not 1.5. The measured consequence: polyethylene
+    at 50 kg/mol and at 2 kg/mol each carry 490%, and a bimodal blend of those
+    two reported 150% - a blend claiming to be three times better known than
+    either thing it is made of. An under-claimed bar is the worst kind of
+    error here, because the ranker ranks on it.
+
+    The components are combined as FULLY CORRELATED rather than independent:
+    ``sigma_ln = sum w_i sigma_ln,i``. That is deliberate and it is the
+    conservative choice. Independent quadrature would be wrong in the direction
+    that matters, because these errors are not independent - the bimodal case
+    is the same repeat unit at two chain lengths, scored by the same expert
+    through the same universal WLF constants, so its two errors move together
+    almost exactly. Treating them as correlated makes a blend of identical
+    components inherit precisely that component's own bar, which is the
+    behaviour any rule here has to reproduce to be believable.
+    """
+    log_sigma = 0.0
+    for component_value, component_spread, weight in zip(values, spreads, fractions):
+        if component_value <= 0:
+            continue
+        if component_spread is None:
+            own = _UNSTATED_COMPONENT_LOG_SIGMA
+        else:
+            # Linear sigma to log10 sigma, by the same relation the melt expert
+            # uses in reverse: sigma = value * (10**log_sigma - 1) / 2.
+            own = math.log10(1.0 + 2.0 * component_spread / component_value)
+        log_sigma += weight * own
+    if log_sigma <= 0:
+        log_sigma = _UNSTATED_COMPONENT_LOG_SIGMA
+    return value * (10.0**log_sigma - 1.0) / 2.0
+
+
 def voigt_reuss(values: list[float], fractions: list[float]) -> tuple[float, float]:
     """Upper and lower bounds on a two-phase modulus.
 
@@ -318,13 +371,20 @@ class _BlendExpert(Expert):
         fractions = [c.fraction for c in mixture.components]
         components = self._component_properties(mixture, request, frozenset({prop}))
 
-        values, missing = [], []
+        values, spreads, missing = [], [], []
         for index, context in enumerate(components):
             found = context.get(prop)
             if found is None or found.quantity is None:
                 missing.append(index + 1)
             else:
                 values.append(found.quantity.to_canonical().value)
+                std = found.uncertainty.std if found.uncertainty is not None else None
+                if std is not None:
+                    # Into the same canonical units as the value.
+                    std = found.quantity.__class__(
+                        value=std, unit=found.quantity.unit
+                    ).to_canonical().value
+                spreads.append(std)
         if missing:
             return Prediction.unsupported(
                 prop,
@@ -337,7 +397,7 @@ class _BlendExpert(Expert):
         unit = _canonical_unit(prop)
         if prop == "shear_viscosity":
             value = log_additive(values, fractions)
-            spread = value * 1.5  # the components' own decade, carried through
+            spread = blend_log_spread(value, values, spreads, fractions)
             note = (
                 "log-additive in mass fraction: ln(eta) = sum w ln(eta). A tenth of a "
                 "wax moves a high polymer's melt viscosity by a factor of several, "

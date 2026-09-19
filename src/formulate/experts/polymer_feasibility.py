@@ -1569,6 +1569,32 @@ def _carothers_charge(spec: PolymerSpec, unit_smiles: str) -> tuple[float, float
     return charge
 
 
+def _polymer_components(candidate: Candidate) -> list[Candidate] | None:
+    """Each component of an all-polymer formulation, as its own candidate.
+
+    ``None`` when the candidate is not a formulation, or when any component is
+    a molecule rather than a polymer. That second case is not a gap: a polymer
+    dissolved in a solvent is a different question - what has to be MADE is the
+    polymer, and the solvent is bought - and answering it with the same rule
+    would quietly charge a formulation for a solvent nobody synthesises.
+    """
+    mixture = candidate.mixture
+    if mixture is None or not mixture.components:
+        return None
+    out: list[Candidate] = []
+    for component in mixture.components:
+        if component.polymer is None:
+            return None
+        out.append(
+            Candidate(
+                material_class=MaterialClass.POLYMER,
+                polymer=component.polymer,
+                conditions=candidate.conditions,
+            )
+        )
+    return out
+
+
 class PolymerFeasibilityExpert(Expert):
     """Whether a repeat unit corresponds to a polymer anyone can make."""
 
@@ -1580,7 +1606,7 @@ class PolymerFeasibilityExpert(Expert):
         "polymerisation (Odian, Principles of Polymerization, 4th ed., 2004)"
     )
     family = PropertyFamily.FEASIBILITY
-    supported_classes = frozenset({MaterialClass.POLYMER})
+    supported_classes = frozenset({MaterialClass.POLYMER, MaterialClass.MIXTURE})
     supported_properties = frozenset({"synthetic_accessibility"})
     dependencies: frozenset[str] = frozenset()
 
@@ -1616,7 +1642,23 @@ class PolymerFeasibilityExpert(Expert):
         )
         spec = candidate.polymer
         if spec is None:
-            return ApplicabilityDomain.outside("candidate carries no polymer", basis=basis)
+            components = _polymer_components(candidate)
+            if components is None:
+                return ApplicabilityDomain.outside(
+                    "candidate carries no polymer, and is not a formulation whose "
+                    "components are all polymers",
+                    basis=basis,
+                )
+            # A blend is as far out of domain as its worst component.
+            domains = [self.assess_domain(c) for c in components]
+
+            worst = min(domains, key=lambda d: d.score)
+            return ApplicabilityDomain(
+                score=worst.score,
+                in_domain=all(d.in_domain for d in domains),
+                warnings=tuple(dict.fromkeys(w for d in domains for w in d.warnings)),
+                basis=basis,
+            )
 
         warnings: list[str] = []
         score = 1.0
@@ -1660,6 +1702,94 @@ class PolymerFeasibilityExpert(Expert):
 
     # -- prediction --------------------------------------------------------
 
+    def _blend(
+        self, prop: str, request: PredictionRequest, domain: ApplicabilityDomain
+    ) -> Prediction | None:
+        """A polymer blend is as hard to make as its hardest component.
+
+        The same rule the mixture thermal expert applies to a molecular
+        formulation, and for the same reason: a formulation is gated by the
+        component nobody can supply, where an average would let an easy
+        component hide a hard one.
+
+        What this rule does NOT cover is stated in the notes rather than folded
+        into the number. Blending is a processing step, not a synthesis - two
+        polymers that each score 3 are not harder to SYNTHESISE for being mixed -
+        and whether the pair is miscible at all is a different question, which
+        the blend experts answer and this one must not appear to.
+        """
+        components = _polymer_components(request.candidate)
+        if components is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "candidate carries no polymer. A formulation is answered here only when "
+                "every component is a polymer: in a polymer dissolved in a solvent, what "
+                "has to be made is the polymer and the solvent is bought, so charging the "
+                "formulation for the solvent would be the wrong question",
+            )
+
+        per_component = []
+        for component in components:
+            sub = PredictionRequest(
+                candidate=component,
+                properties=frozenset({prop}),
+                conditions=request.conditions,
+                context=request.context,
+            )
+            per_component.append(self._predict_one(prop, sub, self.assess_domain(component)))
+
+        refused = [p for p in per_component if p is None or p.quantity is None]
+        if refused:
+            reasons = [
+                " ".join(p.notes) if p is not None and p.notes else "no value"
+                for p in refused
+            ]
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                "a component of this blend cannot be made, or its route could not be "
+                "identified, so the blend has no accessibility either: "
+                + "; ".join(dict.fromkeys(reasons))[:400],
+            )
+
+        hardest = max(per_component, key=lambda p: p.quantity.value)
+        # The spread is the widest of the components', not the hardest one's.
+        # Which component is hardest is itself uncertain, so a blend cannot claim
+        # a narrower bar than something it is made of.
+        spread = max(
+            (p.uncertainty.std for p in per_component if p.uncertainty.std is not None),
+            default=None,
+        )
+        notes = [
+            f"the hardest of {len(components)} components gates the blend, at "
+            f"{hardest.quantity.value:.2f}",
+        ]
+        notes.extend(hardest.notes)
+        notes.append(
+            "blending itself is a processing step and is not charged here: two polymers that "
+            "each score 3 are not harder to SYNTHESISE for being mixed"
+        )
+        notes.append(
+            "this says nothing about whether the pair is miscible, which is a different "
+            "question and one the blend experts answer"
+        )
+        return self._make(
+            prop,
+            hardest.quantity.value,
+            "dimensionless",
+            request,
+            domain,
+            std=spread,
+            kind=UncertaintyKind.EPISTEMIC,
+            basis=(
+                "the widest of the components' own bars, not the hardest component's: which "
+                "component gates the blend is itself uncertain, so the blend cannot claim a "
+                "narrower error than something it is made of"
+            ),
+            notes=tuple(notes),
+        )
+
     def _predict_one(
         self, prop: str, request: PredictionRequest, domain: ApplicabilityDomain
     ) -> Prediction | None:
@@ -1668,7 +1798,7 @@ class PolymerFeasibilityExpert(Expert):
 
         spec = request.candidate.polymer
         if spec is None:
-            return Prediction.unsupported(prop, self.id, "candidate carries no polymer")
+            return self._blend(prop, request, domain)
 
         if spec.topology is PolymerTopology.NETWORK or spec.crosslink_density is not None:
             return Prediction.unsupported(

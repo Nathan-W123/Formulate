@@ -90,14 +90,27 @@ class DeterministicCoordinator:
         cache: PredictionCache | None = None,
     ) -> None:
         from formulate.experts import default_registry
+        from formulate.exploration.blends import PolymerBlendExplorer
         from formulate.exploration.database import ReferenceDatabaseExplorer
+        from formulate.exploration.mixtures import MixtureSeedExplorer
         from formulate.exploration.polymers import PolymerLibraryExplorer
 
         self.registry = registry if registry is not None else default_registry()
+        # One explorer per material class the specification can name. Any class
+        # left out does not produce a worse answer - it produces NO candidates,
+        # and an empty pool reports as "0 of 0 satisfy every hard constraint",
+        # which reads like a search that found nothing feasible rather than a
+        # search that never ran. That is the same failure the polymer class had
+        # before PolymerLibraryExplorer existed, and mixtures still had it.
         self.explorers = (
             list(explorers)
             if explorers is not None
-            else [ReferenceDatabaseExplorer(), PolymerLibraryExplorer()]
+            else [
+                ReferenceDatabaseExplorer(),
+                PolymerLibraryExplorer(),
+                MixtureSeedExplorer(),
+                PolymerBlendExplorer(),
+            ]
         )
         self.config = config or RunConfig()
         self.engine = EvaluationEngine(self.registry, self.config.evaluation, cache)

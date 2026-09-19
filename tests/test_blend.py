@@ -294,3 +294,53 @@ def test_drowning_the_backbone_in_wax_loses_the_network():
     prediction = _predict(_blend((PE, 20.0, 0.05), (PE, 0.8, 0.95)), "entanglement_molar_mass", 298.15)
     entanglements = 20.0 / prediction.quantity.to_canonical().value
     assert entanglements < 2.0
+
+
+# -- the bar a blend is allowed to claim -----------------------------------
+
+
+def test_a_blend_never_claims_a_narrower_viscosity_bar_than_its_components():
+    """This was a real defect, and it is the worst kind this repository has.
+
+    The spread was a hardcoded ``value * 1.5`` behind a comment claiming it
+    carried "the components' own decade". It carried nothing: it never looked
+    at the components, and a decade in log space is a factor of about 4.5 in
+    linear units rather than 1.5. Measured, polyethylene at 50 and at 2 kg/mol
+    each carried 490% and a bimodal blend of the two reported 150% - three
+    times better known than either thing it was made of. The ranker ranks on
+    uncertainty, so an under-claimed bar does not merely mislead a reader, it
+    reorders the answer.
+    """
+    from formulate.experts.blend import blend_log_spread
+
+    value, values, fractions = 1123.0, [5800.0, 0.1024], [0.85, 0.15]
+    spreads = [v * 4.9 for v in values]  # both components at 490%
+    spread = blend_log_spread(value, values, spreads, fractions)
+    # Identical relative bars in, the same relative bar out.
+    assert spread / value == pytest.approx(4.9, rel=0.02)
+
+
+def test_the_blend_bar_reduces_to_the_component_bar_for_one_component():
+    """A blend of a thing with itself is that thing, and must say so."""
+    from formulate.experts.blend import blend_log_spread
+
+    spread = blend_log_spread(100.0, [100.0], [450.0], [1.0])
+    assert spread == pytest.approx(450.0, rel=0.02)
+
+
+def test_a_component_with_no_stated_bar_is_not_treated_as_exact():
+    """Absence is never a neutral score, here as everywhere else."""
+    from formulate.experts.blend import blend_log_spread
+
+    stated = blend_log_spread(100.0, [100.0], [450.0], [1.0])
+    unstated = blend_log_spread(100.0, [100.0], [None], [1.0])
+    assert unstated > 0.0
+    assert unstated == pytest.approx(stated, rel=0.05)
+
+
+def test_the_wider_component_widens_the_blend():
+    from formulate.experts.blend import blend_log_spread
+
+    tight = blend_log_spread(100.0, [100.0, 100.0], [50.0, 50.0], [0.5, 0.5])
+    wide = blend_log_spread(100.0, [100.0, 100.0], [50.0, 900.0], [0.5, 0.5])
+    assert wide > tight

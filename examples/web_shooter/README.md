@@ -1315,6 +1315,84 @@ asked, and the question was incomplete.
 **Tensile strength and chain orientation are also absent.** The 106 lb figure
 assumes a drawn fibre reaches 300 MPa. Nothing here establishes that.
 
+## And as a blend? The same answer, reached a different way
+
+`optimal.yaml` asked which single polymer. `optimal_blend.yaml` asks which
+BLEND, which is the question a real dope is an answer to: a single polymer
+couples its melt viscosity to its strength through one variable, chain length,
+and a blend of the same polymer at two chain lengths breaks that coupling. The
+long fraction carries load, the short one thins the melt. That is bimodal
+polyethylene, and it is the obvious lever on the one constraint `optimal.yaml`
+found binding.
+
+Getting the question asked at all took two fixes, and both were the same class
+of bug: something that looked like an answer and was not.
+
+**A mixture specification drew an empty pool.** The deterministic coordinator's
+default explorers were the reference database and the polymer library, so
+`material_classes: [mixture]` proposed nothing and the run reported "0 of 0
+candidates satisfy every hard constraint" - which reads as a search that found
+nothing feasible rather than a search that never ran. Exactly the hole the
+polymer class had before `PolymerLibraryExplorer`, still open for mixtures.
+
+**Nothing could tell a polymer blend whether it can be made.** `mixture_thermal`
+covers `synthetic_accessibility` for a formulation, but it delegates to the
+MOLECULAR panel, which refuses a polymer component with the correct reason - "a
+polymer has no critical point and no boiling point". So one hard requirement
+eliminated all 2000 candidates for a value nobody could compute.
+`PolymerFeasibilityExpert` now answers for a blend whose components are all
+polymers, by the rule `mixture_thermal` already uses: the hardest component
+gates the formulation. A blend of a polymer with itself scores exactly what
+that polymer scores, because blending is a processing step and the monomer is
+the same monomer. A polymer dissolved in a SOLVENT is still refused - what has
+to be made is the polymer, and charging the formulation for a solvent nobody
+synthesises would be the wrong question.
+
+### The answer
+
+```
+proposed 2000   fully scored 1329   feasible 21   robust 0
+
+#1  poly(acrylic acid), bimodal 50/0.8 kg/mol at 15% short   [*]CC(C(=O)O)[*]
+#2  poly(acrylic acid), bimodal 50/2 kg/mol at 15% short
+#3  poly(4-methylstyrene), bimodal 120/2 kg/mol at 30% short
+#5  poly(alpha-methylstyrene), bimodal 50/0.8 kg/mol at 30% short
+```
+
+Twenty-one feasible blends, and **zero robust** - the same result the single
+polymers gave, for the same reason. The leader's numbers are almost
+indistinguishable from `optimal.yaml`'s: Weissenberg 0.616 against 0.622,
+thinning ratio 3.39 against 3.41, relaxation 2.18 ms against 2.19 ms. The blend
+did not escape the viscosity uncertainty, because a blend's viscosity is a
+log-additive mix of its components' and each component carries the same decade.
+
+### A defect this run found, which mattered to the answer
+
+The blend expert reported its viscosity bar as `value * 1.5`, behind a comment
+claiming it carried "the components' own decade". It carried nothing. It never
+looked at the components, and a decade in log space is a factor of about 4.5 in
+linear units rather than 1.5. Measured:
+
+```
+PE 50 kg/mol                  5800 Pa.s  +/- 2.844e+04  =  490%
+PE 2 kg/mol                 0.1024 Pa.s  +/-     0.5023  =  490%
+bimodal 50/2 at 15% short     1123 Pa.s  +/-       1685  =  150%   <-- wrong
+```
+
+A blend claiming to be three times better known than either thing it is made
+of. That is the worst kind of error in this repository, because section 12 has
+the ranker rank on uncertainty: an under-claimed bar does not merely mislead a
+reader, it reorders the answer. The blend viscosity spread is now combined in
+log space, where the mixing rule is linear, and the components are treated as
+FULLY correlated rather than independent - deliberately, because the bimodal
+case is one repeat unit at two chain lengths scored through the same universal
+WLF constants, so the two errors move together almost exactly. The blend now
+inherits 490%, and a blend of identical components reproduces that component's
+own bar, which is the behaviour any such rule has to show to be believable.
+
+Correcting it did not change which blends are feasible. It changed how much the
+ranking deserves to be believed, which was the question being asked.
+
 ## Verdict
 
 The engine handled the parts it covers and refused the rest legibly rather than

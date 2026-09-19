@@ -1,0 +1,179 @@
+# optimal.yaml asked which single polymer. This asks which BLEND, which is a
+# different question and the one a real dope is an answer to.
+#
+# A single polymer couples its melt viscosity to its strength through one
+# variable, chain length. A blend of the same polymer at two chain lengths
+# breaks that coupling: the long fraction carries load, the short one thins the
+# melt, and the ratio says where between them the blend sits. That is bimodal
+# polyethylene, and it is why every hot-melt adhesive is a formulation rather
+# than a resin. It is also the obvious lever on the one constraint optimal.yaml
+# found binding, which was the pressure needed to push the melt.
+#
+# ONE REQUIREMENT IS MISSING HERE AND ITS ABSENCE IS NOT NEUTRAL. No expert
+# covers work_of_separation for a mixture - the adhesion expert answers for a
+# molecule and for a polymer, not for a blend of them. So this specification
+# cannot ask whether the web sticks, and a blend that wins here has won a
+# smaller contest than the single polymers did in optimal.yaml. Reading across
+# the two rankings as though they were the same contest would be wrong.
+#
+# The earlier specifications in this directory each asked part of the question,
+# because the expert panel could only answer part of it. Three things changed:
+# a polymer can now be asked how well it sticks (the Owens-Wendt split is
+# predicted from structure rather than looked up for nine polymers), whether it
+# can be made (a repeat unit is reconstructed to its monomer and scored), and
+# what it costs to push (the entrance pressure is no longer allowed to vanish
+# with the die land).
+#
+# So this is the whole ask in one file: fire it, have it survive the flight,
+# have it set, have it stick, and be a thing that exists.
+#
+# The geometry is the one the sweep found: a 1 mm hole in a thin plate, drawn
+# a hundredfold, two hundred filaments. That gives a 100 um filament, which is
+# 1.57 mm^2 of bundle across 200 of them - enough to hold 106 lb at the 300 MPa
+# a drawn oriented fibre reaches, against the 30-50 lb asked for.
+#
+# The pressure bound is 250 bar rather than the 15 the first specification
+# assumed. That was not a relaxation to make the search succeed: 15 bar was an
+# assumption about a regulator, the engine showed it was the single binding
+# constraint, and 250 bar is a small compressed-air cylinder of the kind
+# paintball hardware already puts on a person.
+name: web shooter fluid as a blend, everything the engine can score
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  surfaces: [aluminium-oxide]
+  spinline:
+    die_diameter: 1000 um
+    die_land: 0.2 mm
+    draw_ratio: 100.0
+    line_speed: 20 m/s
+    filament_count: 200
+
+material_classes: [mixture]
+
+requirements:
+  # -- can it be spun at all -----------------------------------------------
+  - property: extensional_strain_hardening
+    conditions: {temperature: 200 degC}
+    direction: maximize
+    lower: 0.5
+    upper: 20.0
+    hard: true
+    weight: 4.0
+    rationale: >-
+      a liquid thread breaks by Rayleigh-Plateau unless its chains stretch as
+      it thins; below about a half the chains relax as fast as the flow
+      stretches them and the jet beads up
+
+  - property: shear_thinning_ratio
+    conditions: {temperature: 200 degC}
+    direction: maximize
+    lower: 3.0
+    upper: 100.0
+    hard: true
+    weight: 2.0
+    rationale: without it the chain length that gives strain hardening cannot be extruded
+
+  - property: terminal_relaxation_time
+    conditions: {temperature: 200 degC}
+    direction: in_range
+    lower: 1 ms
+    upper: 1000 ms
+    hard: true
+    rationale: long enough to stretch on the spinline, short enough not to be a solid in the cartridge
+
+  - property: shear_viscosity
+    conditions: {temperature: 200 degC}
+    direction: in_range
+    lower: 10 Pa*s
+    upper: 100000 Pa*s
+    hard: true
+    rationale: stable and pumpable at low shear
+
+  - property: extrusion_pressure
+    conditions: {temperature: 200 degC}
+    direction: minimize
+    lower: 10 bar
+    upper: 250 bar
+    hard: true
+    weight: 3.0
+    rationale: >-
+      a compressed-air cylinder on a wrist. Minimised rather than merely
+      bounded, because this is the requirement that decides the hardware
+
+  # -- does it survive the flight and set ----------------------------------
+  - property: filament_stability
+    conditions: {temperature: 200 degC}
+    direction: maximize
+    lower: 1.0
+    upper: 20.0
+    hard: true
+    rationale: solidify before beading
+
+  - property: solidification_time
+    conditions: {temperature: 200 degC}
+    direction: in_range
+    upper: 0.1 s
+    hard: true
+    rationale: locked before the chains relax and the orientation is lost
+
+  # -- can it be made ------------------------------------------------------
+  - property: synthetic_accessibility
+    direction: minimize
+    lower: 1.0
+    upper: 6.0
+    hard: true
+    weight: 2.0
+    rationale: >-
+      the monomer is reconstructed from the repeat unit and scored, so a
+      repeat unit with no plausible polymerisation route is refused rather
+      than ranked first
+
+  # -- structure that makes a filament rather than a spray -----------------
+  - property: entanglement_molar_mass
+    direction: minimize
+    lower: 0.5 kg/mol
+    upper: 20.0 kg/mol
+    weight: 3.0
+    rationale: chain overlap is what makes a jet continuous rather than a spray
+
+  - property: amorphous_density
+    direction: minimize
+    lower: 900 kg/m^3
+    upper: 1500 kg/m^3
+    weight: 1.0
+    rationale: metres of web per gram carried
+
+assumptions:
+  - statement: >-
+      Adhesion is absent from this specification, not satisfied by it. No
+      registered expert covers work_of_separation for a mixture, so the
+      requirement was removed rather than left to eliminate every candidate for
+      a value that could not be computed. A blend ranked here has not been asked
+      whether it sticks.
+    source: inferred
+    made_by: operator
+    affects: [work_of_separation]
+  - statement: >-
+      Three acceptance criteria for the finished fibre still cannot be stated,
+      because the registry has no name for them: tensile strength (deliberately
+      absent, since a specimen fails at its largest flaw), chain orientation
+      after drawing, and creep. This run says whether a dope can be spun and
+      whether what it makes will stick. It does not say whether the fibre
+      reaches 300 MPa or holds a hanging load without cold-flowing.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      The search space is the 57 repeat units bundled with this repository,
+      swept across chain length and tacticity. A ranking over 57 chemistries is
+      the best of those 57, which is not the same claim as optimal.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      Strain hardening is a Weissenberg number - the terminal relaxation time
+      against the spinline strain rate - not a measured Trouton ratio. Right
+      sign, right order, not an extensional rheometer.
+    source: inferred
+    made_by: operator
+    affects: [extensional_strain_hardening]
