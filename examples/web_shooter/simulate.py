@@ -105,6 +105,9 @@ def simulate(k25, flight=FLIGHT, report=True):
             print(f"  {ts[i]*1e3:>7.0f}{a_core[i]:>9.3f}{a_surf[i]:>9.3f}"
                   f"{Tmax[i]:>10.1f}{eta_s:>11.0f}P{pct:>10.0f}%")
     return dict(ts=ts, Tpeak=Tmax.max(), a_core_end=a_core[-1], a_surf_end=a_surf[-1],
+                r=r, T_field=Y[:N] - 273.15, a_field=Y[N:2 * N],
+                Tmax=Tmax, a_core=a_core, a_surf=a_surf,
+                pinch=lne / breakup_threshold,
                 broke=lne[-1] >= breakup_threshold,
                 pinch_frac=lne[-1] / breakup_threshold,
                 gelled=a_surf[-1] >= ALPHA_GEL * 0.98)
