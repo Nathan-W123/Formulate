@@ -585,6 +585,82 @@ stopping point for the fired-liquid-rope architecture. Buying a different
 oligomer does not move it; only a fast chemistry on a long backbone would, and
 that is the thing nobody sells.
 
+## Hot melt, dismissed early for the wrong reason
+
+Hot melt was ruled out near the top of this file on "the hardware has no
+heater", which is a choice rather than a constraint - a heater is the cheapest
+part on the list. Revisiting it turns up an asymmetry that the chemical route
+does not have.
+
+A curing strand has to react all the way through before any of it is solid, so
+its clock is the bulk clock `R^2/alpha` - 48 s on a 4.4 mm strand, which is what
+forced full cure in flight and then made the exotherm impossible. **A cooling
+strand does not.** Its surface hits air temperature almost at once and a solid
+skin grows inward as `sqrt(alpha*t)`. Surface tension cannot pinch a solid, so
+breakup stops when the skin forms, not when the strand is solid through.
+
+| time | skin | solid area | holds |
+|---|---|---|---|
+| 10 ms | 32 um | 0.4 mm2 | 2 lb |
+| **333 ms (lands)** | **182 um** | **2.4 mm2** | **14 lb** |
+| 1 s | 316 um | 4.1 mm2 | 23 lb |
+| 10 s | 1000 um | 10.7 mm2 | 60 lb |
+| 48 s | solid through | 15.2 mm2 | 85 lb |
+
+On landing it has to carry only itself - 3 m of strand is 50 g, or 0.11 lb -
+and a 182 um skin is three orders of magnitude past that. Full payload takes
+about ten seconds of standing. Fire, wait, then load it.
+
+And a bought glue stick is strong enough, if you pick the right one:
+
+| grade | UTS | holds on 15.2 mm2 | applied at |
+|---|---|---|---|
+| EVA craft stick, low temp | 6 MPa | 21 lb | 120 C |
+| EVA craft stick, high temp | 10 MPa | 34 lb | 190 C |
+| polyolefin / APAO | 12 MPa | 41 lb | 170 C |
+| **polyamide (3M Jet-melt, Henkel Macromelt)** | **28 MPa** | **96 lb** | 200 C |
+| **thermoplastic polyurethane hot melt** | **40 MPa** | **137 lb** | 180 C |
+
+Pressure is fine - a 10 Pa.s melt needs 3.4 bar of the 6 available, and only
+above about 20 Pa.s does it stall. The one real hardware change is the
+reservoir: 137 mL/s is far past what a glue gun melts on demand, so the 45 g
+has to be pre-melted. That is 20 kJ from cold, 5.5 Wh, or 66 W over five
+minutes - a 100 W cartridge heater in an aluminium tube and a small LiPo.
+
+**What it buys**: every part is a catalogue item. No commissioned resin, no
+two-part metering, no static mixer, no pot life, no exotherm, no gel clock to
+hit, and it bonds on contact because it lands molten.
+
+**What it costs**: a heater and a battery; a nozzle that plugs solid if it ever
+goes cold; a burn hazard at 200 C; and ten seconds of standing before the
+strand carries its rated load.
+
+## The bench test, before any of this
+
+`jet_test.py` prints the protocol. Whether a 4.4 mm stream flies 3 m as a rope
+is set by viscosity, surface tension, density and speed, not by what the fluid
+is made of - so corn syrup answers it for the price of a bottle of corn syrup,
+and the answer transfers to any resin at the same viscosity.
+
+| fluid | viscosity | predicted intact for |
+|---|---|---|
+| water (the control) | 0.001 Pa.s | 0.4 m |
+| thin syrup | 1 Pa.s | 2.8 m |
+| corn syrup at target | 10 Pa.s | 24.6 m |
+
+The control matters more than the test. **Water must break up inside half a
+metre.** If it flies, the rig is not doing what you think and the syrup result
+means nothing.
+
+Thin the syrup until a 5 mm steel ball falls 100 mm in about 11 seconds - that
+is 10 Pa.s, and it is the only measurement that has to be careful. 3.5 bar from
+a PET bottle and a bike pump gives 9 m/s. Film at 240 fps against floor marks.
+
+Breaking under 1 m would mean the jet model is wrong by an order of magnitude
+and that firing a liquid rope does not work at this scale - which is worth
+knowing for the price of a bottle of syrup, and would invalidate most of this
+file.
+
 ### The oligomer has to be reactive, not merely present
 
 A dissolved inert oligomer buys the thermal headroom by throwing the strength
