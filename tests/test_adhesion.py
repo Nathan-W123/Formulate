@@ -310,3 +310,24 @@ def test_without_a_density_the_structural_route_refuses_rather_than_guesses():
 
     assert liquid_energy("CC(C)=O") is None
     assert liquid_energy("CC(C)=O", 0.784) is not None
+
+
+@requires_rdkit
+def test_a_polymer_substrate_can_be_named_by_its_repeat_unit():
+    """Twelve named surfaces is a short list of things to stick to."""
+    found = resolve_substrate("[*]CC(CC)[*]")
+    assert found is not None
+    name, energy = found
+    assert 20.0 < energy.total < 55.0
+    assert "parachor" in energy.basis
+
+
+@requires_rdkit
+def test_a_named_substrate_still_wins_over_the_prediction():
+    """PTFE is measured; nothing should quietly replace that with a formula."""
+    _, measured = resolve_substrate("ptfe")
+    assert measured.basis.startswith("poly(tetrafluoroethylene)")
+
+
+def test_a_substrate_that_is_neither_a_name_nor_a_structure_is_refused():
+    assert resolve_substrate("unobtainium") is None

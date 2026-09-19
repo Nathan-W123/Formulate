@@ -256,11 +256,35 @@ def predicted_surface_energy(
 
 
 def resolve_substrate(name: str) -> tuple[str, SurfaceEnergy] | None:
-    """Look up a substrate by the name a recipe would use."""
+    """A substrate by the name a recipe would use, or by its repeat unit.
+
+    The named table is a catalogue of real surfaces and stays one - what glass
+    or steel is worth in laboratory air is a measurement about the surface,
+    not something to derive from a formula. What is new is that a recipe may
+    also name a *polymer* substrate by its repeat-unit SMILES, and get the
+    same parachor-and-polar-area treatment as a candidate. A web that has to
+    stick to a plastic nobody tabulated is the ordinary case, not the exotic
+    one.
+    """
     key = name.strip().lower().replace("_", "-").replace(" ", "-")
     key = SUBSTRATE_ALIASES.get(key, key)
     entry = SUBSTRATES.get(key)
-    return (key, entry) if entry is not None else None
+    if entry is not None:
+        return key, entry
+
+    raw = name.strip()
+    if "[*]" not in raw:
+        return None
+    from formulate.experts.polymer import packing_model
+
+    try:
+        density = packing_model().density(raw)
+    except Exception:
+        return None
+    if not density or density <= 0:
+        return None
+    predicted = predicted_surface_energy(raw, density, is_polymer=True)
+    return (raw, predicted) if predicted is not None else None
 
 
 def polymer_energy(
@@ -427,8 +451,10 @@ class AdhesionExpert(Expert):
         found = resolve_substrate(surfaces[0])
         if found is None:
             return None, (
-                f"no measured surface energy is tabulated for {surfaces[0]!r}. Known "
-                "substrates: " + ", ".join(sorted(SUBSTRATES))
+                f"no measured surface energy is tabulated for {surfaces[0]!r}, and it is "
+                "not a repeat unit this module can read. Name one of "
+                + ", ".join(sorted(SUBSTRATES))
+                + ", or give a polymer substrate as its repeat-unit SMILES"
             )
         return found, ""
 
