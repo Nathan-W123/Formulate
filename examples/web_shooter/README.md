@@ -311,6 +311,66 @@ problem rather than a chemistry one.
 None of this is in the engine's reach: no evaporation kinetics, no heat
 transfer, no viscosity for a polymer solution, no creep.
 
+## A material that works on the hardware already specified
+
+The hardware has no heater and one pressure source, so the strand cannot
+solidify by cooling and, per the numbers above, cannot solidify by drying
+either. That leaves solidifying by reaction - and a reaction is the one route
+whose rate does not scale with the square of the filament radius, because it
+happens everywhere in the strand at once rather than waiting for something to
+travel to a surface.
+
+**Rubber-toughened cyanoacrylate, with an amine accelerator mixed at the
+nozzle.** Two barrels into a disposable static mixer instead of one; everything
+downstream is unchanged.
+
+It fits the rig as built:
+
+| | |
+|---|---|
+| spinneret already specified | 40 holes x 0.7 mm |
+| cross-section (100% solids, no shrinkage) | 15.4 mm2 |
+| working stress at 50 lb | 14.4 MPa |
+| safety factor against cured CA at ~25 MPa | 1.7 (2.0 at 46 holes) |
+| pressure at 1 Pa.s through a 2 mm land | 6.5 bar, against the 13 available |
+| a 3 m shot | 46 mL, 51 g |
+
+The last row is the reason to prefer it over anything dissolved in a solvent:
+at 100% solids there is no carrier to haul, so the same shot that cost 203 g as
+a 25% dope costs 51 g here. Cure is seconds, in bulk, and it bonds to steel,
+glass and skin - which is the safety problem, not a footnote.
+
+Honest caveats: cured cyanoacrylate is brittle unless it is the
+rubber-toughened grade, which is again a two-phase material the engine cannot
+represent; the mixed stream sets in the static mixer, so that nozzle is a
+consumable; and unmixed CA still skins on ambient moisture, so the barrel needs
+to stay sealed and dry.
+
+### A data bug found on the way
+
+Asked about the monomer, the panel disagreed with itself by 166 K on the
+boiling point - `measured` said 328.1 K and `joback` said 493.7 K. The measured
+figure is right as a number and wrong as a property: ethyl cyanoacrylate boils
+at 55 degC *under vacuum*, and at one atmosphere it polymerises rather than
+boiling. A reduced-pressure boiling point has been compiled as a normal one.
+
+That it is a bad record rather than ordinary model scatter is checkable. Across
+the 46 reference compounds carrying both a measured and a Joback boiling point,
+the median disagreement is 7.6 K and the worst is 117 K:
+
+| compound | measured | joback | diff |
+|---|---|---|---|
+| gamma-butyrolactone | 477.8 K | 360.8 K | -117 K |
+| n-methylpyrrolidone | 477.4 K | 409.9 K | -67 K |
+| ethylene glycol | 470.3 K | 429.7 K | -41 K |
+| **ethyl cyanoacrylate** | **328.1 K** | **493.7 K** | **+166 K** |
+
+The engine has no cross-check for this. `measured` carries a +/- 0.5 K
+uncertainty and wins dispatch on that basis, so 328.1 K would be taken as fact
+- and a spec asking for a carrier boiling between 50 and 105 degC would admit
+superglue as a solvent. Two experts disagreeing by twenty times the median is a
+signal the evaluation layer currently throws away.
+
 ## Hardware, which the engine says nothing about
 
 No cost property exists in the registry; `synthetic_accessibility` stands in for
