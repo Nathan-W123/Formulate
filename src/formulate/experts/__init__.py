@@ -10,6 +10,18 @@ from __future__ import annotations
 from .activity import UNIFACActivityExpert
 from .adhesion import AdhesionExpert
 from .blend import PolymerBlendMeltExpert, PolymerBlendSolidExpert
+from .cohesion import CohesionExpert
+from .conformation import ConformationExpert
+from .electronic import QuantumElectronicExpert
+from .flammability import FlashPointExpert
+from .mixture_thermal import MixtureThermalExpert
+from .polymer_dissolution import PolymerDissolutionExpert
+from .polymer_feasibility import PolymerFeasibilityExpert
+from .polymer_hansen import PolymerHansenExpert
+from .polymer_structural import PolymerStructuralExpert
+from .polymer_thermal import PolymerThermalExpert
+from .semiempirical import SemiempiricalElectronicExpert
+from .transport import LiquidTransportExpert
 from .melt import PolymerMeltExpert
 from .spinline import SpinlineExpert
 from .base import Expert, PredictionRequest
@@ -66,6 +78,36 @@ PHASE4_EXPERTS = (
     SpinlineExpert,
 )
 
+#: Phase 6 closes the coverage holes the registry had been reporting: the
+#: electrical family was empty for every material class, a polymer carried no
+#: solubility parameter and no structural descriptor, a molecule had no
+#: viscosity, and a formulation had nothing but density and Hansen parameters.
+#:
+#: Ordering within the tuple does not matter - the registry topologically sorts
+#: on declared dependencies - but the dependency edges are worth naming, because
+#: they are why these are Phase 6 and not Phase 1: CohesionExpert needs a
+#: Hildebrand parameter or a Hansen triple, PolymerHansenExpert needs an
+#: amorphous density, LiquidTransportExpert needs critical constants, and
+#: PolymerDissolutionExpert needs the Hansen triple PolymerHansenExpert makes.
+#:
+#: MixtureThermalExpert delegates to the molecular panel for its components in
+#: the same way MixtureExpert does, so it must not itself be a member of that
+#: panel; that would be circular.
+PHASE6_EXPERTS = (
+    QuantumElectronicExpert,
+    SemiempiricalElectronicExpert,
+    CohesionExpert,
+    ConformationExpert,
+    FlashPointExpert,
+    LiquidTransportExpert,
+    MixtureThermalExpert,
+    PolymerHansenExpert,
+    PolymerStructuralExpert,
+    PolymerThermalExpert,
+    PolymerDissolutionExpert,
+    PolymerFeasibilityExpert,
+)
+
 
 #: The polymer-only panel, used by the blend expert for its components. Kept
 #: separate for the same reason the molecular one is: a blend delegates to it,
@@ -75,6 +117,9 @@ POLYMER_EXPERTS = (
     PolymerDensityExpert,
     PolymerMechanicalExpert,
     PolymerMeltExpert,
+    PolymerHansenExpert,
+    PolymerStructuralExpert,
+    PolymerThermalExpert,
 )
 
 
@@ -90,11 +135,15 @@ def molecular_registry() -> ExpertRegistry:
 
 def default_registry() -> ExpertRegistry:
     """Every expert: the molecular panel plus formulation coverage."""
-    return ExpertRegistry(cls() for cls in PHASE1_EXPERTS + PHASE4_EXPERTS)
+    return ExpertRegistry(cls() for cls in PHASE1_EXPERTS + PHASE4_EXPERTS + PHASE6_EXPERTS)
 
 
 __all__ = [
-    "PHASE1_EXPERTS", "PHASE4_EXPERTS", "POLYMER_EXPERTS", "polymer_registry", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
+    "PHASE1_EXPERTS", "PHASE4_EXPERTS", "PHASE6_EXPERTS", "POLYMER_EXPERTS", "polymer_registry",
+    "CohesionExpert", "ConformationExpert", "FlashPointExpert", "LiquidTransportExpert",
+    "MixtureThermalExpert", "PolymerDissolutionExpert", "PolymerFeasibilityExpert",
+    "PolymerHansenExpert", "PolymerStructuralExpert", "PolymerThermalExpert",
+    "QuantumElectronicExpert", "SemiempiricalElectronicExpert", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
     "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert", "PolymerMeltExpert", "PolymerBlendMeltExpert", "PolymerBlendSolidExpert", "SpinlineExpert",
     "UNIFACActivityExpert",
