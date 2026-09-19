@@ -1110,6 +1110,109 @@ Under $60. One 60 mL cartridge is one 3 m shot.
 
 The hard part is not on this list. It is that the rope arrives liquid.
 
+## The answer, once the engine could see the whole library
+
+Three things changed between the sections above and this one, and together
+they turned "no candidate, and here is a coverage gap" into "a candidate, and
+here is the part you cannot buy".
+
+**The polymer class was unreachable.** `ReferenceDatabaseExplorer` proposes
+molecules and `PolymerBlendExplorer` proposes mixtures, so a specification
+saying `material_classes: [polymer]` drew an *empty pool* - which reads like
+"nothing feasible" and is not. `PolymerLibraryExplorer` now sweeps the 57
+bundled repeat units across six chain lengths, and both tacticities where
+tacticity decides whether the polymer crystallises.
+
+**Four lookup tables were gating everything.** A chain dimension, a flow
+activation energy, a surface energy and an Owens-Wendt split each answered for
+a dozen polymers and refused the rest, and each refusal propagated: no chain
+dimension meant no entanglement mass meant no viscosity meant no relaxation
+time meant no strain hardening. All four are now predicted from structure.
+Over the whole 546-candidate pool, fourteen of the fifteen polymer properties
+score for every single candidate. The one that does not is the melting
+*temperature*, and the module docstring says why.
+
+**The pressure model had an escape hatch.** It was Hagen-Poiseuille through
+the die land alone, so shortening the land drove the pressure to nothing. Swept
+over geometry, the search walked straight into it and proposed a 50 um orifice
+plate. A real die pays a Bagley entrance drop worth about five radii of
+equivalent land whatever its land is - a millimetre for a 400 um hole, twenty
+times the land the search wanted. Every short-land pressure this example
+reported before that fix was low by that factor.
+
+### What the run says now
+
+At `die 1000 um, land 0.2 mm, draw 100, 20 m/s, 200 holes`, with the honest
+pressure:
+
+```
+No candidate satisfied every hard constraint (546 evaluated).
+
+Constraints never satisfied together by any candidate in this pool:
+  - extensional_strain_hardening and extrusion_pressure
+  - shear_thinning_ratio        and extrusion_pressure
+  - terminal_relaxation_time    and extrusion_pressure
+```
+
+Three pairs, one name on the right of all three. That is not three problems.
+Strain hardening, shear thinning and a usable relaxation time are the same
+requirement seen from three sides - they all need a long terminal relaxation
+time, which needs a high zero-shear viscosity, which is what costs pressure.
+The 15 bar cartridge is the single binding constraint, and it is hardware.
+
+Solidification time and filament stability, which killed every earlier attempt
+in this document, are no longer binding at all: 16 ms to set against a 100 ms
+budget, and the worst filament in the pool survives capillary breakup by 1.2x.
+The geometry solved those.
+
+### So how much pressure does it need?
+
+Lift the cartridge limit and change nothing else:
+
+```
+73 candidates pass every other hard constraint.
+
+      bar    eta Pa.s      Wi    thin  polymer
+      102         593     0.7     3.6  poly(alpha-methylstyrene) 20 kg/mol
+      110         637     0.5     3.2  poly(1-butene) 400 kg/mol
+      176    1.02e+03     0.7     3.6  poly(methyl acrylate) 400 kg/mol
+      177    1.02e+03     0.7     3.6  poly(vinyl acetate) 400 kg/mol
+      264    1.53e+03     1.7     5.9  poly(ethyl methacrylate) 400 kg/mol
+```
+
+**102 bar**, against the 15 the specification assumed. That is the finding.
+
+It is worth being precise about what it means, because 102 bar is not an
+impossible number - a CO2 cartridge sits near 57 bar at room temperature and a
+compressed-air cylinder of the kind paintball hardware uses runs at 200 to 300.
+A wrist-mounted source at 100 bar exists. A 15 bar regulator was the
+assumption, and it was the wrong one.
+
+The load is not the problem either. 200 filaments drawn to 100 um is 1.57 mm^2
+of bundle, which at 300 MPa - a drawn, oriented fibre, not a cast bar - holds
+**106 lb**, against the 30-50 asked for.
+
+### The caveat that matters
+
+Look at the Weissenberg column. The cheapest candidates sit at 0.5 to 0.8
+against a hard lower bound of 0.5. They pass, but with no margin, and
+`extensional_strain_hardening` here is a Weissenberg number rather than a
+measured Trouton ratio - right sign, right order, not an extensional
+rheometer. The first entry with real margin, poly(ethyl methacrylate) at
+Wi = 1.7, costs 264 bar rather than 102.
+
+So the honest reading is not "poly(alpha-methylstyrene) at 102 bar". It is:
+**the chemistry and the load are solved, and the device is a pressure-source
+problem in the 100-250 bar range** - with the top of that range buying the
+margin the bottom does not have.
+
+And three acceptance criteria for the finished fibre still cannot be stated at
+all, because the registry has no name for them: tensile strength, chain
+orientation after drawing, and creep. A run here says whether a dope can be
+spun. It does not say whether the fibre it produces reaches 300 MPa or holds a
+hanging load without cold-flowing, and the 106 lb above assumes the first of
+those.
+
 ## Verdict
 
 The engine handled the parts it covers and refused the rest legibly rather than
