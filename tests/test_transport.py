@@ -499,8 +499,11 @@ def test_expert_does_not_depend_on_a_property_it_supplies():
     expert = LiquidTransportExpert()
     assert not (expert.dependencies & expert.supported_properties)
 
+    # It is in default_registry() now, so a second instance collides on id.
+    # replace=True keeps the test asking its real question: does resolving a
+    # FULL panel that contains this expert raise on a cycle?
     registry = ExpertRegistry(list(default_registry()))
-    registry.register(expert)
+    registry.register(expert, replace=True)
     order = [e.id for e in registry.resolution_order(list(registry))]
     assert order.index("interfacial") < order.index("liquid_transport")
     assert order.index("joback") < order.index("liquid_transport")

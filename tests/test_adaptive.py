@@ -36,7 +36,18 @@ _SPEC = TargetSpec.from_dict(
                 "upper": "170 degC",
                 "hard": True,
             },
-            {"property": "homo_lumo_gap", "direction": "maximize", "lower": 4, "upper": 9},
+            # Deliberately uncovered, and it will stay that way: an absolute
+            # electronic energy is monotone in electron count, so ranking on it
+            # sorts by molecular size. QuantumElectronicExpert declines it for
+            # exactly that reason, which makes it the stable example of an
+            # objective no expert supplies. homo_lumo_gap used to stand here and
+            # stopped working the day that expert was written.
+            {
+                "property": "electronic_energy",
+                "direction": "maximize",
+                "lower": {"value": -1.0e7, "unit": "J/mol"},
+                "upper": {"value": 0.0, "unit": "J/mol"},
+            },
             {
                 "property": "synthetic_accessibility",
                 "direction": "minimize",
@@ -87,7 +98,7 @@ def test_coverage_notices_an_objective_no_expert_supplies():
 
     run = DeterministicCoordinator(config=RunConfig(pool_size=10)).run(_SPEC)
     coverage, uncovered = objective_coverage(run, _SPEC)
-    assert "homo_lumo_gap" in uncovered
+    assert "electronic_energy" in uncovered
     assert coverage < 1.0
     # Coverage dominates while anything is unmeasured.
     assert progress(run, _SPEC) == pytest.approx(coverage)
