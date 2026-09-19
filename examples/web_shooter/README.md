@@ -529,6 +529,62 @@ pressure limit, 30% is comfortable on pressure and near the thermal limit - and
 a thickener loading that high is past what gel cyanoacrylate is sold at, so
 this is a formulation direction rather than something off a shelf.
 
+### Can it be bought? The oligomer, yes. The speed, no.
+
+A cyanoacrylate-terminated oligomer is not a product. Cyanoacrylate esters are
+made by Knoevenagel condensation and then cracked back out of the polymer, so
+putting that end group on an oligomer backbone is a research project, not a
+purchase order - five figures before there is a gram.
+
+**The dissolved-polymer shortcut does not rescue it.** Thickening plain
+cyanoacrylate with a bought PMMA resin looks like it works on the viscosity
+scaling, and the scaling is wrong, because it does not know about the glass
+transition. By Fox:
+
+| PMMA loading | blend Tg | at 25 C it is | monomer left | rise |
+|---|---|---|---|---|
+| 45% | -38 C | a pourable liquid | 47% | +150 K |
+| 53% | -24 C | a pourable liquid | 39% | +125 K |
+| 65% | 0 C | a thick syrup | 27% | +86 K |
+| 85% | **+51 C** | **a solid** | 7% | +22 K |
+
+Above about 53% the blend is not a viscous liquid, it is approaching its own
+glass. Everything past that row was fiction. And 53% still leaves 39% monomer,
+which is a 125 K rise. Dissolved commodity polymer cannot dilute the heat and
+stay pumpable at the same time.
+
+**The backbone is what I had glossed.** An acrylic oligomer is still glassy at
+Mn 3000 - Fox-Flory puts it at 38 C. A polyether or polyester backbone is not:
+polypropylene glycol at Mn 3000 has a Tg near -70 C and pours. That is exactly
+what a urethane-acrylate oligomer is, and they are sold by the drum:
+
+| | Mn | f | viscosity neat | price |
+|---|---|---|---|---|
+| aliphatic urethane acrylate (Sartomer CN-series) | 1-5k | 2-6 | 2-50 Pa.s | $15-40/kg |
+| polyester acrylate (Allnex Ebecryl) | 1-3k | 2-6 | 1-20 Pa.s | $10-30/kg |
+| epoxy acrylate | 0.5-2k | 2 | 5-100 Pa.s | $10-25/kg |
+
+Right molar mass, right functionality, right viscosity, right price. **The
+oligomer was never the problem.** The problem is that none of them cures fast
+enough:
+
+| chemistry | gel time | against the 333 ms flight |
+|---|---|---|
+| cyanoacrylate + amine accelerator | ~0.3 s | the only one fast enough |
+| thiol-Michael, strongly base-catalysed | ~5 s | 15x too slow |
+| fast polyurethane, tin-catalysed | ~8 s | 24x |
+| acrylic redox (peroxide/amine) | ~40 s | 120x |
+| epoxy-amine | ~300 s | 900x |
+
+Cyanoacrylate is the only chemistry that gels in a third of a second, and it is
+sold only as the monomer - which is precisely where all the heat is. Every
+oligomer that is sold cures one to three orders of magnitude too slowly.
+
+**So this is a kinetics wall, not a catalogue one**, and it is the honest
+stopping point for the fired-liquid-rope architecture. Buying a different
+oligomer does not move it; only a fast chemistry on a long backbone would, and
+that is the thing nobody sells.
+
 ### The oligomer has to be reactive, not merely present
 
 A dissolved inert oligomer buys the thermal headroom by throwing the strength
