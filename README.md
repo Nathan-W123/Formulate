@@ -156,7 +156,7 @@ where they exist:
 | `polymer_melt` | interfacial | polymer | crystalline melting point, melt viscosity, melt surface tension |
 | `polymer_blend_melt` | interfacial | mixture | blend melt viscosity and surface tension by mixing rules |
 | `polymer_blend_solid` | mechanical | mixture | blend modulus bounds, glass transition, melting point, density |
-| `spinline` | mechanical | polymer, mixture | solidification time, extrusion pressure and capillary survival of a filament, at a stated geometry |
+| `spinline` | mechanical | polymer, mixture | solidification time, extrusion pressure, capillary survival, relaxation time, strain hardening and shear thinning of a filament, at a stated geometry |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation

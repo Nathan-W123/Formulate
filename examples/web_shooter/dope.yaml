@@ -1,0 +1,155 @@
+# A spinning dope, specified the way the problem actually poses it.
+#
+# The earlier specs asked "which plastic is strong enough", which is the wrong
+# question: the answer is set by whether a fluid can be drawn into an oriented
+# filament and locked before the chains relax, not by the bulk strength of the
+# material it is made from.
+#
+# So the requirements below are about the FLUID, and the central one is
+# extensional: a liquid thread breaks by Rayleigh-Plateau unless its chains
+# stretch as it thins and make it harder to pull. That is the property a
+# spinning dope lives or dies by, and the registry had no name for it until
+# terminal_relaxation_time, extensional_strain_hardening and
+# shear_thinning_ratio were added for this run.
+#
+# The three requirements this spec CANNOT state, because nothing in the
+# registry names them, are listed in the assumptions: tensile strength,
+# orientation and creep. Those are the acceptance criteria for the finished
+# fibre, and the engine can only speak to the processing that would produce it.
+name: web shooter spinning dope
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  spinline:
+    die_diameter: 300 um
+    draw_ratio: 400.0
+    line_speed: 9 m/s
+    die_land: 0.6 mm
+    filament_count: 300
+
+material_classes: [polymer]
+
+requirements:
+  # THE ONE THAT MATTERS. Below about a half the chains relax as fast as the
+  # flow stretches them and the jet beads up; above it they stretch, the
+  # extensional viscosity climbs, and the thread resists thinning.
+  - property: extensional_strain_hardening
+    conditions:
+      temperature: 200 degC
+    direction: maximize
+    lower: 0.5
+    upper: 20.0
+    hard: true
+    weight: 4.0
+    rationale: >-
+      a liquid thread breaks by Rayleigh-Plateau unless its chains stretch as
+      it thins; this is the number that says whether it can be spun at all
+
+  # And the long chain that buys it has to still go through the die, which it
+  # only does because it thins under shear.
+  - property: shear_thinning_ratio
+    conditions:
+      temperature: 200 degC
+    direction: maximize
+    lower: 3.0
+    upper: 100.0
+    hard: true
+    weight: 2.0
+    rationale: >-
+      stable and pumpable in the cartridge, far cheaper to push in the die;
+      without this the chain length that gives strain hardening cannot be
+      extruded at any pressure
+
+  - property: terminal_relaxation_time
+    conditions:
+      temperature: 200 degC
+    direction: in_range
+    lower: 1 ms
+    upper: 1000 ms
+    hard: true
+    rationale: >-
+      long enough that spinline flow stretches the chains, short enough that
+      the melt is not an elastic solid in the cartridge
+
+  # Storage: a fluid, not a solid, and not a liquid that leaks.
+  - property: shear_viscosity
+    conditions:
+      temperature: 200 degC
+    direction: in_range
+    lower: 10 Pa*s
+    upper: 100000 Pa*s
+    hard: true
+    rationale: stable and pumpable at low shear
+
+  - property: extrusion_pressure
+    conditions:
+      temperature: 200 degC
+    direction: in_range
+    upper: 15 bar
+    hard: true
+    rationale: a gas cartridge with a regulator, on a wrist
+
+  # Locked before the chains relax.
+  - property: solidification_time
+    conditions:
+      temperature: 200 degC
+    direction: in_range
+    upper: 0.1 s
+    hard: true
+    rationale: >-
+      10-100 ms for a fine filament, which is what the drawn geometry buys and
+      what freezes the orientation in before it is lost
+
+  - property: filament_stability
+    conditions:
+      temperature: 200 degC
+    direction: maximize
+    lower: 1.0
+    upper: 20.0
+    hard: true
+    rationale: solidify before beading
+
+  # Enough chain overlap that the jet is a filament rather than a spray. The
+  # entanglement mass is the only handle the registry has on that.
+  - property: entanglement_molar_mass
+    direction: minimize
+    lower: 0.5 kg/mol
+    upper: 20.0 kg/mol
+    weight: 3.0
+    rationale: chain overlap is what makes a jet continuous rather than a spray
+
+  - property: amorphous_density
+    direction: in_range
+    lower: 900 kg/m^3
+    upper: 1500 kg/m^3
+    weight: 1.0
+    rationale: metres of web per gram carried
+
+assumptions:
+  - statement: >-
+      Three acceptance criteria for the finished fibre cannot be stated at all,
+      because the registry has no name for them: tensile strength (deliberately
+      absent, since a specimen fails at its largest flaw), chain orientation
+      after drawing, and creep. A run here speaks to whether a dope can be spun,
+      not to whether the fibre it produces reaches 2-5 GPa or holds a hanging
+      load without cold-flowing. Those are the requirements that decide the
+      device, and they remain outside the engine.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      Strain hardening is computed as a Weissenberg number - the terminal
+      relaxation time against the spinline strain rate - rather than as a
+      measured Trouton ratio. That is the right sign and the right order, and
+      it is not a substitute for an extensional rheometer.
+    source: inferred
+    made_by: operator
+    affects: [extensional_strain_hardening]
+  - statement: >-
+      Solidification is cooling only. Crystallisation has its own clock, tens
+      of milliseconds quiescent and a few under spinline stress, and nothing
+      here models flow-induced crystallisation - which is the mechanism the
+      whole architecture rests on.
+    source: inferred
+    made_by: operator
+    affects: [solidification_time]

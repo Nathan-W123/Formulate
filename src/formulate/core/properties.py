@@ -242,6 +242,43 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             condition_dependent=True,
             bounds=(0.0, None),
         ),
+        # -- extensional rheology, which is what decides whether a jet can be
+        # spun at all. A liquid thread breaks by Rayleigh-Plateau unless its
+        # chains stretch as it thins and make it harder to pull; that is the
+        # single property a spinning dope lives or dies by, and the registry
+        # had no name for it.
+        _p(
+            "terminal_relaxation_time",
+            "second",
+            _I,
+            "Longest relaxation time of the melt, eta0 over the plateau modulus. "
+            "How long a stretched chain takes to forget, and therefore whether a "
+            "flow is fast enough to stretch it at all.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "extensional_strain_hardening",
+            "-",
+            _I,
+            "Weissenberg number on the spinline: the relaxation time times the "
+            "extensional strain rate. Below about one half the chains relax as "
+            "fast as the flow stretches them and the jet beads up; above it they "
+            "stretch, the extensional viscosity rises steeply, and the thread "
+            "resists thinning. This is what lets a fluid be spun.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "shear_thinning_ratio",
+            "-",
+            _I,
+            "Zero-shear viscosity divided by the apparent viscosity in the die. "
+            "How much cheaper the melt is to push than its low-shear value "
+            "suggests, which is what lets a long chain be extruded at all.",
+            condition_dependent=True,
+            bounds=(1.0, None),
+        ),
         _p(
             "filament_stability",
             "-",

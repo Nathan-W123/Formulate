@@ -74,6 +74,21 @@ POLYMER_HEAT_CAPACITY = 2000.0
 #: roughly 165 C down to the 100 C where crystallisation runs fast.
 COOLING_RATIO = 145.0 / 80.0
 
+#: Gas constant, J/(mol K).
+GAS_CONSTANT = 8.31446261815324
+
+#: Cross-model power-law index. A flexible polymer melt shear-thins with an
+#: index near 0.3, so the apparent viscosity falls as (lambda gamma)^0.7 once
+#: the shear rate passes the inverse relaxation time. Generic across flexible
+#: chains, and not fitted here.
+POWER_LAW_INDEX = 0.3
+
+#: Weissenberg number above which chains stretch faster than they relax, so the
+#: extensional viscosity climbs and the thread resists thinning. Below it a jet
+#: beads up however viscous it is - which is the property a spinning dope lives
+#: or dies by, and the one the registry had no name for.
+STRAIN_HARDENING_ONSET = 0.5
+
 #: How much axial drawing suppresses the capillary instability. A filament
 #: under tension has its perturbations stretched along it faster than they
 #: grow, and the stabilisation scales with how hard it is being drawn. Taken
@@ -148,6 +163,21 @@ def breakup_length(
     return free_jet * (1.0 + DRAW_STABILISATION * max(0.0, draw_ratio - 1.0))
 
 
+def plateau_modulus(density: float, entanglement: float, temperature: float) -> float:
+    """``G_N = rho R T / M_e``, Pa. The stiffness of the entangled network."""
+    return density * GAS_CONSTANT * temperature / entanglement
+
+
+def relaxation_time(viscosity: float, plateau: float) -> float:
+    """``lambda = eta0 / G_N``, s. How long a stretched chain takes to forget."""
+    return viscosity / plateau
+
+
+def cross_viscosity(zero_shear: float, lam: float, shear_rate: float) -> float:
+    """Cross model: the apparent viscosity at a shear rate."""
+    return zero_shear / (1.0 + (lam * shear_rate) ** (1.0 - POWER_LAW_INDEX))
+
+
 class SpinlineExpert(Expert):
     """Solidification, extrusion pressure and filament stability at a geometry."""
 
@@ -160,9 +190,23 @@ class SpinlineExpert(Expert):
     family = PropertyFamily.MECHANICAL
     supported_classes = frozenset({MaterialClass.POLYMER, MaterialClass.MIXTURE})
     supported_properties = frozenset(
-        {"solidification_time", "extrusion_pressure", "filament_stability"}
+        {
+            "solidification_time",
+            "extrusion_pressure",
+            "filament_stability",
+            "terminal_relaxation_time",
+            "extensional_strain_hardening",
+            "shear_thinning_ratio",
+        }
     )
-    dependencies = frozenset({"shear_viscosity", "surface_tension", "amorphous_density"})
+    dependencies = frozenset(
+        {
+            "shear_viscosity",
+            "surface_tension",
+            "amorphous_density",
+            "entanglement_molar_mass",
+        }
+    )
 
     def assess_domain(self, candidate: Candidate) -> ApplicabilityDomain:
         basis = "spinline geometry stated in the conditions"
@@ -230,6 +274,74 @@ class SpinlineExpert(Expert):
             missing = "melt viscosity" if viscosity is None else "density"
             return Prediction.unsupported(
                 prop, self.id, f"the {missing} this rests on was not available"
+            )
+
+        if prop in ("terminal_relaxation_time", "extensional_strain_hardening",
+                    "shear_thinning_ratio"):
+            entanglement = request.dependency_value("entanglement_molar_mass", "kg/mol")
+            if entanglement is None:
+                return Prediction.unsupported(
+                    prop, self.id,
+                    "the entanglement molar mass this rests on was not available, and the "
+                    "plateau modulus is what a relaxation time is measured against",
+                )
+            temperature = request.conditions.temperature
+            t_kelvin = temperature.to("K").value if temperature is not None else 298.15
+            plateau = plateau_modulus(density, entanglement, t_kelvin)
+            lam = relaxation_time(viscosity, plateau)
+
+            if prop == "terminal_relaxation_time":
+                return self._make(
+                    prop, lam, "second", request, domain,
+                    std=lam * 1.0, kind=UncertaintyKind.EPISTEMIC,
+                    basis="the melt viscosity behind it carries a decade of its own",
+                    notes=(
+                        f"plateau modulus {plateau/1e6:.2f} MPa from rho R T / M_e",
+                        "the clock a flow has to beat: stretch the chain faster than this "
+                        "and it stays stretched",
+                    ),
+                    conditions=request.conditions,
+                )
+
+            if prop == "shear_thinning_ratio":
+                die_d = spinline.die_diameter.to("m").value
+                die_speed = speed / draw
+                shear_rate = 8.0 * die_speed / die_d
+                apparent = cross_viscosity(viscosity, lam, shear_rate)
+                value = viscosity / apparent
+                return self._make(
+                    prop, value, "dimensionless", request, domain,
+                    std=value * 0.5, kind=UncertaintyKind.EPISTEMIC,
+                    basis="a generic power-law index of 0.3 for a flexible chain, not fitted",
+                    notes=(
+                        f"die shear rate {shear_rate:.0f} /s against a relaxation time of "
+                        f"{lam*1e3:.2f} ms, so Weissenberg {lam*shear_rate:.2f}",
+                        f"apparent viscosity {apparent:.4g} Pa.s against {viscosity:.4g} at "
+                        "rest: this is what lets a long chain be pushed at all",
+                    ),
+                    conditions=request.conditions,
+                )
+
+            # extensional_strain_hardening: Hencky strain over the draw time.
+            solid = solidification_time(diameter, speed)
+            strain_rate = math.log(max(draw, 1.0000001)) / solid
+            value = lam * strain_rate
+            return self._make(
+                prop, value, "dimensionless", request, domain,
+                std=value * 0.6, kind=UncertaintyKind.EPISTEMIC,
+                basis="relaxation time and draw time each carry their own spread",
+                notes=(
+                    f"Hencky strain {math.log(max(draw,1.0000001)):.1f} over {solid*1e3:.1f} ms "
+                    f"is {strain_rate:.0f} /s, against a relaxation time of {lam*1e3:.2f} ms",
+                    (
+                        "above the onset, so the chains stretch faster than they relax and "
+                        "the thread resists thinning"
+                        if value >= STRAIN_HARDENING_ONSET
+                        else "below the onset: the chains relax as fast as the flow stretches "
+                        "them, so this jet beads up rather than drawing"
+                    ),
+                ),
+                conditions=request.conditions,
             )
 
         if prop == "extrusion_pressure":
