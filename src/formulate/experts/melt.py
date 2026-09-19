@@ -51,9 +51,16 @@ honest rather than flattering.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
-from formulate.core.candidate import Candidate, MaterialClass, MonomerRole, PolymerSpec
+from formulate.core.candidate import (
+    Candidate,
+    MaterialClass,
+    MonomerRole,
+    PolymerSpec,
+    Tacticity,
+)
 from formulate.core.prediction import Prediction
 from formulate.core.properties import PropertyFamily
 from formulate.core.quantity import ApplicabilityDomain, UncertaintyKind
@@ -82,6 +89,117 @@ VISCOSITY_LOG_SIGMA = 1.0
 
 #: Temperature coefficient of a polymer melt's surface tension, N/m/K.
 SURFACE_TENSION_DGDT = -6.0e-5
+
+#: Gas constant, J/(mol K).
+GAS_CONSTANT = 8.31446261815324
+
+#: How far above Tg the WLF form is carried before handing over to Arrhenius.
+#: WLF is usually quoted as good from Tg to about Tg+100; this is the generous
+#: end of that, and beyond it the two forms diverge fast.
+WLF_RANGE_K = 100.0
+
+#: Flow activation energies for the zero-shear melt viscosity, J/mol.
+#:
+#: Typical literature values for the melt regime, which is where they are
+#: measured and where they apply. They vary with branching more than with
+#: anything else - long-chain-branched polyethylene runs near 50 kJ/mol against
+#: 27 for the linear polymer - so the entry here is for the linear or
+#: conventional grade and a branched one is a different material for this
+#: purpose. Quoted to no better than 15%, which is carried into the prediction.
+FLOW_ACTIVATION_ENERGY: dict[str, float] = {
+    "[*]CC[*]": 27.0e3,                              # polyethylene, linear
+    "[*]CC(C)[*]": 42.0e3,                           # polypropylene
+    "[*]CC(c1ccccc1)[*]": 105.0e3,                   # polystyrene
+    "[*]CC(C)(C(=O)OC)[*]": 150.0e3,                 # PMMA
+    "[*]CCO[*]": 28.0e3,                             # poly(ethylene oxide)
+    "[*]CC(F)(F)[*]": 55.0e3,                        # PVDF
+    "[*]NCCCCCC(=O)[*]": 65.0e3,                     # nylon-6
+    "[*]NCCCCCCNC(=O)CCCCC(=O)[*]": 65.0e3,          # nylon-6,6
+    "[*]OCCOC(=O)c1ccc(cc1)C(=O)[*]": 75.0e3,        # PET
+    "[*]CC(C)=CC[*]": 35.0e3,                        # cis-1,4-polyisoprene
+    "[*]CC=CC[*]": 30.0e3,                           # 1,4-polybutadiene
+    "[*]CC(C)(C)[*]": 50.0e3,                        # polyisobutylene
+}
+
+#: Relative one-sigma on a tabulated activation energy.
+ACTIVATION_ENERGY_RTOL = 0.15
+
+#: Repeat units whose crystallinity is decided by tacticity rather than by the
+#: repeat unit alone, and which therefore cannot be answered from the SMILES.
+#:
+#: This is not pedantry. The bundled reference set carries *atactic*
+#: polypropylene, which is a tacky amorphous solid with no melting point at
+#: all, and the tabulated 165 C belongs to the isotactic polymer. Keyed on the
+#: repeat unit the two are indistinguishable, so a run asking for a hot melt
+#: was handed a melting point for a material that does not melt.
+TACTICITY_DECIDES_CRYSTALLINITY: dict[str, str] = {
+    "[*]CC(C)[*]": (
+        "polypropylene crystallises only when it is stereoregular: the isotactic "
+        "polymer melts near 165 C and the atactic polymer is amorphous and has no "
+        "melting point"
+    ),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class SolidModulus:
+    """A measured room-temperature Young's modulus, Pa, and its spread."""
+
+    modulus: float
+    #: One-sigma, Pa. Dominated by degree of crystallinity, which is set by how
+    #: the part was cooled, not by what it is made of.
+    spread: float
+    source: str
+
+
+#: Measured Young's modulus at room temperature for the semicrystalline
+#: polymers, Pa.
+#:
+#: These exist because the two-branch glass/rubber model cannot produce them.
+#: It asks what the amorphous phase is doing, and a crystallite does not have a
+#: glass transition to be above. Polyethylene at 25 C is a hundred degrees past
+#: its Tg and the model returns 8 MPa; the measured value is about a thousand
+#: times that. So a measurement is used where there is one, rather than a
+#: composite model over a degree of crystallinity that is a processing variable
+#: rather than a property.
+#:
+#: The spread is wide and is not measurement precision: crystallinity moves
+#: with cooling rate, and a quenched and an annealed bar of one polymer differ
+#: by tens of percent in stiffness.
+SEMICRYSTALLINE_MODULUS: dict[str, SolidModulus] = {
+    "[*]CC[*]": SolidModulus(1.0e9, 0.3e9, "high-density polyethylene, 23 C"),
+    "[*]CC(C)[*]": SolidModulus(1.5e9, 0.3e9, "isotactic polypropylene, 23 C"),
+    "[*]CC(F)(F)[*]": SolidModulus(2.0e9, 0.4e9, "poly(vinylidene fluoride), 23 C"),
+    "[*]CCO[*]": SolidModulus(0.5e9, 0.2e9, "poly(ethylene oxide), 23 C"),
+    "[*]NCCCCCC(=O)[*]": SolidModulus(2.7e9, 0.5e9, "nylon-6, dry, 23 C"),
+    "[*]NCCCCCCNC(=O)CCCCC(=O)[*]": SolidModulus(2.8e9, 0.5e9, "nylon-6,6, dry, 23 C"),
+    "[*]NCCCCCCCCCCC(=O)[*]": SolidModulus(1.3e9, 0.3e9, "nylon-11, 23 C"),
+    "[*]NCCCCCCCCCCCC(=O)[*]": SolidModulus(1.4e9, 0.3e9, "nylon-12, 23 C"),
+    "[*]OCCOC(=O)c1ccc(cc1)C(=O)[*]": SolidModulus(2.8e9, 0.5e9, "PET, 23 C"),
+    "[*]OCCCCOC(=O)c1ccc(cc1)C(=O)[*]": SolidModulus(2.4e9, 0.5e9, "PBT, 23 C"),
+    "[*]C(F)(F)C(F)(F)[*]": SolidModulus(0.5e9, 0.2e9, "PTFE, 23 C"),
+}
+
+
+def semicrystalline_modulus(candidate: Candidate) -> SolidModulus | None:
+    """Measured modulus for a semicrystalline homopolymer, or None.
+
+    None for a copolymer, for a polymer with no measurement, and - importantly
+    - for one whose crystallinity is decided by a tacticity the candidate has
+    not stated. Atactic polypropylene is a tacky amorphous solid and must not
+    be handed the isotactic polymer's 1.5 GPa.
+    """
+    spec = candidate.polymer
+    if spec is None:
+        return None
+    repeat = _repeat_unit(spec)
+    if repeat is None:
+        return None
+    stereo = _match(repeat, TACTICITY_DECIDES_CRYSTALLINITY)
+    if stereo is not None and spec.tacticity is not Tacticity.ISOTACTIC:
+        return None
+    found = _match(repeat, SEMICRYSTALLINE_MODULUS)
+    return found[1] if found is not None else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,17 +268,49 @@ def _match(smiles: str, table: dict) -> tuple[str, object] | None:
     return (smiles, table[smiles]) if smiles in table else None
 
 
-def melt_viscosity(molar_mass: float, entanglement: float, tg: float, temperature: float) -> float:
+def melt_viscosity(
+    molar_mass: float,
+    entanglement: float,
+    tg: float,
+    temperature: float,
+    activation_energy: float | None = None,
+) -> float:
     """Zero-shear melt viscosity, Pa s.
 
+    Two regimes, joined where WLF stops being trustworthy.
+
+    Near the glass transition the temperature dependence is WLF:
     ``eta = eta(Tg) * (M/Mc)^3.4 * 10^(-C1 dT / (C2 + dT))``, with the first
-    factor fixed by the convention that defines Tg. No constant is fitted.
+    factor fixed by the convention that *defines* Tg, so no constant is fitted.
+
+    WLF is referenced to Tg and is not trustworthy much beyond ``WLF_RANGE_K``
+    above it - which is a problem, because a melt-processing nozzle sits two to
+    three hundred degrees above Tg for an ordinary semicrystalline polymer, and
+    that is exactly the regime a hot-melt question asks about. There the melt
+    follows an Arrhenius law with a polymer-specific flow activation energy.
+
+    The two are joined at ``Tg + WLF_RANGE_K``: WLF fixes the value there, and
+    Arrhenius carries it upward. That keeps the curve continuous and still
+    introduces no fitted constant beyond the tabulated activation energy.
     """
     critical = CRITICAL_OVER_ENTANGLEMENT * entanglement
     chain_factor = (molar_mass / critical) ** REPTATION_EXPONENT
-    delta = temperature - tg
-    shift = -WLF_C1 * delta / (WLF_C2 + delta)
-    return VISCOSITY_AT_TG * chain_factor * (10.0**shift)
+
+    def wlf(t: float) -> float:
+        delta = t - tg
+        return VISCOSITY_AT_TG * chain_factor * (10.0 ** (-WLF_C1 * delta / (WLF_C2 + delta)))
+
+    crossover = tg + WLF_RANGE_K
+    if temperature <= crossover:
+        return wlf(temperature)
+    if activation_energy is None:
+        raise ValueError(
+            "above the WLF range the melt needs a flow activation energy, and none "
+            "is tabulated for this polymer"
+        )
+    return wlf(crossover) * math.exp(
+        activation_energy / GAS_CONSTANT * (1.0 / temperature - 1.0 / crossover)
+    )
 
 
 class PolymerMeltExpert(Expert):
@@ -202,6 +352,23 @@ class PolymerMeltExpert(Expert):
     # -- the three properties ---------------------------------------------
 
     def _melting_point(self, prop, request, domain, repeat):
+        stereo = _match(repeat, TACTICITY_DECIDES_CRYSTALLINITY)
+        if stereo is not None:
+            tacticity = request.candidate.polymer.tacticity
+            if tacticity is Tacticity.ATACTIC:
+                return Prediction.unsupported(
+                    prop, self.id,
+                    f"this polymer has no melting point: {stereo[1]}, and this candidate "
+                    "is the atactic one",
+                )
+            if tacticity is Tacticity.UNSPECIFIED:
+                return Prediction.unsupported(
+                    prop, self.id,
+                    f"{stereo[1]}. This candidate does not state its tacticity, so the "
+                    "question of whether it melts at all is unanswered - and a tabulated "
+                    "melting point keyed on the repeat unit cannot tell the two apart",
+                )
+
         amorphous = _match(repeat, AMORPHOUS)
         if amorphous is not None:
             return Prediction.unsupported(
@@ -323,29 +490,52 @@ class PolymerMeltExpert(Expert):
                 f"at {t_kelvin:.0f} K this polymer is at or below its glass transition "
                 f"({tg_k:.0f} K); it is a solid, not a melt",
             )
-        if t_kelvin - tg_k > 150.0:
-            return Prediction.unsupported(
-                prop, self.id,
-                f"WLF is referenced to Tg and is not trustworthy {t_kelvin - tg_k:.0f} K "
-                "above it; beyond about 150 K the melt follows an Arrhenius law with a "
-                "polymer-specific activation energy this expert does not have",
-            )
+        above_wlf = t_kelvin > tg_k + WLF_RANGE_K
+        activation = None
+        if above_wlf:
+            found = _match(repeat, FLOW_ACTIVATION_ENERGY)
+            if found is None:
+                return Prediction.unsupported(
+                    prop, self.id,
+                    f"at {t_kelvin:.0f} K this melt is {t_kelvin - tg_k:.0f} K above its "
+                    f"glass transition, past the {WLF_RANGE_K:.0f} K that WLF is "
+                    "referenced over, and no flow activation energy is tabulated for it "
+                    "to carry the Arrhenius branch",
+                )
+            activation = found[1]
 
-        eta = melt_viscosity(mass, me_kg, tg_k, t_kelvin)
-        # One decade of one-sigma, expressed in linear units for the ranker.
-        sigma = eta * (10.0**VISCOSITY_LOG_SIGMA - 1.0) / 2.0
+        eta = melt_viscosity(mass, me_kg, tg_k, t_kelvin, activation)
+        # One decade of one-sigma, expressed in linear units for the ranker. The
+        # Arrhenius branch adds the activation energy's own error on top, and it
+        # enters an exponential, so it is propagated rather than waved at.
+        log_sigma = VISCOSITY_LOG_SIGMA
+        if activation is not None:
+            exponent_sigma = (
+                activation * ACTIVATION_ENERGY_RTOL / GAS_CONSTANT
+                * abs(1.0 / t_kelvin - 1.0 / (tg_k + WLF_RANGE_K))
+            )
+            log_sigma = math.sqrt(log_sigma**2 + (exponent_sigma / math.log(10.0)) ** 2)
+        sigma = eta * (10.0**log_sigma - 1.0) / 2.0
+        branch = (
+            f"WLF from Tg = {tg_k:.0f} K to {tg_k + WLF_RANGE_K:.0f} K, then Arrhenius "
+            f"at {activation/1e3:.0f} kJ/mol to {t_kelvin:.0f} K"
+            if activation is not None
+            else f"WLF shift from Tg = {tg_k:.0f} K to {t_kelvin:.0f} K"
+        )
         return self._make(
             prop, eta, "Pa*s", request, domain,
             std=sigma, kind=UncertaintyKind.EPISTEMIC,
             basis=(
-                "one decade, one sigma. The WLF constants used are the universal ones, "
-                "which against polystyrene at 200 C land about an order of magnitude low; "
-                "a tighter claim would be flattering rather than honest"
+                f"{log_sigma:.1f} decades, one sigma. The WLF constants used are the "
+                "universal ones, which against polystyrene at 200 C land about an order "
+                "of magnitude low; a tighter claim would be flattering rather than "
+                "honest. Above the WLF range the activation energy's own 15% is "
+                "propagated through the exponential and added in quadrature"
             ),
             notes=(
                 f"chain {mass*1e3:.0f} g/mol against a critical mass of {critical*1e3:.0f}, "
                 f"so {(mass/critical)**REPTATION_EXPONENT:.1f}x the threshold viscosity",
-                f"WLF shift from Tg = {tg_k:.0f} K to {t_kelvin:.0f} K",
+                branch,
                 "an order of magnitude still separates a melt that will pass a "
                 "millimetre orifice from one that will not, because melt viscosity "
                 "spans six orders across ordinary polymers",

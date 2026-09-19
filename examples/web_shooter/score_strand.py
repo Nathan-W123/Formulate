@@ -35,10 +35,12 @@ class ReferencePolymerExplorer(Explorer):
 
     #: Melt viscosity goes as the 3.4 power of chain length, so a candidate
     #: with no stated molar mass has no melt viscosity and the expert says so.
-    #: 50 kg/mol is an ordinary commercial grade and is stated, not measured -
-    #: it is recorded in provenance so the run does not read it as a property
-    #: of the polymer.
-    number_average_molar_mass_kg_mol = 50.0
+    #: 8 kg/mol is where the hot-melt sweep lands, not a guess: an ordinary
+    #: commercial 50 kg/mol grade comes out at 2000 Pa.s, far too thick to push
+    #: through a 4.4 mm orifice, and the window closes again below about 5.
+    #: Stated rather than measured, and recorded in provenance so the run does
+    #: not read it as a property of the polymer.
+    number_average_molar_mass_kg_mol = 8.0
 
     def propose(
         self,

@@ -180,14 +180,38 @@ def entanglement_model() -> EntanglementModel:
     )
 
 
-def youngs_modulus(temperature_k: float, glass_transition_k: float,
-                   density_g_cm3: float, entanglement_g_mol: float | None) -> tuple[float, str]:
+def youngs_modulus(
+    temperature_k: float,
+    glass_transition_k: float,
+    density_g_cm3: float,
+    entanglement_g_mol: float | None,
+    crystalline_modulus_pa: float | None = None,
+) -> tuple[float, str]:
     """Young's modulus in Pa, and which branch produced it.
 
     Below the transition the answer is the glassy plateau, which barely depends
     on structure. Above it the answer is the entangled network, which depends
     on nothing else.
+
+    **Unless the polymer is semicrystalline**, and that third case is not a
+    refinement of the switch - it breaks it. The switch asks what the amorphous
+    phase is doing, and for a semicrystalline polymer that is the wrong
+    question: crystallites do not soften at Tg, because Tg is not a property
+    they have. Polyethylene sits a hundred degrees above its glass transition
+    at room temperature and the two-branch model duly returns 8 MPa, a soft
+    rubber. Measured high-density polyethylene is about 1 GPa. The model is not
+    slightly off, it is out by a factor of a hundred and in the direction that
+    makes every useful semicrystalline polymer look useless - which is why
+    polyethylene came bottom of the strand ranking, and why glassy and tough
+    looked like a dichotomy when it is really a statement about amorphous
+    polymers only.
+
+    A measured modulus is taken where one is available, because the alternative
+    is a composite model over a degree of crystallinity that is itself a
+    processing variable rather than a property of the material.
     """
+    if crystalline_modulus_pa is not None:
+        return crystalline_modulus_pa, "semicrystalline"
     if temperature_k < glass_transition_k:
         return _GLASSY_MODULUS, "glassy"
     if entanglement_g_mol is None or entanglement_g_mol <= 0:
@@ -358,12 +382,26 @@ class PolymerMechanicalExpert(Expert):
                 "available; guessing the branch is a factor of two thousand",
             )
 
+        from .melt import semicrystalline_modulus
+
+        crystalline = semicrystalline_modulus(request.candidate)
         try:
-            modulus, branch = youngs_modulus(temperature, glass_transition, density, entanglement)
+            modulus, branch = youngs_modulus(
+                temperature, glass_transition, density, entanglement,
+                None if crystalline is None else crystalline.modulus,
+            )
         except ValueError as exc:
             return Prediction.unsupported(prop, self.id, str(exc))
 
-        if branch == "glassy":
+        if branch == "semicrystalline":
+            relative = crystalline.spread / crystalline.modulus
+            reason = (
+                f"this polymer is semicrystalline, so the glass/rubber switch does not "
+                f"apply: its crystallites have no glass transition to be above, and the "
+                f"switch would return a soft rubber {glass_transition:.0f} K below the "
+                f"temperature asked about. Measured instead: {crystalline.source}"
+            )
+        elif branch == "glassy":
             relative = _GLASSY_SPREAD / _GLASSY_MODULUS
             reason = (
                 f"{temperature:.0f} K is below the transition at {glass_transition:.0f} K, "

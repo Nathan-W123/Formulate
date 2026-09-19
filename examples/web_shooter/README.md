@@ -684,6 +684,66 @@ answer: covering that regime needs an Arrhenius branch with per-polymer flow
 activation energies that this repository does not have. The hand analysis above
 simply assumed a viscosity. The engine will not.
 
+### Iterating to an answer
+
+Two more gaps had to close before the run returned anything, and both were
+found by the engine refusing rather than by anyone guessing.
+
+**WLF could not reach the nozzle.** The viscosity model is referenced to Tg and
+holds perhaps 100 K above it; a hot melt runs 200-300 K above. The expert now
+hands over at `Tg + 100 K` to an Arrhenius branch with a tabulated flow
+activation energy, joined so the value is continuous. Checked against
+polyethylene: a 50 kg/mol grade comes out at 1950 Pa.s at 200 C, where measured
+HDPE is one to five thousand.
+
+**The glass/rubber switch is wrong for anything crystalline.** This is the one
+that had been distorting the whole project. The switch asks what the *amorphous*
+phase is doing, and for a semicrystalline polymer that is the wrong question -
+crystallites have no glass transition to be above. Polyethylene sits 100 K past
+its Tg at room temperature, so the switch returned 8 MPa. Measured HDPE is about
+1 GPa. Out by a factor of 125, in the direction that makes every useful
+semicrystalline polymer look useless.
+
+That is why polyethylene came bottom of the earlier strand ranking, and why
+"glassy or tough" looked like a dichotomy: **it is a dichotomy for amorphous
+polymers only.** Semicrystalline polymers are the third case the switch had no
+branch for, and they are stiff *and* tough, which is exactly what the strand
+needed the whole time. The measured modulus is now used where there is one.
+
+Two data hazards surfaced on the way. Atactic polypropylene - which is what the
+bundled reference set actually carries - is a tacky amorphous solid, and keyed
+on the repeat unit alone it is indistinguishable from the isotactic polymer that
+melts at 165 C. The run was handing it that melting point and a 1.5 GPa modulus.
+Tacticity is now checked, and an unstated tacticity is refused rather than
+assumed.
+
+### The answer
+
+**Linear polyethylene at 5-8 kg/mol** - a low-molar-mass HDPE, which is what a
+polyethylene wax is. One of 57 feasible:
+
+| | | |
+|---|---|---|
+| melt viscosity at 200 C | 11.4 Pa.s | in the 1-20 window |
+| melting point | 408 K (135 C) | in the 120-210 window |
+| melt surface tension | 22.5 mN/m | low, so the jet resists pinch-off |
+| Young's modulus | 1.0 GPa | measured, semicrystalline branch |
+| flaw-free strength bound | 100 MPa | screen only, not a strength |
+| entanglement | 7x the entanglement mass | entangled, so not brittle |
+| density | 910 kg/m3 | the lightest in the set |
+| work of separation on steel | 63 mN/m | marginal, and flagged as such |
+
+The molar mass is the whole answer and the engine found it. An ordinary
+commercial 50 kg/mol grade is 2000 Pa.s and will not go through the orifice at
+any pressure on the list; below about 5 kg/mol the chain stops being entangled
+and the strand turns brittle. The window is narrow and sits an order of
+magnitude below where anyone would have reached by default.
+
+What the run does **not** establish: `theoretical_strength` is a flaw-free bound,
+so nothing here predicts a breaking load, and at 8 kg/mol a real polyethylene is
+much weaker than a commercial grade - low molar mass buys pumpability by
+spending strength. The adhesion figure meets its bound only within uncertainty.
+
 ### A bug the exercise found
 
 Two requirements on one expert both stating `temperature: 200 degC` were

@@ -170,9 +170,11 @@ def test_predictions_through_the_engine_land_where_measurements_do(smiles, prop,
 
 
 @requires_rdkit
-def test_a_semicrystalline_polymer_says_the_answer_is_for_the_amorphous_phase():
-    """Polyethylene is above its transition, so the rubbery branch fires and
-    returns about 8 MPa, where a real bar is nearer 800 because it crystallises."""
+def test_a_semicrystalline_polymer_is_not_answered_by_the_glass_rubber_switch():
+    """The switch asks what the amorphous phase is doing, which for polyethylene
+    is the wrong question: it sits 100 K above its transition and the switch
+    duly returned 8 MPa, against a measured 1 GPa. A crystallite has no glass
+    transition to be above."""
     from formulate.evaluation.engine import EvaluationEngine
     from formulate.experts import default_registry
     from formulate.targets.spec import TargetSpec
@@ -190,7 +192,10 @@ def test_a_semicrystalline_polymer_says_the_answer_is_for_the_amorphous_phase():
     predictions, _ = EvaluationEngine(default_registry()).predict([polymer_candidate(PE)], spec)
     match = [p for p in predictions[0] if p.property == "youngs_modulus" and p.quantity]
     assert match
-    assert any("crystallis" in note for note in match[0].notes)
+    modulus = match[0].quantity.to_canonical().value
+    assert modulus == pytest.approx(1.0e9, rel=0.01), "should be the measured value"
+    assert any("semicrystalline" in note for note in match[0].notes)
+    assert any("switch does not" in note for note in match[0].notes)
 
 
 @requires_rdkit

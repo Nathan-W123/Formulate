@@ -150,14 +150,76 @@ def test_an_unentangled_chain_is_refused_because_the_power_law_does_not_hold():
 
 
 @requires_rdkit
-def test_wlf_refuses_far_above_the_glass_transition():
-    """A hot-melt nozzle sits outside the range WLF is referenced over."""
+def test_above_the_wlf_range_arrhenius_carries_it_and_says_so():
+    """A hot-melt nozzle sits past where WLF is referenced, so a tabulated
+    flow activation energy carries the curve the rest of the way."""
     prediction = _predict(
         _polymer(PE, mn_kg_mol=50.0), "shear_viscosity", temperature_k=473.15,
         context=_context(198.0, 1.15),
     )
+    assert prediction.quantity is not None
+    # Measured HDPE at this chain length and 200 C is a few thousand Pa.s.
+    assert 500.0 < prediction.quantity.value < 10000.0
+    assert "Arrhenius" in " ".join(prediction.notes)
+
+
+@requires_rdkit
+def test_without_an_activation_energy_the_melt_regime_is_refused():
+    """The Arrhenius branch is tabulated, so a polymer outside the table gets
+    a refusal rather than a WLF extrapolation two hundred degrees past its range."""
+    prediction = _predict(
+        _polymer("[*]CC(CC)[*]", mn_kg_mol=50.0), "shear_viscosity",
+        temperature_k=473.15, context=_context(200.0, 2.0),
+    )
     assert prediction.status is PredictionStatus.UNSUPPORTED
-    assert "WLF" in " ".join(prediction.notes)
+    assert "activation energy" in " ".join(prediction.notes)
+
+
+@requires_rdkit
+def test_the_two_viscosity_branches_join_without_a_step():
+    """WLF hands over to Arrhenius at Tg + WLF_RANGE_K.
+
+    The value is continuous by construction - Arrhenius starts from whatever
+    WLF says at the crossover - which is what is asserted here. The *slope* is
+    not continuous, and is not claimed to be: the two forms have different
+    temperature dependences and joining them at a point is the whole idea.
+    """
+    from formulate.experts.melt import WLF_RANGE_K, melt_viscosity
+
+    tg, crossover = 198.0, 198.0 + WLF_RANGE_K
+    at = melt_viscosity(50.0, 1.15, tg, crossover, 27.0e3)
+    just_above = melt_viscosity(50.0, 1.15, tg, crossover + 1e-9, 27.0e3)
+    assert just_above == pytest.approx(at, rel=1e-9)
+
+
+@requires_rdkit
+def test_atactic_polypropylene_is_not_given_the_isotactic_melting_point():
+    """Keyed on the repeat unit the two are identical, and one does not melt."""
+    from formulate.core.candidate import Tacticity
+
+    atactic = Candidate(
+        material_class=MaterialClass.POLYMER,
+        polymer=PolymerSpec(
+            monomers=(MonomerUnit(smiles="[*]CC(C)[*]"),), tacticity=Tacticity.ATACTIC
+        ),
+        conditions=Conditions.standard(),
+    )
+    isotactic = Candidate(
+        material_class=MaterialClass.POLYMER,
+        polymer=PolymerSpec(
+            monomers=(MonomerUnit(smiles="[*]CC(C)[*]"),), tacticity=Tacticity.ISOTACTIC
+        ),
+        conditions=Conditions.standard(),
+    )
+    assert _predict(atactic, "melting_point").quantity is None
+    assert _predict(isotactic, "melting_point").quantity is not None
+
+
+@requires_rdkit
+def test_unstated_tacticity_is_refused_rather_than_assumed():
+    prediction = _predict(_polymer("[*]CC(C)[*]"), "melting_point")
+    assert prediction.status is PredictionStatus.UNSUPPORTED
+    assert "does not state its tacticity" in " ".join(prediction.notes)
 
 
 @requires_rdkit
