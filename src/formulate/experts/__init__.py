@@ -22,6 +22,7 @@ from .polymer_structural import PolymerStructuralExpert
 from .polymer_thermal import PolymerThermalExpert
 from .semiempirical import SemiempiricalElectronicExpert
 from .solution import PolymerSolutionExpert
+from .stability import ThermalStabilityExpert
 from .transport import LiquidTransportExpert
 from .melt import PolymerMeltExpert
 from .spinline import SpinlineExpert
@@ -108,6 +109,7 @@ PHASE6_EXPERTS = (
     PolymerDissolutionExpert,
     PolymerFeasibilityExpert,
     PolymerSolutionExpert,
+    ThermalStabilityExpert,
 )
 
 
@@ -146,7 +148,7 @@ __all__ = [
     "MixtureThermalExpert", "PolymerDissolutionExpert", "PolymerFeasibilityExpert",
     "PolymerHansenExpert", "PolymerStructuralExpert", "PolymerThermalExpert",
     "QuantumElectronicExpert", "SemiempiricalElectronicExpert",
-    "PolymerSolutionExpert", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
+    "PolymerSolutionExpert", "ThermalStabilityExpert", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
     "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
     "PolymerMechanicalExpert", "PolymerMeltExpert", "PolymerBlendMeltExpert", "PolymerBlendSolidExpert", "SpinlineExpert",
     "UNIFACActivityExpert",

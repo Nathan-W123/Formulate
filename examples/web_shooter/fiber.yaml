@@ -1,0 +1,143 @@
+# The seven requirements a load-bearing web actually has, and the four of them
+# this engine can state.
+#
+#   1. strong chain orientation                     NOT STATABLE
+#   2. rapid crystallisation or other orientation lock   PARTLY - crystallisability
+#   3. high intermolecular cohesion                 STATABLE - cohesive_energy_density
+#   4. low moisture sensitivity                     PARTLY - hansen_hydrogen_bonding
+#   5. large processing / degradation window        STATABLE - decomposition_temperature
+#   6. sigma_fiber >= 2-3 GPa                       NOT STATABLE
+#   7. very low creep                               NOT STATABLE
+#
+# Three of the seven have no name in the registry and are listed in the
+# assumptions instead. That is the honest position and it is also the reason
+# earlier runs returned what they returned: a ranking answers the question it
+# was asked, and poly(acrylic acid) came first in a contest that never asked
+# whether it survives its own processing temperature or holds its orientation.
+#
+# What IS new here: decomposition_temperature closes the processing window,
+# which had only a bottom until now. A window with one end is not a window, and
+# a search handed one will propose a material whose two ends are in the wrong
+# order - which is exactly what happened.
+name: web fibre, the requirements that can be stated
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+
+material_classes: [polymer]
+
+requirements:
+  # 5. The processing window, which is the requirement that changes the answer.
+  - property: decomposition_temperature
+    direction: maximize
+    lower: 250 degC
+    upper: 500 degC
+    hard: true
+    weight: 4.0
+    rationale: >-
+      a melt process at 200 C needs headroom above it, not a named reaction
+      waiting at 150. Poly(acrylic acid) dehydrates to an anhydride from about
+      150 C and poly(vinyl chloride) releases HCl from about 200; neither is a
+      melt of the same polymer that entered the cartridge
+
+  # 2. The orientation lock. A drawn filament of a chain that cannot crystallise
+  #    has none: the glass freezes the stretch and it relaxes back.
+  - property: crystallisability
+    direction: maximize
+    lower: 0.5
+    upper: 1.0
+    hard: true
+    weight: 4.0
+    rationale: >-
+      the multi-GPa fibres are all crystalline and oriented. An amorphous drawn
+      filament holds its orientation only as long as the glass holds, which is
+      the creep problem in another form
+
+  # 3. Intermolecular cohesion, which is what holds the oriented chains together.
+  - property: cohesive_energy_density
+    direction: maximize
+    lower: 300 MPa
+    upper: 900 MPa
+    weight: 3.0
+    rationale: >-
+      a drawn fibre fails by chains sliding past one another, not by breaking
+      C-C bonds, so the strength is set by what holds neighbouring chains
+      together rather than by the backbone
+
+  # 4. Moisture. The registry has no water uptake; the hydrogen-bonding Hansen
+  #    parameter is the handle it does have, and it is a real one.
+  - property: hansen_hydrogen_bonding
+    direction: minimize
+    lower: 2 MPa^0.5
+    upper: 10 MPa^0.5
+    hard: true
+    weight: 3.0
+    rationale: >-
+      water's own hydrogen-bonding parameter is 42 MPa^0.5, so a polymer high
+      on this axis is close to water in Hansen space and will take it up.
+      Poly(acrylic acid) sits at 13.3, among the highest of any polymer, and is
+      water-soluble - a web that changes properties between a dry room and a
+      wet one is not a structural material
+
+  # The processing floor, so the window has both ends.
+  - property: glass_transition_temperature
+    direction: maximize
+    lower: 273 K
+    upper: 500 K
+    weight: 1.0
+    rationale: above room temperature, or the fibre creeps before it is loaded
+
+  - property: melting_point
+    direction: in_range
+    lower: 100 degC
+    upper: 300 degC
+    hard: true
+    rationale: >-
+      it has to melt, below where it decomposes. Requiring this at all is what
+      eliminates every amorphous candidate a second time, since an amorphous
+      polymer has no melting point and the refusal is the answer
+
+  - property: entanglement_molar_mass
+    direction: minimize
+    lower: 0.5 kg/mol
+    upper: 20 kg/mol
+    weight: 2.0
+    rationale: a dense entanglement network is what carries the draw
+
+  - property: synthetic_accessibility
+    direction: minimize
+    lower: 1.0
+    upper: 6.0
+    hard: true
+    weight: 1.0
+    rationale: the monomer is reconstructed from the repeat unit and scored
+
+assumptions:
+  - statement: >-
+      THREE OF THE SEVEN REQUIREMENTS CANNOT BE STATED. Chain orientation after
+      drawing, fibre tensile strength, and creep have no name in this registry.
+      theoretical_strength exists but is explicitly a flaw-free isotropic bound
+      - it gives poly(acrylic acid) 286 MPa, an order below the 2-3 GPa a drawn
+      fibre needs - and it is not a fibre strength. A candidate that passes here
+      has cleared four of seven criteria, not seven, and the three missing ones
+      are the ones that decide whether a web holds a person.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      Moisture sensitivity is stood in for by the hydrogen-bonding Hansen
+      parameter, which is a proxy rather than a water uptake. It separates
+      poly(acrylic acid) at 13.3 MPa^0.5 from polyethylene at 0, which is the
+      separation that matters here, but it says nothing about the kinetics of
+      uptake or about how much strength is lost at a given humidity.
+    source: inferred
+    made_by: operator
+    affects: [hansen_hydrogen_bonding]
+  - statement: >-
+      Crystallisability is a yes or no, not a rate. "Rapid crystallisation"
+      asks how fast the lock closes on the spinline, and nothing here models
+      crystallisation kinetics - let alone flow-induced crystallisation, which
+      is the mechanism a real fibre line depends on.
+    source: inferred
+    made_by: operator
+    affects: [crystallisability]

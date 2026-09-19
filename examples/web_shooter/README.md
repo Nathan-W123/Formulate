@@ -1472,6 +1472,109 @@ grade rather than a commodity. Acetone is a marginal solvent for polystyrene -
 and says so on every prediction it makes. And the solvent still has to leave
 in flight, which is an evaporation calculation nothing here has done.
 
+## The critique that was right, and what it cost to answer
+
+A reviewer looked at the blend ranking - poly(acrylic acid), bimodal 50/0.8
+kg/mol at 15% short - and rejected it on five grounds. Every one of them was
+correct, and none of them was a number this engine got wrong:
+
+* 50 kg/mol is not a high molar mass for a structural fibre
+* poly(acrylic acid) is amorphous, not the crystalline oriented structure
+  behind multi-GPa fibres
+* it DEHYDRATES to an anhydride from about 150 C rather than melting - so a
+  200 C melt process is chemistry, not processing
+* it is water-soluble, and a web that changes properties between a dry room
+  and a wet one is not a structural material
+* the 15% short fraction plasticises, which is the wrong direction for final
+  strength and creep
+
+The reviewer also said the "zero robust" result was itself a rejection
+criterion. It is, and this document had already said so.
+
+### The engine already knew most of it
+
+Asked directly, before anything was added:
+
+```
+crystallinity, atactic  : crystalline=False - the chain has a stereocentre
+hansen_hydrogen_bonding : 13.26 MPa^0.5     - among the highest of any polymer
+theoretical_strength    : 286 MPa           - an order below the 2-3 GPa wanted
+```
+
+So the failure was the SPECIFICATION, not the panel. A ranking answers the
+question it was asked, and the blend specification never asked whether the
+candidate survives its own processing temperature, whether it can crystallise,
+or whether it takes up water. Three questions, four hard constraints, and
+poly(acrylic acid) fails all four.
+
+### The one thing genuinely missing: the top of the processing window
+
+The registry had a melting point and a glass transition - the BOTTOM of a
+processing window - and nothing at all for the top. A window with one end is
+not a window, and a search handed one will propose a material whose two ends
+are in the wrong order. That is precisely what happened.
+
+`decomposition_temperature` and `crystallisability` are new properties, served
+by `ThermalStabilityExpert`. The decomposition onset is group contributions
+over the repeat unit, FITTED to eleven measured onsets rather than asserted -
+the first version was written from chemical intuition and came out 0.59x to
+0.82x against every reference, uniformly and badly low. Intuition had the
+ordering right and the magnitudes wrong, which is the usual way for a table
+nobody checked. Fitted: 1.10x in sample, 1.37x held out.
+
+Over the group sum sit SMARTS gates for the chemistries that have a named
+reaction waiting at a particular temperature - poly(acrylic acid)'s anhydride
+at 150 C, PVC's dehydrochlorination at 200, polyacrylonitrile's cyclisation at
+250, poly(vinyl alcohol)'s dehydration at 200. These are stated, not predicted,
+because a group sum answers "how hot before bonds in general break" and cannot
+see that two carboxylic acids four atoms apart on one chain will find each
+other.
+
+Writing those gates produced one more bug of the kind this repository keeps
+finding. The SMARTS ran on the repeat unit with its attachment points capped as
+`[H]`, which is what the parachor and the group schemes do - they sum over
+atoms and can subtract the caps again. A SMARTS cannot subtract anything.
+`[*]OCCOC(=O)...` capped becomes `[H]OCCOC(=O)...`, whose terminal `[OX2H1]` on
+a `[CX4]` is a hydroxyl, so poly(ethylene terephthalate) matched the poly(vinyl
+alcohol) dehydration rule and was told it decomposes at 200 C. PET is melt-spun
+at 280 every day. The gates now run on the unit with its dummies intact.
+
+### The answer changes
+
+`fiber.yaml` states the four of the reviewer's seven requirements that the
+registry can express, and lists the other three in its assumptions rather than
+pretending to have covered them.
+
+```
+feasible 24 of 546
+
+#1  polyethylene                    [*]CC[*]
+    poly(ethylene terephthalate)
+    poly(butylene terephthalate)
+
+poly(acrylic acid): ELIMINATED BY FOUR HARD CONSTRAINTS
+   decomposition_temperature   423 K against a 523 K floor
+   crystallisability           0
+   hansen_hydrogen_bonding     13.3 against a 10 MPa^0.5 ceiling
+   melting_point               it has none
+```
+
+Polyethylene, and that is the right answer: UHMWPE is the multi-GPa fibre the
+reviewer's requirement list describes - fully crystalline, zero hydrogen
+bonding, the widest processing window of any commodity polymer, and gel-spun
+rather than melt-spun for exactly the chain-length reasons this document has
+been circling since the beginning. PET and PBT behind it are the other two
+melt-spun structural fibres in commercial production.
+
+### Three of the seven still cannot be stated
+
+Chain orientation after drawing, fibre tensile strength and creep have no name
+in this registry. `theoretical_strength` exists and is explicitly a flaw-free
+ISOTROPIC bound - it gives poly(acrylic acid) 286 MPa - and it is not a fibre
+strength. A candidate that passes `fiber.yaml` has cleared four of seven
+criteria, and the three missing ones are the ones that decide whether a web
+holds a person.
+
 ## Verdict
 
 The engine handled the parts it covers and refused the rest legibly rather than

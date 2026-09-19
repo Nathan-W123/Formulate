@@ -110,6 +110,28 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             "Closed-cup flash point.",
             bounds=(0.0, None),
         ),
+        _p(
+            "decomposition_temperature",
+            "K",
+            _T,
+            "Temperature at which the material starts to change chemically rather than "
+            "physically. The top of the processing window: above it a melt is not a melt "
+            "of the same substance, and the distance from here down to the melting or "
+            "softening point is what says whether the material can be processed at all.",
+            bounds=(0.0, None),
+        ),
+        _p(
+            "crystallisability",
+            "",
+            _M,
+            "Whether the chain can form a crystalline phase at all: 1 if it can, 0 if it "
+            "cannot. NOT a degree of crystallinity, which is set by how a part was cooled "
+            "and is a processing variable rather than a property. This is the prior "
+            "question - whether there is anything for cooling to decide - and it is what "
+            "says whether a drawn filament has an orientation lock or merely a frozen "
+            "amorphous one that will relax.",
+            bounds=(0.0, 1.0),
+        ),
         _p("logp", "", _C, "Octanol/water partition coefficient, log10.", bounds=(-15.0, 20.0)),
         _p("molar_refractivity", "cm^3/mol", _C, "Molar refractivity.", bounds=(0.0, None)),
         _p(
