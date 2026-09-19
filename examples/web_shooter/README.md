@@ -529,6 +529,78 @@ pressure limit, 30% is comfortable on pressure and near the thermal limit - and
 a thickener loading that high is past what gel cyanoacrylate is sold at, so
 this is a formulation direction rather than something off a shelf.
 
+### The oligomer has to be reactive, not merely present
+
+A dissolved inert oligomer buys the thermal headroom by throwing the strength
+away. At Mn 3000 it is a third of PMMA's 9200 g/mol entanglement mass, so it
+cannot carry load through a network - it is a plasticiser. With only 25-30% of
+the mass forming the network, the rope lands at 6-8 MPa against the 25 needed.
+
+So the oligomer must be **functionalised**: reactive groups on an
+already-long chain, so that only the ends generate heat while the whole chain
+joins the network. Heat then falls with molar mass while strength does not:
+
+| Mn | functionality | heat/g | rise at full cure | rise at gel point |
+|---|---|---|---|---|
+| neat monomer | - | 480 J | +320 K | +320 K |
+| 3000 | 2 | 40 J | +27 K | +27 K |
+| 3000 | 3 | 60 J | +40 K | **+20 K** |
+| 6000 | 3 | 30 J | +20 K | +10 K |
+
+Functionality above two matters twice over: a trifunctional oligomer gels at
+`1/(f-1)` = 50% of its end groups rather than needing near-full conversion, so
+it is solid at half the heat.
+
+### The mixture
+
+Monomer is the reactive diluent. More of it thins the resin and speeds the
+cure, and it is also where nearly all the heat comes from, so it is the single
+variable that sets the window:
+
+| monomer | oligomer | rise | reaches | viscosity | pressure | |
+|---|---|---|---|---|---|---|
+| 5% | 87% | +33 K | 58 C | 13.8 Pa.s | 4.6 bar | ok |
+| 8% | 84% | +42 K | 67 C | 12.1 Pa.s | 4.0 bar | ok |
+| **12%** | **80%** | **+54 K** | **79 C** | **10.0 Pa.s** | **3.4 bar** | **ok** |
+| 15% | 77% | +63 K | 88 C | 8.6 Pa.s | 3.0 bar | ok |
+| 19% | 73% | +75 K | 100 C | 7.0 Pa.s | 2.5 bar | too hot |
+| 25% | 67% | +93 K | 118 C | 5.0 Pa.s | 1.9 bar | too hot |
+
+At a 3 bar hand-sprayer budget the window collapses to a single point at 15%.
+Going to a 6 bar CO2 cartridge opens it to 5-15%, which is the difference
+between a formulation that has to be exact and one that has tolerance. Take the
+middle:
+
+**Stream A**
+
+| | % w/w |
+|---|---|
+| cyanoacrylate-terminated oligomer, Mn ~3000, f ~3 | 80 |
+| ethyl 2-cyanoacrylate monomer, as reactive diluent | 12 |
+| dissolved elastomer, rubber toughener | 7 |
+| acidic stabiliser (SO2 or methanesulfonic acid) | 1 |
+
+**Stream B**, metered 20:1 against A: amine accelerator, 2-5% in an inert
+carrier. This is the knob that sets the gel clock against the flight time.
+
+| | |
+|---|---|
+| viscosity | 10 Pa.s |
+| pressure | 3.4 bar of 6 |
+| exotherm | +54 K, reaching 79 C against a 175 K ceiling |
+| cross-section | 15.2 mm2, one 4.4 mm orifice |
+| holds | 85 lb at 25 MPa - 1.7x the 50 asked |
+| a 3 m shot | 46 mL, 50 g (43 mL A + 2.2 mL B) |
+
+The pressure source goes back up from the hand sprayer to the CO2 cartridge,
+and that is the only hardware change from the list above.
+
+What is not established: the oligomer is specified by what it has to do rather
+than named as a product, because a trifunctional cyanoacrylate-terminated
+oligomer at Mn 3000 is not something sold in a bottle. Every number here is a
+calculation from handbook physical constants, and the gel clock against the
+333 ms flight is the one that most needs an experiment rather than an estimate.
+
 Honest caveats beyond that: cured cyanoacrylate is brittle unless it is the
 rubber-toughened grade, which is again a two-phase material the engine cannot
 represent; and CA bonds skin instantly, which is the real safety issue.
