@@ -222,11 +222,18 @@ class SpinlineExpert(Expert):
             "shear_thinning_ratio",
         }
     )
+    #: Either density will do, and which one arrives says what is being spun.
+    #: A melt or a blend has an amorphous density; a polymer dissolved in a
+    #: solvent has a liquid one. Asking only for the first is what made a
+    #: spinning DOPE - the thing a dry-spinning line actually holds - come back
+    #: with every property refused for a density nobody could supply, on a
+    #: candidate whose density is perfectly well defined.
     dependencies = frozenset(
         {
             "shear_viscosity",
             "surface_tension",
             "amorphous_density",
+            "liquid_density",
             "entanglement_molar_mass",
         }
     )
@@ -293,6 +300,8 @@ class SpinlineExpert(Expert):
             )
         viscosity = request.dependency_value("shear_viscosity", "Pa*s")
         density = request.dependency_value("amorphous_density", "kg/m^3")
+        if density is None:
+            density = request.dependency_value("liquid_density", "kg/m^3")
         if viscosity is None or density is None:
             missing = "melt viscosity" if viscosity is None else "density"
             return Prediction.unsupported(

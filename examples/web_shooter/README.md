@@ -1393,6 +1393,85 @@ own bar, which is the behaviour any such rule has to show to be believable.
 Correcting it did not change which blends are feasible. It changed how much the
 ranking deserves to be believed, which was the question being asked.
 
+## The solution, which is what a web shooter actually holds
+
+Everything above spins a MELT. A web shooter holds a fluid in a cartridge, and
+the fluid that becomes a solid in flight is a polymer dissolved in a solvent -
+dry spinning, the route cellulose acetate and acrylic fibres have been made by
+since the 1920s.
+
+The engine could not score one. Asked for a 20% polystyrene in acetone it
+refused eight of nine properties:
+
+```
+shear_viscosity          REFUSED: every component must be a polymer for these rules
+terminal_relaxation_time REFUSED: the melt viscosity this rests on was not available
+...
+```
+
+`polymer_blend_melt` was right to refuse - its mixing rules are over polymer
+components - but nothing else answered, so the whole spinline chain collapsed
+behind a viscosity nobody supplied. `PolymerSolutionExpert` closes it, and
+needs no new lookup: the chain dimension already comes from side-group bulk,
+the solvent's viscosity from `liquid_transport`, both densities from the
+existing experts.
+
+**Intrinsic viscosity by Flory-Fox**, `[eta] = Phi <R^2>^1.5 / M`. This is the
+one place a solution viscosity is normally a table - Mark-Houwink `K` and `a`
+are quoted per polymer, per solvent and per temperature - and going through the
+chain dimension means any repeat unit can be asked. Against intrinsic
+viscosities computed from published Mark-Houwink constants at theta: 0.88x to
+1.61x, worst polypropylene.
+
+**Two concentration branches joined at coil overlap**, `c[eta] = 1`: Huggins
+below, a power law above, continuous by construction - the same join `melt.py`
+uses between Rouse and reptation, for the same reason.
+
+The exponent above overlap is **4.3, not the melt's 3.4**, and the difference
+is not cosmetic. The melt's 3.4 is the exponent in CHAIN LENGTH at fixed
+concentration; here the variable is concentration, which adds entanglements and
+shrinks the screening length at once. Using 3.4 put a 20% solution of 200
+kg/mol polystyrene at 0.22 Pa s - thinner than a dope can be, since being
+drawable is the whole point of one.
+
+### What it says, and it is the most useful thing in this document
+
+```
+  wt%   kg/mol    eta Pa.s        Wi       bar  Me kg/mol  spins?
+   20      200       1.014    0.0127     0.175       91.1  no
+   20     1000       32.27     0.405      5.58       91.1  no
+   20     4000       635.7      7.98       110       91.1  YES
+   35      200       13.57    0.0892      2.35       49.8  no
+   35     1000       431.9      2.84      74.6       49.8  YES
+   50      200       76.55     0.321      13.2       33.3  no
+   65      200       290.5     0.853      50.2       24.4  YES
+```
+
+A conventional dope - 20% polymer at 200 kg/mol - has a Weissenberg number of
+**0.013**, three orders below the 0.5 a thread needs to thin instead of bead.
+It will not spin, and the reason is in the last column: dilution pushed the
+entanglement molar mass from about 18 kg/mol in the melt to 91. Solvent does
+not join the network, it dilutes it, and a network that sparse has no
+elasticity to stretch.
+
+That is the trade the solution route makes. Dilution buys pumpability and costs
+elasticity, and the two have to be bought back with chain length.
+
+**35% polystyrene at 1000 kg/mol in acetone: 432 Pa s, Wi = 2.8, 75 bar.**
+
+That is the first candidate anywhere in this document with real MARGIN on the
+binding requirement. Every feasible melt candidate sat at a Weissenberg number
+of 0.5 to 0.8 against a hard bound of 0.5 - passing inside its own error bar,
+which is why none of them survived a robustness check. This one clears it by
+more than five times, and at a pressure well inside the 100-250 bar a
+compressed-air cylinder gives.
+
+The caveats are real and are not hidden. 1000 kg/mol polystyrene is a specialty
+grade rather than a commodity. Acetone is a marginal solvent for polystyrene -
+`polymer_dissolution` is the expert to ask, and this one assumes dissolution
+and says so on every prediction it makes. And the solvent still has to leave
+in flight, which is an evaporation calculation nothing here has done.
+
 ## Verdict
 
 The engine handled the parts it covers and refused the rest legibly rather than

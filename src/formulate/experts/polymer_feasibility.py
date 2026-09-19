@@ -1572,19 +1572,26 @@ def _carothers_charge(spec: PolymerSpec, unit_smiles: str) -> tuple[float, float
 def _polymer_components(candidate: Candidate) -> list[Candidate] | None:
     """Each component of an all-polymer formulation, as its own candidate.
 
-    ``None`` when the candidate is not a formulation, or when any component is
-    a molecule rather than a polymer. That second case is not a gap: a polymer
-    dissolved in a solvent is a different question - what has to be MADE is the
-    polymer, and the solvent is bought - and answering it with the same rule
-    would quietly charge a formulation for a solvent nobody synthesises.
+    Molecular components are SKIPPED rather than scored, and that is the
+    substance of the rule rather than a shortcut. In a polymer dissolved in a
+    solvent, what has to be MADE is the polymer; the solvent is a commodity
+    somebody sells by the drum. Scoring it alongside would charge a formulation
+    for a synthesis nobody performs, and refusing the whole formulation because
+    one component is a molecule would make a spinning dope unanswerable for a
+    question its polymer answers perfectly well.
+
+    ``None`` when the candidate is not a formulation at all, or when it has no
+    polymer component - a solvent blend is the molecule-class feasibility
+    expert's question, not this one's.
     """
     mixture = candidate.mixture
     if mixture is None or not mixture.components:
         return None
+    polymers = [c for c in mixture.components if c.polymer is not None]
+    if not polymers:
+        return None
     out: list[Candidate] = []
-    for component in mixture.components:
-        if component.polymer is None:
-            return None
+    for component in polymers:
         out.append(
             Candidate(
                 material_class=MaterialClass.POLYMER,
@@ -1761,19 +1768,30 @@ class PolymerFeasibilityExpert(Expert):
             (p.uncertainty.std for p in per_component if p.uncertainty.std is not None),
             default=None,
         )
+        mixture = request.candidate.mixture
+        solvents = [c for c in mixture.components if c.polymer is None]
+        kind = "solution" if solvents else "blend"
         notes = [
-            f"the hardest of {len(components)} components gates the blend, at "
+            f"the hardest of {len(components)} polymer components gates the {kind}, at "
             f"{hardest.quantity.value:.2f}",
         ]
         notes.extend(hardest.notes)
-        notes.append(
-            "blending itself is a processing step and is not charged here: two polymers that "
-            "each score 3 are not harder to SYNTHESISE for being mixed"
-        )
-        notes.append(
-            "this says nothing about whether the pair is miscible, which is a different "
-            "question and one the blend experts answer"
-        )
+        if solvents:
+            notes.append(
+                f"{len(solvents)} molecular component(s) were SKIPPED, not scored: in a "
+                "polymer dissolved in a solvent what has to be made is the polymer, and the "
+                "solvent is a commodity somebody sells by the drum. Ask the molecule-class "
+                "feasibility expert if the solvent itself is the question"
+            )
+        else:
+            notes.append(
+                "blending itself is a processing step and is not charged here: two polymers "
+                "that each score 3 are not harder to SYNTHESISE for being mixed"
+            )
+            notes.append(
+                "this says nothing about whether the pair is miscible, which is a different "
+                "question and one the blend experts answer"
+            )
         return self._make(
             prop,
             hardest.quantity.value,

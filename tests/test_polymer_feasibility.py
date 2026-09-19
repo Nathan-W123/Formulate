@@ -1024,10 +1024,15 @@ def test_a_blend_does_not_claim_a_narrower_bar_than_its_components():
 
 
 @requires_rdkit
-def test_a_polymer_dissolved_in_a_solvent_is_refused_rather_than_charged_for_the_solvent():
-    """What has to be MADE is the polymer; the solvent is bought. Scoring the
-    formulation by the same rule would charge it for something nobody
-    synthesises."""
+def test_a_polymer_solution_is_scored_by_its_polymer_and_not_by_its_solvent():
+    """This expert first REFUSED a polymer solution outright, on the argument
+    that charging a formulation for a solvent nobody synthesises is the wrong
+    question. The argument was right and the conclusion was not: the fix is to
+    skip the solvent, not to refuse the formulation. What has to be MADE in a
+    spinning dope is the polymer; the solvent is a commodity sold by the drum.
+    Refusing made a dope unanswerable for a question its polymer answers
+    perfectly well, and unanswerable is what eliminates a candidate here.
+    """
     from formulate.core.candidate import (
         Candidate,
         ComponentRole,
@@ -1040,31 +1045,74 @@ def test_a_polymer_dissolved_in_a_solvent_is_refused_rather_than_charged_for_the
         PolymerSpec,
     )
     from formulate.core.conditions import Conditions
-    from formulate.core.prediction import PredictionStatus
     from formulate.core.quantity import Quantity
 
-    solution = Candidate(
+    def solution(solvent):
+        return Candidate(
+            material_class=MaterialClass.MIXTURE,
+            mixture=MixtureSpec(
+                components=(
+                    MixtureComponent(
+                        role=ComponentRole.SOLUTE,
+                        fraction=0.2,
+                        polymer=PolymerSpec(
+                            monomers=(MonomerUnit(smiles=PS),),
+                            number_average_molar_mass=Quantity(value=100.0, unit="kg/mol"),
+                        ),
+                    ),
+                    MixtureComponent(
+                        role=ComponentRole.SOLVENT,
+                        fraction=0.8,
+                        molecule=MoleculeSpec(smiles=solvent),
+                    ),
+                ),
+                basis=FractionBasis.MASS,
+            ),
+            conditions=Conditions.standard(),
+        )
+
+    from formulate.core.candidate import polymer_candidate
+
+    alone = _score(polymer_candidate(PS))
+    in_acetone = _score(solution("CC(C)=O"))
+    assert in_acetone.quantity is not None
+    assert in_acetone.quantity.value == pytest.approx(alone.quantity.value)
+    assert "SKIPPED" in " ".join(in_acetone.notes)
+
+    # And the solvent genuinely does not move it, however awkward the solvent.
+    in_something_exotic = _score(solution("FC(F)(F)c1ccccc1"))
+    assert in_something_exotic.quantity.value == pytest.approx(alone.quantity.value)
+
+
+@requires_rdkit
+def test_a_formulation_with_no_polymer_at_all_is_not_this_experts_question():
+    from formulate.core.candidate import (
+        Candidate,
+        ComponentRole,
+        FractionBasis,
+        MaterialClass,
+        MixtureComponent,
+        MixtureSpec,
+        MoleculeSpec,
+    )
+    from formulate.core.conditions import Conditions
+    from formulate.core.prediction import PredictionStatus
+
+    solvents = Candidate(
         material_class=MaterialClass.MIXTURE,
         mixture=MixtureSpec(
             components=(
                 MixtureComponent(
-                    role=ComponentRole.SOLUTE,
-                    fraction=0.2,
-                    polymer=PolymerSpec(
-                        monomers=(MonomerUnit(smiles=PS),),
-                        number_average_molar_mass=Quantity(value=100.0, unit="kg/mol"),
-                    ),
+                    role=ComponentRole.SOLVENT, fraction=0.5,
+                    molecule=MoleculeSpec(smiles="CC(C)=O"),
                 ),
                 MixtureComponent(
-                    role=ComponentRole.SOLVENT,
-                    fraction=0.8,
-                    molecule=MoleculeSpec(smiles="CC(C)=O"),
+                    role=ComponentRole.SOLVENT, fraction=0.5,
+                    molecule=MoleculeSpec(smiles="Cc1ccccc1"),
                 ),
             ),
             basis=FractionBasis.MASS,
         ),
         conditions=Conditions.standard(),
     )
-    prediction = _score(solution)
-    assert prediction.status is PredictionStatus.UNSUPPORTED
-    assert "solvent is bought" in " ".join(prediction.notes)
+    assert _score(solvents).status is PredictionStatus.UNSUPPORTED
