@@ -11,6 +11,7 @@ from .activity import UNIFACActivityExpert
 from .adhesion import AdhesionExpert
 from .blend import PolymerBlendMeltExpert, PolymerBlendSolidExpert
 from .melt import PolymerMeltExpert
+from .spinline import SpinlineExpert
 from .base import Expert, PredictionRequest
 from .critical import AtomicCriticalExpert
 from .dissolution import DissolutionExpert
@@ -62,6 +63,7 @@ PHASE4_EXPERTS = (
     PolymerMeltExpert,
     PolymerBlendMeltExpert,
     PolymerBlendSolidExpert,
+    SpinlineExpert,
 )
 
 
@@ -94,7 +96,7 @@ def default_registry() -> ExpertRegistry:
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "POLYMER_EXPERTS", "polymer_registry", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
     "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
-    "PolymerMechanicalExpert", "PolymerMeltExpert", "PolymerBlendMeltExpert", "PolymerBlendSolidExpert",
+    "PolymerMechanicalExpert", "PolymerMeltExpert", "PolymerBlendMeltExpert", "PolymerBlendSolidExpert", "SpinlineExpert",
     "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",

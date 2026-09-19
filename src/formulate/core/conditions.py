@@ -8,6 +8,7 @@ layer compares them before a prediction is allowed to satisfy a requirement.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 
@@ -27,6 +28,77 @@ class Phase(str, Enum):
     SOLUTION = "solution"
     MELT = "melt"
     UNSPECIFIED = "unspecified"
+
+
+class Spinline(BaseModel):
+    """The geometry a filament is made at.
+
+    Every dead end in ``examples/web_shooter`` was geometric rather than
+    chemical - a strand too thick to solidify in time, a jet too thin to
+    survive its own surface tension, an orifice too narrow to push anything
+    through. None of it was visible to the engine, because a candidate carried
+    what a material *is* and nothing about the shape it is made into, and a
+    solidification time is not a property of polyethylene. It is a property of
+    polyethylene at a diameter.
+
+    So geometry enters where the substrate does. ``surfaces`` set the
+    precedent: adhesion is a property of an interface, the substrate is not
+    part of the candidate, and it is read from the conditions. A filament
+    diameter is the same kind of thing - a condition of use, not a property of
+    the material - and putting it here keeps the candidate a material and lets
+    a spec state the shape it intends.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    #: Diameter of the filament as it leaves the die.
+    die_diameter: Quantity | None = None
+    #: Draw-down ratio between the die and the solidified filament. A melt
+    #: spinning line runs at 10-100; the filament that arrives is thinner than
+    #: the hole it came from by the square root of this.
+    draw_ratio: float | None = None
+    #: Speed of the filament along the spinline.
+    line_speed: Quantity | None = None
+    #: Length of the straight section of the die.
+    die_land: Quantity | None = None
+    #: Number of filaments run in parallel into one bundle.
+    filament_count: int | None = None
+
+    @property
+    def final_diameter(self) -> Quantity | None:
+        """Diameter after draw-down, which is what sets solidification."""
+        if self.die_diameter is None:
+            return None
+        if self.draw_ratio is None or self.draw_ratio <= 0:
+            return self.die_diameter
+        value = self.die_diameter.to("m").value / math.sqrt(self.draw_ratio)
+        return Quantity(value=value, unit="m")
+
+    def identity_payload(self) -> dict:
+        def _value(quantity, unit):
+            if quantity is None:
+                return None
+            return float(f"{quantity.to(unit).value:.12g}")
+
+        return {
+            "die_diameter_m": _value(self.die_diameter, "m"),
+            "draw_ratio": self.draw_ratio,
+            "line_speed_m_s": _value(self.line_speed, "m/s"),
+            "die_land_m": _value(self.die_land, "m"),
+            "filament_count": self.filament_count,
+        }
+
+    def describe(self) -> str:
+        bits = []
+        if self.die_diameter is not None:
+            bits.append(f"die {self.die_diameter.to('m').value*1e6:.0f} um")
+        if self.draw_ratio is not None:
+            bits.append(f"draw {self.draw_ratio:g}x")
+        if self.line_speed is not None:
+            bits.append(f"{self.line_speed.to('m/s').value:g} m/s")
+        if self.filament_count is not None:
+            bits.append(f"x{self.filament_count}")
+        return ", ".join(bits)
 
 
 class Conditions(BaseModel):
@@ -53,6 +125,9 @@ class Conditions(BaseModel):
     #: it wants and the engine supplies what that implies. Mirrors
     #: ``surfaces``, which the adhesion expert already reads the same way.
     solutes: tuple[str, ...] = ()
+    #: The geometry a filament is made at. Absent for anything that is not
+    #: being spun, which is most candidates.
+    spinline: Spinline | None = None
 
     @field_validator("temperature")
     @classmethod
@@ -94,6 +169,7 @@ class Conditions(BaseModel):
             processing=other.processing or self.processing,
             surfaces=other.surfaces or self.surfaces,
             solutes=other.solutes or self.solutes,
+            spinline=other.spinline or self.spinline,
         )
 
     def identity_payload(self) -> dict:
@@ -125,6 +201,7 @@ class Conditions(BaseModel):
             "processing": list(self.processing),
             "surfaces": sorted(self.surfaces),
             "solutes": sorted(self.solutes),
+            "spinline": None if self.spinline is None else self.spinline.identity_payload(),
         }
 
     def describe(self) -> str:
@@ -141,6 +218,8 @@ class Conditions(BaseModel):
             bits.append(f"surfaces={'+'.join(self.surfaces)}")
         if self.solutes:
             bits.append(f"solutes={'+'.join(self.solutes)}")
+        if self.spinline is not None:
+            bits.append(f"spinline[{self.spinline.describe()}]")
         return ", ".join(bits) or "unspecified"
 
 

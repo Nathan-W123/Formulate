@@ -217,6 +217,42 @@ PROPERTY_REGISTRY: Final[dict[str, PropertyDef]] = {
             condition_dependent=True,
             bounds=(0.0, None),
         ),
+        # -- properties of a filament being spun ---------------------------
+        # These are the first properties here that belong to a material *at a
+        # geometry* rather than to a material. A solidification time is not a
+        # property of polyethylene; it is a property of polyethylene at a
+        # diameter, which is why the geometry is a condition and these are
+        # marked condition dependent.
+        _p(
+            "solidification_time",
+            "second",
+            _I,
+            "Time for a filament to solidify through its cross-section once it "
+            "leaves the die. Goes as the square of the radius, which is why it "
+            "is decided by geometry rather than by chemistry.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "extrusion_pressure",
+            "pascal",
+            _I,
+            "Pressure needed to drive the melt through the die at the stated "
+            "line speed. Viscous loss plus the kinetic head.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
+        _p(
+            "filament_stability",
+            "-",
+            _I,
+            "How far a forming filament travels before capillary forces pinch "
+            "it, divided by how far it must travel to solidify. Above one the "
+            "filament survives long enough to become solid; below one it beads "
+            "up first.",
+            condition_dependent=True,
+            bounds=(0.0, None),
+        ),
         _p(
             "cohesive_energy_density",
             "J/m^3",

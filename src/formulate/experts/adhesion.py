@@ -108,6 +108,9 @@ SUBSTRATES: dict[str, SurfaceEnergy] = {
     "pmma": SurfaceEnergy(35.9, 4.3, "poly(methyl methacrylate), clean", 1.5),
     "pet": SurfaceEnergy(37.8, 3.5, "poly(ethylene terephthalate), clean", 1.5),
     "nylon-6,6": SurfaceEnergy(35.9, 5.3, "nylon-6,6, clean", 2.0),
+    "peo": SurfaceEnergy(
+        30.0, 13.0, "poly(ethylene oxide), clean; the polar term is the ether oxygen", 3.0
+    ),
     "glass": SurfaceEnergy(33.0, 45.0, "soda-lime glass in laboratory air", 15.0),
     "aluminium-oxide": SurfaceEnergy(35.0, 15.0, "aluminium with its native oxide, in air", 15.0),
     "steel": SurfaceEnergy(30.0, 15.0, "steel in air, with an adsorbed layer", 15.0),
@@ -134,12 +137,15 @@ POLYMER_SURFACES: dict[str, str] = {
     "[*]CC(C)(C(=O)OC)[*]": "pmma",
     "[*]OCCOC(=O)c1ccc(cc1)C(=O)[*]": "pet",
     "[*]NCCCCCCNC(=O)CCCCC(=O)[*]": "nylon-6,6",
+    "[*]CCO[*]": "peo",
     "[*]C(F)(F)C(F)(F)[*]": "ptfe",
 }
 
 #: Aliases, so a recipe may say what a person would say.
 SUBSTRATE_ALIASES: dict[str, str] = {
     "teflon": "ptfe",
+    "poly(ethylene-oxide)": "peo",
+    "peg": "peo",
     "pe": "polyethylene",
     "pp": "polypropylene",
     "ps": "polystyrene",

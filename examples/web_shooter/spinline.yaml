@@ -1,0 +1,123 @@
+# The architecture the impossibility result leaves standing.
+#
+# filament.py proved a fired liquid cannot become a strong rope in mid-air:
+# setting wants a small radius, capillary breakup wants a large one, pressure
+# wants a large one, and the three contradict. That result is about a *free*
+# jet, and it stands.
+#
+# A drawn filament is not a free jet. It is under axial tension, which stretches
+# a growing perturbation out along the filament faster than it can grow, and it
+# thins as it travels, which cuts the solidification time it needs. That is why
+# melt spinning works, and it is what a spider does - the dragline is drawn out
+# by a leg or the wind, never squirted.
+#
+# So the device pays out a drawn filament behind a small projectile, and the
+# questions become geometric, which is what the spinline conditions are for.
+name: web shooter, drawn filament
+
+# The spec-level conditions are the temperature of USE. The melt temperature
+# belongs to the requirements that are about a melt, because an expert is
+# evaluated once at one temperature and the density expert's packing factor was
+# fitted at room temperature - ask it at 200 degC and it refuses, correctly,
+# taking the entanglement mass and the viscosity behind it.
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  spinline:
+    die_diameter: 300 um
+    draw_ratio: 25.0
+    line_speed: 9 m/s
+    die_land: 0.6 mm
+    filament_count: 80
+
+material_classes: [polymer]
+
+requirements:
+  # The one that killed every earlier design. At a drawn 60 um this is
+  # milliseconds rather than the 48 s a 4.4 mm strand needs.
+  - property: solidification_time
+    conditions:
+      temperature: 200 degC
+    direction: in_range
+    upper: 0.05 s
+    hard: true
+    rationale: the filament must be solid within centimetres of the die
+
+  # It has to survive its own surface tension for at least that long.
+  - property: filament_stability
+    conditions:
+      temperature: 200 degC
+    direction: maximize
+    lower: 1.0
+    upper: 10.0
+    hard: true
+    rationale: solidify before beading, not after
+
+  # And a wrist-carried gas cartridge has to push it.
+  - property: extrusion_pressure
+    conditions:
+      temperature: 200 degC
+    direction: in_range
+    upper: 10 bar
+    hard: true
+    rationale: a 12 g CO2 cartridge with a regulator
+
+  # The melt has to be thin enough to spin and thick enough to hold a filament.
+  - property: shear_viscosity
+    conditions:
+      temperature: 200 degC
+    direction: in_range
+    lower: 10 Pa*s
+    upper: 2000 Pa*s
+    hard: true
+    rationale: the melt-spinning window
+
+  - property: melting_point
+    direction: in_range
+    lower: 60 degC
+    upper: 210 degC
+    hard: true
+    rationale: melts below what a cartridge heater reaches, solid in use
+
+  # A chain that does not entangle cannot be drawn: it snaps at the die.
+  - property: entanglement_molar_mass
+    direction: minimize
+    lower: 0.5 kg/mol
+    upper: 10.0 kg/mol
+    weight: 3.0
+    rationale: drawing a filament is the most demanding thing you can ask of a network
+
+  - property: youngs_modulus
+    direction: maximize
+    lower: 0.5 GPa
+    upper: 3.0 GPa
+    weight: 2.0
+    rationale: the undrawn stiffness; drawing raises it several-fold along the axis
+
+  - property: amorphous_density
+    direction: minimize
+    lower: 900 kg/m^3
+    upper: 1400 kg/m^3
+    weight: 1.0
+    rationale: metres of line per gram carried
+
+assumptions:
+  - statement: >-
+      The geometry is stated, not searched. The engine ranks materials at a
+      spinline; choosing the spinline is the operator's job, the same way
+      choosing the strand diameter was. spinline_sweep.py walks it.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      Drawing raises a filament's axial strength several-fold over the bulk
+      polymer by orienting the chains, and nothing here models that. The
+      modulus and strength requirements are undrawn values, so they understate
+      what a drawn filament delivers rather than overstating it.
+    source: inferred
+    made_by: operator
+    affects: [youngs_modulus]
+  - statement: >-
+      Adhesion is still absent from this spec. The line has to anchor at the
+      far end, and nothing here scores that.
+    source: inferred
+    made_by: operator

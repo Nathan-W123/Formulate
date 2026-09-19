@@ -421,4 +421,28 @@ def _expand_conditions(data: dict[str, Any]) -> dict[str, Any]:
     for key in ("processing", "surfaces"):
         if key in out and isinstance(out[key], str):
             out[key] = [out[key]]
+    if isinstance(out.get("spinline"), dict):
+        out["spinline"] = _expand_spinline(out["spinline"])
+    return out
+
+
+#: Spinline fields that are quantities, and the unit a bare number is read in.
+_SPINLINE_UNITS = {
+    "die_diameter": "meter",
+    "line_speed": "meter / second",
+    "die_land": "meter",
+}
+
+
+def _expand_spinline(data: dict[str, Any]) -> dict[str, Any]:
+    """Let a spinline be written the way the rest of a spec is.
+
+    Without this a geometry has to be spelled out as ``{value: 0.0003, unit:
+    m}``, which is exactly the friction the shorthand exists to remove, and a
+    die written as "300 um" fails validation rather than being read.
+    """
+    out = dict(data)
+    for field, unit in _SPINLINE_UNITS.items():
+        if field in out:
+            out[field] = _q(out[field], unit)
     return out
