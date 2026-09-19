@@ -162,6 +162,51 @@ The same draft asked for `theoretical_strength >= 710 MPa`, a 10x margin on a
 failure report said so precisely: `nearest miss passes at lower bound 2.86e+08
 (currently 7.1e+08)`.
 
+## Asking for a web that deforms: no answer, and a real reason
+
+`strand_tough.yaml` is the same spec with the toughness axis promoted from a
+soft objective to a hard cap - entanglement molar mass at or below 5 kg/mol, so
+a chain tangles often enough to carry load through a network instead of
+snapping. Nothing passes, and the failure names the pair:
+
+```
+Constraints never satisfied together by any candidate in this pool:
+  - glass_transition_temperature [hard]: in range [333.15, 453.15] kelvin and
+    entanglement_molar_mass [hard]: in range [-inf, 5] kilogram / mole
+```
+
+Glassy and tough are mutually exclusive across the whole bundled set. That is
+not an artifact of the fitted `M_e` model: against the *measured* entanglement
+values for the six polymers that have both, Tg correlates with `ln(M_e)` at
+r = +0.75.
+
+| polymer | Tg (K) | measured M_e (g/mol) | glassy at 298 K |
+|---|---|---|---|
+| cis-1,4-polybutadiene | 171 | 1850 | no |
+| polyethylene | 195 | 1150 | no |
+| cis-1,4-polyisoprene | 200 | 6200 | no |
+| polyisobutylene | 200 | 6700 | no |
+| polystyrene | 373 | 18100 | yes |
+| PMMA | 378 | 9200 | yes |
+
+There is a mechanism behind it: `M_e` scales as the cube of the packing length,
+and a bulky side group both fattens the chain - raising the packing length -
+and hinders its rotation, raising Tg. One cause, both effects. Six points is
+not a law, but the direction is physical rather than fitted.
+
+So no single homopolymer that is glassy at room temperature is also tough, and
+the engine is right to return nothing. What actually resolves it in the real
+world is two phases, not one: crystallites acting as crosslinks in a drawn
+semicrystalline fibre (nylon, PET, UHMWPE - and spider silk, which is
+beta-sheet crystallites in an amorphous matrix), or rubber particles dispersed
+in a glassy matrix (HIPS, ABS).
+
+Both are outside this engine entirely. There is no crystallinity model - the
+modulus is a switch on Tg alone - and while `MaterialClass.COMPOSITE` exists,
+no expert supports it. The registry also has no elongation at break, no yield
+stress and no fracture toughness, so `entanglement_molar_mass` is the only
+toughness axis available and it is an indirect one.
+
 ## What the answers are worth
 
 Every axis on both winners scores 0.000 at the pessimistic bound and is flagged
