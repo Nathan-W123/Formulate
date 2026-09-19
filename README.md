@@ -153,6 +153,7 @@ where they exist:
 | `polymer_tg` | thermal | polymer | glass transition from an additive molar function over repeat-unit groups |
 | `polymer_density` | mechanical | polymer | amorphous density from van der Waals volume and a fitted packing factor |
 | `polymer_mechanical` | mechanical | polymer | Young's and shear modulus, entanglement molar mass, flaw-free strength bound |
+| `polymer_melt` | interfacial | polymer | crystalline melting point, melt viscosity, melt surface tension |
 
 The two polymer experts are the only ones whose coefficients are fitted in this
 repository rather than published elsewhere, so they carry their own validation

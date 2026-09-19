@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .activity import UNIFACActivityExpert
 from .adhesion import AdhesionExpert
+from .melt import PolymerMeltExpert
 from .base import Expert, PredictionRequest
 from .critical import AtomicCriticalExpert
 from .dissolution import DissolutionExpert
@@ -57,6 +58,7 @@ PHASE4_EXPERTS = (
     PolymerGlassTransitionExpert,
     PolymerDensityExpert,
     PolymerMechanicalExpert,
+    PolymerMeltExpert,
 )
 
 
@@ -73,7 +75,7 @@ def default_registry() -> ExpertRegistry:
 __all__ = [
     "PHASE1_EXPERTS", "PHASE4_EXPERTS", "HansenSolubilityExpert", "MeasuredPropertyExpert", "MixtureExpert",
     "AdhesionExpert", "AtomicCriticalExpert", "DissolutionExpert", "LearnedBoilingPointExpert", "PolymerDensityExpert", "PolymerGlassTransitionExpert",
-    "PolymerMechanicalExpert",
+    "PolymerMechanicalExpert", "PolymerMeltExpert",
     "UNIFACActivityExpert",
     "molecular_registry", "CrippenLipophilicityExpert", "ESOLSolubilityExpert", "Expert",
     "ExpertRegistry", "InterfacialCorrelationExpert", "JobackThermalExpert",

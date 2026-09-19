@@ -635,6 +635,65 @@ hit, and it bonds on contact because it lands molten.
 goes cold; a burn hazard at 200 C; and ten seconds of standing before the
 strand carries its rated load.
 
+## Putting the hot melt to the engine instead of to a calculator
+
+Everything in the two sections above was worked by hand, which is how this
+project drifted out of the engine it was meant to be testing. The specs written
+early on asked only for what the engine already covered, so the questions that
+actually decided the design were never put to it.
+
+`hotmelt.yaml` asks for all of it at once - melt viscosity at the nozzle
+temperature, melting point, melt surface tension, strength, entanglement,
+modulus, density and adhesion - and the run names its own gaps:
+
+```
+No expert covers: melting_point, shear_viscosity, surface_tension
+  - shear_viscosity: eliminated 57 candidate(s), 57 because the value
+    could not be predicted
+```
+
+Three properties in the registry with no polymer expert behind them. All three
+are now served by `polymer_melt`, and each is built from something already in
+the repository: melting points from a short measured table, surface tension
+from the same Owens-Wendt components the adhesion expert reads plus a melt
+temperature correction, and viscosity from the reptation power law over the
+entanglement molar mass the mechanical expert already computes, shifted by WLF
+from the Tg the thermal expert already predicts. No fitted constant: the
+anchor is the viscosity that *defines* the glass transition.
+
+### What the engine then said, and how much of it I had wrong
+
+**A commercial chain length is far too thick to fire.** At an ordinary 50
+kg/mol the pool spans 53 Pa.s to 2e9 Pa.s against a 1-20 Pa.s window. My hand
+figure of "10 Pa.s hot melt" was right about hot-melt *adhesives* and wrong
+about polymers: an adhesive is low molar mass cut with tackifier and wax
+precisely to get the viscosity down, which is a formulation fact the engine
+made visible and the calculator hid.
+
+**The melting-point refusals are the useful half.** An amorphous polymer has
+no melting point - polystyrene softens through its glass transition over tens
+of degrees and offers a melt process no set point at all - so the expert
+refuses it, and refuses it with a different reason from a polymer that is
+simply not in the table. One is a physical fact, the other a coverage gap, and
+a run that conflated them would be misleading.
+
+**And the viscosity model cannot reach a hot-melt nozzle.** WLF is referenced
+to Tg and holds for perhaps 100-150 K above it; a hot melt runs 200-300 K
+above. So the expert refuses, which is correct and is also a real limit on the
+answer: covering that regime needs an Arrhenius branch with per-polymer flow
+activation energies that this repository does not have. The hand analysis above
+simply assumed a viscosity. The engine will not.
+
+### A bug the exercise found
+
+Two requirements on one expert both stating `temperature: 200 degC` were
+treated as a *disagreement*, because `_conditions_for` counted the stated
+conditions rather than comparing them. The run silently fell back to the
+spec-level 25 degC and reported a room-temperature surface tension against a
+requirement that had plainly asked for a melt - with nothing anywhere saying a
+stated condition had been dropped. Agreement is now decided by comparing
+condition identity, so the same temperature spelled two ways is one condition.
+
 ## The bench test, before any of this
 
 `jet_test.py` prints the protocol. Whether a 4.4 mm stream flies 3 m as a rope

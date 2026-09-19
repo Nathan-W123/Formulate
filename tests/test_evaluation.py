@@ -419,3 +419,69 @@ def test_two_specifications_share_an_entry_for_an_expert_neither_ask_reaches():
         spec_with([{"property": "logp", "direction": "in_range", "lower": -1.0, "upper": 5.0}]),
     )
     assert cache.hits > hits_before
+
+
+# --------------------------------------------------------------------------
+# Per-requirement conditions must be compared, not counted.
+# --------------------------------------------------------------------------
+
+
+def _two_property_spec(second_temperature: str):
+    """Two properties served by one expert, each stating its own conditions."""
+    return TargetSpec.from_dict(
+        {
+            "conditions": {"temperature": "25 degC", "pressure": "1 atm"},
+            "requirements": [
+                {
+                    "property": "shear_viscosity",
+                    "direction": "in_range",
+                    "lower": "1 Pa*s",
+                    "upper": "20 Pa*s",
+                    "conditions": {"temperature": "200 degC"},
+                },
+                {
+                    "property": "surface_tension",
+                    "direction": "minimize",
+                    "lower": "0.02 N/m",
+                    "upper": "0.05 N/m",
+                    "conditions": {"temperature": second_temperature},
+                },
+            ],
+        }
+    )
+
+
+class _MeltStub:
+    """Stands in for any expert serving both properties."""
+
+    id = "stub"
+    supported_properties = frozenset({"shear_viscosity", "surface_tension"})
+
+
+def test_two_requirements_agreeing_on_conditions_reach_the_expert():
+    """Counting them, rather than comparing them, silently dropped the melt.
+
+    An expert serving two properties that both asked for 200 degC saw that as
+    a disagreement and fell back to the spec-level 25 degC, so a run reported
+    a room-temperature value against a requirement that had asked for a melt.
+    """
+    engine = EvaluationEngine(registry=[], cache=PredictionCache())
+    spec = _two_property_spec("200 degC")
+    conditions = engine._conditions_for(_MeltStub(), spec)
+    assert conditions.temperature.to_canonical().value == pytest.approx(473.15)
+
+
+def test_two_requirements_disagreeing_still_fall_back_to_the_spec():
+    """The documented behaviour for a real disagreement is unchanged."""
+    engine = EvaluationEngine(registry=[], cache=PredictionCache())
+    spec = _two_property_spec("150 degC")
+    conditions = engine._conditions_for(_MeltStub(), spec)
+    assert conditions.temperature.to_canonical().value == pytest.approx(298.15)
+
+
+def test_the_same_temperature_spelled_two_ways_still_agrees():
+    """473.15 K and 200 degC are one condition, not two."""
+    engine = EvaluationEngine(registry=[], cache=PredictionCache())
+    spec = _two_property_spec("473.15 K")
+    conditions = engine._conditions_for(_MeltStub(), spec)
+    assert conditions.temperature.to_canonical().value == pytest.approx(473.15)

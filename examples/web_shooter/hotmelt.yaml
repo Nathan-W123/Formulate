@@ -1,0 +1,103 @@
+# Every property the web shooter decision actually turns on, asked of the
+# engine at once, for the hot-melt architecture.
+#
+# The earlier specs asked only what the engine already covered, which is how
+# the analysis drifted out of the engine and into a pile of hand calculations.
+# This one asks for everything the decision needs and lets the run report what
+# it cannot serve.
+name: web shooter strand, hot melt route
+
+conditions:
+  temperature: 25 degC
+  pressure: 1 atm
+  surfaces: [steel]
+
+material_classes: [polymer]
+
+requirements:
+  # -- the nozzle -------------------------------------------------------
+  # Melt viscosity at the gun temperature. Sets extrusion pressure and, with
+  # surface tension, whether the jet flies as a rope or breaks into drops.
+  - property: shear_viscosity
+    direction: in_range
+    lower: 1.0 Pa*s
+    upper: 20.0 Pa*s
+    hard: true
+    conditions:
+      temperature: 200 degC
+    rationale: >-
+      below 1 Pa.s the jet pinches off in centimetres, above 20 it will not
+      pass a 4.4 mm orifice at the 6 bar available
+
+  # The other half of the breakup criterion.
+  - property: surface_tension
+    direction: minimize
+    lower: 0.020 N/m
+    upper: 0.045 N/m
+    weight: 1.0
+    conditions:
+      temperature: 200 degC
+    rationale: surface tension is what pinches the jet; less of it is better
+
+  # -- it has to be a hot melt at all -----------------------------------
+  - property: melting_point
+    direction: in_range
+    lower: 120 degC
+    upper: 210 degC
+    hard: true
+    rationale: >-
+      must melt below what a cartridge heater reaches, and freeze well above
+      the temperature the web is used at
+
+  # -- the strand -------------------------------------------------------
+  - property: theoretical_strength
+    direction: maximize
+    lower: 200 MPa
+    upper: 290 MPa
+    weight: 2.0
+    rationale: flaw-free bound, used as a screen rather than a strength
+
+  - property: entanglement_molar_mass
+    direction: minimize
+    lower: 1.0 kg/mol
+    upper: 20.0 kg/mol
+    weight: 3.0
+    rationale: a chain must tangle several times or the strand snaps
+
+  - property: youngs_modulus
+    direction: maximize
+    lower: 0.5 GPa
+    upper: 3.0 GPa
+    weight: 1.0
+    rationale: a strand that creeps under load lowers the target
+
+  - property: amorphous_density
+    direction: minimize
+    lower: 900 kg/m^3
+    upper: 1400 kg/m^3
+    weight: 1.0
+    rationale: metres of web per gram carried
+
+  # -- it has to stick --------------------------------------------------
+  - property: work_of_separation
+    direction: maximize
+    lower: 0.060 N/m
+    upper: 0.100 N/m
+    weight: 3.0
+    rationale: reversible work only, but it ranks which polymer grips steel
+
+assumptions:
+  - statement: >-
+      The hot-melt route replaces cure with cooling, so the strand solidifies
+      from a skin inward rather than by reacting through. Nothing in this spec
+      models that: there is no thermal conductivity or heat capacity in the
+      registry, so the skin-growth clock is outside the engine.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      Tensile strength is not in the registry by design, so the 50 lb
+      requirement is screened through theoretical_strength, which is a
+      flaw-free bound and two-valued. No run here predicts a breaking load.
+    source: inferred
+    made_by: operator
+    affects: [theoretical_strength]

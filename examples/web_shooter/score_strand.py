@@ -21,6 +21,7 @@ from typing import Sequence
 
 from formulate.coordination import DeterministicCoordinator
 from formulate.core.candidate import Candidate, MaterialClass, MonomerUnit, PolymerSpec
+from formulate.core.quantity import Quantity
 from formulate.core.provenance import ProvenanceKind, ProvenanceRecord
 from formulate.exploration.base import Explorer
 from formulate.targets import TargetSpec
@@ -30,7 +31,14 @@ class ReferencePolymerExplorer(Explorer):
     """Proposes the bundled reference polymers, one candidate per repeat unit."""
 
     id = "database:reference-polymers"
-    version = "1"
+    version = "2"
+
+    #: Melt viscosity goes as the 3.4 power of chain length, so a candidate
+    #: with no stated molar mass has no melt viscosity and the expert says so.
+    #: 50 kg/mol is an ordinary commercial grade and is stated, not measured -
+    #: it is recorded in provenance so the run does not read it as a property
+    #: of the polymer.
+    number_average_molar_mass_kg_mol = 50.0
 
     def propose(
         self,
@@ -59,6 +67,9 @@ class ReferencePolymerExplorer(Explorer):
                 material_class=MaterialClass.POLYMER,
                 polymer=PolymerSpec(
                     monomers=(MonomerUnit(smiles=record["repeat_unit"]),),
+                    number_average_molar_mass=Quantity(
+                        value=self.number_average_molar_mass_kg_mol, unit="kg/mol"
+                    ),
                 ),
                 conditions=spec.conditions,
                 generation_strategy=self.id,
@@ -71,6 +82,8 @@ class ReferencePolymerExplorer(Explorer):
                         "source": "formulate bundled reference polymers",
                         "name": record["name"],
                         "split": record.get("split", ""),
+                        "number_average_molar_mass_kg_mol":
+                            self.number_average_molar_mass_kg_mol,
                     },
                 ),
             )

@@ -17,6 +17,7 @@ from typing import Sequence
 
 from formulate.core.candidate import Candidate
 from formulate.core.conditions import Conditions
+from formulate.core.hashing import canonical_json
 from formulate.core.prediction import Prediction, prefer
 from formulate.experts.base import Expert, PredictionRequest
 from formulate.experts.registry import ExpertRegistry
@@ -194,12 +195,21 @@ class EvaluationEngine:
         Requirements may state their own conditions; where several requirements
         an expert serves disagree, the spec-level conditions are used and the
         per-requirement condition check later reports the mismatch.
+
+        Agreement is decided by comparing the conditions, not by counting them.
+        Counting was wrong and wrong silently: an expert serving three
+        properties, two of which asked for the same 200 degC melt, saw that as
+        a disagreement and fell back to the spec-level 25 degC. The run then
+        reported a room-temperature surface tension against a requirement that
+        had plainly asked for a melt, with nothing anywhere saying the stated
+        condition had been dropped.
         """
         stated = [
             spec.conditions_for(req)
             for req in spec.requirements
             if req.property in expert.supported_properties and req.conditions is not None
         ]
-        if len(stated) == 1:
-            return stated[0]
+        unique = {canonical_json(c.identity_payload()): c for c in stated}
+        if len(unique) == 1:
+            return next(iter(unique.values()))
         return spec.conditions
