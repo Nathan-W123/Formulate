@@ -67,7 +67,7 @@ def simulate(k25, flight=FLIGHT, report=True):
     dr = r[1] - r[0]
 
     def rhs(t, y):
-        T, a, lne = y[:N], y[N:2 * N], y[2 * N]
+        T, a = y[:N], y[N:2 * N]
         k = rate_constant(T, k25)
         da = k * (1.0 - a)
         da = np.where(a >= 1.0, 0.0, da)
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     print("THE CONSTRAINT THE FLIGHT MODEL CANNOT SEE")
     print("=" * 72)
     res, _, _, _ = nozzle_check(0.2)
-    print(f"\n  cure starts where the streams meet, not at the muzzle.")
+    print("\n  cure starts where the streams meet, not at the muzzle.")
     print(f"  a 6 x 60 mm mixer at {FLOW*1e6:.0f} mL/s holds the resin for "
           f"{res*1e3:.0f} ms before it ever reaches the orifice.\n")
     print(f"  {'gel time':>10}{'a at exit':>11}{'eta at exit':>13}{'pressure':>11}  verdict")
@@ -193,11 +193,11 @@ if __name__ == "__main__":
 
     if window:
         print(f"\n  WORKING WINDOW: gel time {min(window)*1e3:.0f}-{max(window)*1e3:.0f} ms")
-        print(f"    faster and the resin stiffens inside the mixer and stalls the flow;")
-        print(f"    slower and it lands before it is solid.")
-        print(f"  The two limits are set by different hardware - mixer volume on one")
-        print(f"  side, flight time on the other - so both are tunable, and the")
-        print(f"  cheapest tuning is a shorter mixer rather than a new resin.")
+        print("    faster and the resin stiffens inside the mixer and stalls the flow;")
+        print("    slower and it lands before it is solid.")
+        print("  The two limits are set by different hardware - mixer volume on one")
+        print("  side, flight time on the other - so both are tunable, and the")
+        print("  cheapest tuning is a shorter mixer rather than a new resin.")
     else:
         print("\n  NO WORKING WINDOW at this mixer volume.")
 
@@ -220,7 +220,7 @@ def self_check():
         o = simulate(math.log(2) / 0.100, report=False)
         want = 25.0 + DH / CP
         err = abs(o["Tpeak"] - want)
-        print(f"\n  adiabatic peak temperature")
+        print("\n  adiabatic peak temperature")
         print(f"    closed form  25 + dH/cp = {want:.2f} C")
         print(f"    integrator              = {o['Tpeak']:.2f} C     "
               f"{'AGREES' if err < 0.5 else f'DIFFERS by {err:.2f} K'}")
@@ -237,10 +237,10 @@ def self_check():
     print(f"    integrator                    = {o['pinch_frac']*100:.2f}%     "
           f"{'AGREES' if err < 0.005 else f'DIFFERS by {err*100:.2f} points'}")
 
-    print(f"\n  Both limits reproduce, so the coupling is what the integrator adds,")
-    print(f"  not the arithmetic. What it does NOT check is whether the cure")
-    print(f"  kinetics, the gel exponent and the 30 J/g are right for a real resin.")
-    print(f"  Those are assumptions, and the simulation inherits every one of them.")
+    print("\n  Both limits reproduce, so the coupling is what the integrator adds,")
+    print("  not the arithmetic. What it does NOT check is whether the cure")
+    print("  kinetics, the gel exponent and the 30 J/g are right for a real resin.")
+    print("  Those are assumptions, and the simulation inherits every one of them.")
 
 
 if __name__ == "__main__":
