@@ -157,6 +157,104 @@ SUBSTRATE_ALIASES: dict[str, str] = {
 }
 
 
+#: Polar fraction of a surface energy, from the polar fraction of the surface.
+#:
+#: This is what turns adhesion from a nineteen-substance table into something
+#: any structure can be asked. The Owens-Wendt split needs two numbers, and the
+#: total is already available from the Sugden parachor; what was missing was
+#: how that total divides.
+#:
+#: It divides the way the surface does. RDKit's topological polar surface area
+#: counts the area contributed by nitrogen and oxygen; Labute's approximate
+#: surface area counts all of it. Their ratio is how much of the molecule's
+#: outside is polar, and the polar fraction of the surface ENERGY follows it,
+#: saturating rather than running past one:
+#:
+#:     x_polar = 1 - exp(-k * TPSA / ASA)
+#:
+#: One fitted constant, k = 0.2505, over the nineteen liquids and polymers
+#: whose measured splits this module already held. Left out one at a time the
+#: RMSE is 0.068 in polar fraction and the worst miss is 0.155, on formamide.
+#: In the work of adhesion that error is damped further, because the polar
+#: terms enter as a geometric mean rather than directly.
+#:
+#: What it misses: TPSA counts nitrogen and oxygen and not halogen, so PVC and
+#: PTFE come out purely dispersive when they measure a few percent polar. That
+#: is inside the stated spread, and it is why the spread is stated.
+POLAR_FRACTION_K = 0.2505
+
+#: One-sigma on a predicted polar fraction, from the held-out fit above.
+POLAR_FRACTION_SPREAD = 0.068
+
+
+def polar_fraction(smiles: str) -> float | None:
+    """How much of a surface energy is polar, from structure alone."""
+    import math
+
+    from rdkit import Chem
+    from rdkit.Chem import rdMolDescriptors
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+    area = rdMolDescriptors.CalcLabuteASA(mol)
+    if area <= 0:
+        return None
+    ratio = rdMolDescriptors.CalcTPSA(mol) / area
+    return 1.0 - math.exp(-POLAR_FRACTION_K * ratio)
+
+
+#: Worst ratio of the parachor against measured liquid surface tensions.
+#: Over the ten test liquids above it runs 0.94x to 1.19x, which is tighter
+#: than on polymers - the parachor was devised for liquids and only borrowed
+#: for repeat units.
+LIQUID_PARACHOR_SPREAD = 1.19
+
+
+def predicted_surface_energy(
+    smiles: str, density_g_cm3: float, *, is_polymer: bool = False
+) -> SurfaceEnergy | None:
+    """Owens-Wendt components from structure, mJ/m^2.
+
+    The total comes from the Sugden parachor and the split from the polar
+    fraction of the surface. Both are additive over structure, so this answers
+    for any molecule or repeat unit RDKit can read rather than for the
+    nineteen that have been measured.
+    """
+    from .melt import (
+        PARACHOR_SPREAD,
+        molecular_surface_tension,
+        parachor_surface_tension,
+    )
+
+    if is_polymer:
+        total = parachor_surface_tension(smiles, density_g_cm3)
+        ratio_spread = PARACHOR_SPREAD
+        structure = smiles.replace("[*]", "[H]")
+    else:
+        total = molecular_surface_tension(smiles, density_g_cm3)
+        ratio_spread = LIQUID_PARACHOR_SPREAD
+        structure = smiles
+    if total is None:
+        return None
+    fraction = polar_fraction(structure)
+    if fraction is None:
+        return None
+
+    # Two independent errors: how big the surface energy is, and how it
+    # divides. Both are carried, and the spread is quoted on the total.
+    spread = total * (ratio_spread - 1.0) + total * POLAR_FRACTION_SPREAD
+    return SurfaceEnergy(
+        dispersive=total * (1.0 - fraction),
+        polar=total * fraction,
+        basis=(
+            f"predicted: Sugden parachor at {density_g_cm3:.3f} g/cm^3, split "
+            f"{fraction:.0%} polar from the polar fraction of the surface area"
+        ),
+        spread=spread,
+    )
+
+
 def resolve_substrate(name: str) -> tuple[str, SurfaceEnergy] | None:
     """Look up a substrate by the name a recipe would use."""
     key = name.strip().lower().replace("_", "-").replace(" ", "-")
@@ -165,8 +263,10 @@ def resolve_substrate(name: str) -> tuple[str, SurfaceEnergy] | None:
     return (key, entry) if entry is not None else None
 
 
-def polymer_energy(candidate: "Candidate") -> tuple[str, SurfaceEnergy] | None:
-    """Tabulated components for a homopolymer candidate, or None.
+def polymer_energy(
+    candidate: "Candidate", density_g_cm3: float | None = None
+) -> tuple[str, SurfaceEnergy] | None:
+    """Owens-Wendt components for a homopolymer candidate, or None.
 
     Only a single-repeat-unit chain is answered. A copolymer's surface is not
     the mole-weighted average of its components' - the lower-energy unit
@@ -194,16 +294,24 @@ def polymer_energy(candidate: "Candidate") -> tuple[str, SurfaceEnergy] | None:
                     break
     if key is None:
         key = POLYMER_SURFACES.get(smiles)
-    return (key, SUBSTRATES[key]) if key is not None else None
+    if key is not None:
+        return key, SUBSTRATES[key]
+    if density_g_cm3 is None:
+        return None
+    predicted = predicted_surface_energy(smiles, density_g_cm3, is_polymer=True)
+    return (smiles, predicted) if predicted is not None else None
 
 
-def liquid_energy(smiles: str) -> SurfaceEnergy | None:
-    """Tabulated components for a liquid, or None.
+def liquid_energy(
+    smiles: str, density_g_cm3: float | None = None
+) -> SurfaceEnergy | None:
+    """Owens-Wendt components for a liquid, or None.
 
-    None is not a failure to try harder. The components cannot be derived from
-    a total surface tension, from Hansen parameters, or from structure by any
-    route this module could verify, so a liquid outside the table has no
-    answer here.
+    Measured where the contact-angle literature has measured them, and
+    predicted from the parachor and the polar surface fraction otherwise. The
+    Hansen route was tried and refused - it puts water's dispersive part at
+    half its measured value - and the structural route replacing it is checked
+    against these same ten liquids.
     """
     from formulate import chem
 
@@ -213,7 +321,12 @@ def liquid_energy(smiles: str) -> SurfaceEnergy | None:
             for key, value in LIQUIDS.items():
                 if chem.canonical_smiles(key) == canonical:
                     return value
-    return LIQUIDS.get(smiles)
+    tabulated = LIQUIDS.get(smiles)
+    if tabulated is not None:
+        return tabulated
+    if density_g_cm3 is None:
+        return None
+    return predicted_surface_energy(smiles, density_g_cm3, is_polymer=False)
 
 
 def work_of_adhesion(liquid: SurfaceEnergy, solid: SurfaceEnergy) -> float:
@@ -267,19 +380,36 @@ class AdhesionExpert(Expert):
     """
 
     id = "adhesion"
-    version = "1"
-    method = "Owens-Wendt two-component work of adhesion from tabulated surface energies"
+    version = "2"
+    method = (
+        "Owens-Wendt two-component work of adhesion, from measured surface energies "
+        "where they exist and from the Sugden parachor split by polar surface area "
+        "otherwise"
+    )
     family = PropertyFamily.INTERFACIAL
     supported_classes = frozenset({MaterialClass.MOLECULE, MaterialClass.POLYMER})
     supported_properties = frozenset({"work_of_separation"})
+    #: Either one, depending on the class. The parachor needs a density, and
+    #: neither density is this expert's to predict.
+    dependencies = frozenset({"amorphous_density", "liquid_density"})
 
-    def _adherend(self, candidate: Candidate) -> tuple[str, SurfaceEnergy] | None:
+    @staticmethod
+    def _density(request) -> float | None:
+        for prop in ("amorphous_density", "liquid_density"):
+            value = request.dependency_value(prop, "g/cm^3")
+            if value is not None and value > 0:
+                return value
+        return None
+
+    def _adherend(
+        self, candidate: Candidate, density_g_cm3: float | None = None
+    ) -> tuple[str, SurfaceEnergy] | None:
         """The candidate's own surface energy, whichever class it is."""
         if candidate.material_class is MaterialClass.POLYMER:
-            return polymer_energy(candidate)
+            return polymer_energy(candidate, density_g_cm3)
         if candidate.molecule is None:
             return None
-        found = liquid_energy(candidate.molecule.smiles)
+        found = liquid_energy(candidate.molecule.smiles, density_g_cm3)
         return (candidate.molecule.smiles, found) if found is not None else None
 
     def _substrate(self, request):
@@ -303,24 +433,28 @@ class AdhesionExpert(Expert):
         return found, ""
 
     def assess_domain(self, candidate: Candidate) -> ApplicabilityDomain:
-        basis = "measured dispersive and polar surface energies, Owens-Wendt convention"
-        if self._adherend(candidate) is not None:
+        basis = (
+            "measured dispersive and polar surface energies where they exist, "
+            "Owens-Wendt convention; parachor and polar surface area otherwise"
+        )
+        # A nominal density only answers "can this structure be read at all";
+        # the real one arrives with the request and decides the number.
+        if self._adherend(candidate, 1.0) is not None:
             return ApplicabilityDomain(basis=basis)
         if candidate.material_class is MaterialClass.POLYMER:
             if candidate.polymer is None:
                 return ApplicabilityDomain.outside("candidate carries no polymer", basis=basis)
             return ApplicabilityDomain.outside(
-                "no measured surface energy is tabulated for this polymer, or the "
-                "candidate is a copolymer, whose surface is not the average of its "
-                "components' because the lower-energy unit enriches there",
+                "this candidate is a copolymer, whose surface is not the average of its "
+                "components' because the lower-energy unit enriches there - or its "
+                "repeat unit carries an element the parachor has no increment for",
                 basis=basis,
             )
         if candidate.molecule is None:
             return ApplicabilityDomain.outside("candidate carries no molecule", basis=basis)
         return ApplicabilityDomain.outside(
-            "this liquid's dispersive and polar components are not tabulated, and "
-            "they cannot be derived from a total surface tension or from Hansen "
-            "parameters",
+            "this molecule carries an element the parachor has no increment for, and "
+            "its dispersive/polar split is not tabulated either",
             basis=basis,
         )
 
@@ -328,23 +462,32 @@ class AdhesionExpert(Expert):
         candidate = request.candidate
         is_polymer = candidate.material_class is MaterialClass.POLYMER
 
-        adherend = self._adherend(candidate)
+        density = self._density(request)
+        adherend = self._adherend(candidate, density)
         if adherend is None:
-            if is_polymer:
-                reason = (
-                    "no measured surface energy is tabulated for this polymer, or it is a "
-                    "copolymer; a copolymer's surface is not the mole-weighted average of "
-                    "its components' because the lower-energy unit enriches there by an "
-                    "amount that depends on block length and thermal history"
-                )
-            elif candidate.molecule is None:
+            if is_polymer and candidate.polymer is None:
+                reason = "candidate carries no polymer"
+            elif not is_polymer and candidate.molecule is None:
                 reason = "candidate carries no molecule"
+            elif density is None:
+                reason = (
+                    "no measured surface energy is tabulated for this "
+                    + ("polymer" if is_polymer else "liquid")
+                    + ", and the parachor that would replace it needs a density, which "
+                    "no upstream expert could supply"
+                )
+            elif is_polymer:
+                reason = (
+                    "this candidate is a copolymer, whose surface is not the mole-weighted "
+                    "average of its components' because the lower-energy unit enriches "
+                    "there by an amount that depends on block length and thermal history "
+                    "- or its repeat unit carries an element the parachor has no "
+                    "increment for"
+                )
             else:
                 reason = (
-                    "no measured dispersive/polar split is tabulated for this liquid; the "
-                    "split cannot be derived from a total surface tension, and the Hansen "
-                    "route was tested and puts water's dispersive part at half its measured "
-                    "value"
+                    "no measured dispersive/polar split is tabulated for this liquid, and "
+                    "it carries an element the parachor has no increment for"
                 )
             return Prediction.unsupported(prop, self.id, reason)
         adherend_name, phase = adherend

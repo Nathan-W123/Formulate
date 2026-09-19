@@ -138,23 +138,9 @@ PARACHOR_SMALL_RING = 16.7
 PARACHOR_SPREAD = 1.34
 
 
-def parachor_surface_tension(repeat_unit: str, density_g_cm3: float) -> float | None:
-    """Surface tension of a polymer from structure, mJ/m^2.
-
-    Sugden's parachor is additive over atoms, unsaturation and rings, so this
-    covers any repeat unit RDKit can parse instead of the nine that had a
-    measured surface energy.
-    """
+def _parachor(mol) -> float | None:
+    """Sugden parachor of an explicit-hydrogen molecule, or None."""
     from rdkit import Chem
-
-    # Capped rather than deleted: deleting an attachment point that sits inside
-    # a branch leaves an empty "()" that RDKit refuses, which silently cost
-    # every aromatic backbone - PEEK among them - its surface tension. The two
-    # capping hydrogens are subtracted again below.
-    mol = Chem.MolFromSmiles(repeat_unit.replace("[*]", "[H]"))
-    if mol is None:
-        return None
-    mol = Chem.AddHs(mol)
 
     total = 0.0
     for atom in mol.GetAtoms():
@@ -176,6 +162,50 @@ def parachor_surface_tension(repeat_unit: str, density_g_cm3: float) -> float | 
             total += PARACHOR_SMALL_RING
         else:
             total += PARACHOR_RING
+    return total
+
+
+def molecular_surface_tension(smiles: str, density_g_cm3: float) -> float | None:
+    """Surface tension of a small molecule from structure, mJ/m^2.
+
+    ``gamma = (P rho / M)^4``, Sugden's original form and original subject: the
+    parachor was devised for liquids and only borrowed for polymers.
+    """
+    from rdkit import Chem
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+    mol = Chem.AddHs(mol)
+    total = _parachor(mol)
+    if total is None:
+        return None
+    mass = sum(a.GetMass() for a in mol.GetAtoms())
+    if mass <= 0 or total <= 0:
+        return None
+    return (total * density_g_cm3 / mass) ** 4
+
+
+def parachor_surface_tension(repeat_unit: str, density_g_cm3: float) -> float | None:
+    """Surface tension of a polymer from structure, mJ/m^2.
+
+    Sugden's parachor is additive over atoms, unsaturation and rings, so this
+    covers any repeat unit RDKit can parse instead of the nine that had a
+    measured surface energy.
+    """
+    from rdkit import Chem
+
+    # Capped rather than deleted: deleting an attachment point that sits inside
+    # a branch leaves an empty "()" that RDKit refuses, which silently cost
+    # every aromatic backbone - PEEK among them - its surface tension. The two
+    # capping hydrogens are subtracted again below.
+    mol = Chem.MolFromSmiles(repeat_unit.replace("[*]", "[H]"))
+    if mol is None:
+        return None
+    mol = Chem.AddHs(mol)
+    total = _parachor(mol)
+    if total is None:
+        return None
 
     mass = sum(a.GetMass() for a in mol.GetAtoms())
     # Dropping the attachment points added two capping hydrogens the repeat

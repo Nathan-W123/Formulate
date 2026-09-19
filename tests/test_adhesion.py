@@ -239,3 +239,74 @@ def test_pmma_grips_glass_better_than_polyethylene_does():
 def test_every_tabulated_polymer_surface_resolves_to_a_measured_entry():
     for repeat, name in POLYMER_SURFACES.items():
         assert resolve_substrate(name) is not None, repeat
+
+
+# -- structure, where no measurement exists --------------------------------
+
+
+@requires_rdkit
+def test_an_untabulated_liquid_gets_a_split_from_structure():
+    """Ten liquids had measured components. Every other molecule got nothing,
+    which made adhesion unanswerable for almost everything proposed."""
+    from formulate.experts.adhesion import predicted_surface_energy
+
+    # Acetone: measures about 25 mN/m, mildly polar.
+    energy = predicted_surface_energy("CC(C)=O", 0.784)
+    assert energy is not None
+    assert 18.0 < energy.total < 40.0
+    assert 0.0 < energy.polar < energy.dispersive
+    assert "parachor" in energy.basis
+
+
+@requires_rdkit
+def test_the_structural_split_reproduces_the_measured_test_liquids():
+    """Not a fit to them: the polar fraction has one constant, and these are
+    the points it was fitted on, so the claim is only that it is not broken."""
+    from formulate.experts.adhesion import predicted_surface_energy
+
+    density = {
+        "O": 0.997, "OCCO": 1.113, "OCC(O)CO": 1.261, "NC=O": 1.133,
+        "ICI": 3.325, "CCO": 0.789, "CCCCO": 0.810, "Cc1ccccc1": 0.867,
+        "CCCCCC": 0.655, "ClC(Cl)Cl": 1.489,
+    }
+    for smiles, measured in LIQUIDS.items():
+        predicted = predicted_surface_energy(smiles, density[smiles])
+        assert predicted is not None, smiles
+        assert abs(predicted.total - measured.total) < 0.35 * measured.total, smiles
+        assert abs(predicted.polar - measured.polar) < 12.0, smiles
+
+
+@requires_rdkit
+def test_a_nonpolar_molecule_gets_no_polar_component():
+    """Hexane and toluene have none, and a model that gave them one would put
+    water on them."""
+    from formulate.experts.adhesion import polar_fraction
+
+    assert polar_fraction("CCCCCC") == pytest.approx(0.0)
+    assert polar_fraction("Cc1ccccc1") == pytest.approx(0.0)
+    assert polar_fraction("O") > 0.5
+
+
+@requires_rdkit
+def test_an_untabulated_polymer_gets_a_split_from_structure():
+    from formulate.experts.adhesion import predicted_surface_energy
+
+    energy = predicted_surface_energy("[*]CC(CC)[*]", 0.92, is_polymer=True)
+    assert energy is not None
+    assert 20.0 < energy.total < 45.0
+
+
+@requires_rdkit
+def test_a_predicted_split_is_doubted_more_than_a_measured_one():
+    from formulate.experts.adhesion import predicted_surface_energy
+
+    predicted = predicted_surface_energy("CC(C)=O", 0.784)
+    assert predicted.spread > LIQUIDS["O"].spread
+
+
+@requires_rdkit
+def test_without_a_density_the_structural_route_refuses_rather_than_guesses():
+    from formulate.experts.adhesion import liquid_energy
+
+    assert liquid_energy("CC(C)=O") is None
+    assert liquid_energy("CC(C)=O", 0.784) is not None
