@@ -57,15 +57,17 @@ def test_a_truncated_draw_still_spans_the_library():
     twenty grades of the first polymer."""
     proposed = PolymerLibraryExplorer().propose(_spec("polymer"), 20)
     units = {c.polymer.monomers[0].smiles for c in proposed}
-    assert len(units) >= 18
+    masses = {c.polymer.number_average_molar_mass.to("kg/mol").value for c in proposed}
+    assert masses == {MOLAR_MASSES[0]}
+    # Each repeat unit contributes one proposal, or two where tacticity has to
+    # be swept, so twenty draws reach at least ten of the fifty-seven.
+    assert len(units) >= 10
 
 
 def test_both_tacticities_are_proposed_where_tacticity_decides_crystallinity():
     """Atactic polypropylene does not melt and isotactic does. Proposing only
     the unspecified form leaves the melt expert with nothing it can answer."""
-    from formulate.experts.melt import TACTICITY_DECIDES_CRYSTALLINITY
-
-    repeat = next(iter(TACTICITY_DECIDES_CRYSTALLINITY))
+    repeat = "[*]CC(C)[*]"  # polypropylene: isotactic melts, atactic does not
     proposed = PolymerLibraryExplorer(molar_masses=(50.0,)).propose(_spec("polymer"), 400)
     tacticities = {
         c.polymer.tacticity

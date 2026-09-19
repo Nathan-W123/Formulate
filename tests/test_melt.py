@@ -17,13 +17,13 @@ from formulate.core.candidate import (
     MaterialClass,
     MonomerUnit,
     PolymerSpec,
+    Tacticity,
 )
 from formulate.core.conditions import Conditions
 from formulate.core.prediction import Prediction, PredictionStatus
 from formulate.core.quantity import Quantity
 from formulate.experts.base import PredictionRequest
 from formulate.experts.melt import (
-    AMORPHOUS,
     MELTING_POINTS,
     SURFACE_TENSION_DGDT,
     PolymerMeltExpert,
@@ -34,11 +34,15 @@ PE, PS, PMMA = "[*]CC[*]", "[*]CC(c1ccccc1)[*]", "[*]CC(C)(C(=O)OC)[*]"
 NYLON66 = "[*]NCCCCCCNC(=O)CCCCC(=O)[*]"
 
 
-def _polymer(*repeat_units: str, mn_kg_mol: float | None = None):
+def _polymer(
+    *repeat_units: str,
+    mn_kg_mol: float | None = None,
+    tacticity: Tacticity = Tacticity.UNSPECIFIED,
+):
     monomers = tuple(
         MonomerUnit(smiles=s, mole_fraction=1.0 / len(repeat_units)) for s in repeat_units
     )
-    kwargs = {}
+    kwargs = {"tacticity": tacticity}
     if mn_kg_mol is not None:
         kwargs["number_average_molar_mass"] = Quantity(value=mn_kg_mol, unit="kg/mol")
     return Candidate(
@@ -96,8 +100,8 @@ def test_a_semicrystalline_polymer_gets_its_measured_melting_point():
 
 @requires_rdkit
 def test_an_amorphous_polymer_is_refused_because_it_has_no_melting_point():
-    """Not a coverage gap. Polystyrene softens; it does not melt."""
-    prediction = _predict(_polymer(PS), "melting_point")
+    """Not a coverage gap. Atactic polystyrene softens; it does not melt."""
+    prediction = _predict(_polymer(PS, tacticity=Tacticity.ATACTIC), "melting_point")
     assert prediction.status is PredictionStatus.UNSUPPORTED
     assert prediction.quantity is None
     assert "no melting point" in " ".join(prediction.notes)
@@ -106,15 +110,45 @@ def test_an_amorphous_polymer_is_refused_because_it_has_no_melting_point():
 @requires_rdkit
 def test_an_untabulated_polymer_is_refused_differently_from_an_amorphous_one():
     """The two refusals must not read alike: one is a gap, one is a fact."""
-    gap = _predict(_polymer("[*]CC(CC)[*]"), "melting_point")
-    fact = _predict(_polymer(PMMA), "melting_point")
+    gap = _predict(
+        _polymer("[*]CCCCCCCC[*]", tacticity=Tacticity.ATACTIC), "melting_point"
+    )
+    fact = _predict(_polymer(PMMA, tacticity=Tacticity.ATACTIC), "melting_point")
     assert gap.quantity is None and fact.quantity is None
     assert "cannot be estimated" in " ".join(gap.notes)
     assert "softens through" in " ".join(fact.notes)
 
 
-def test_no_polymer_is_both_amorphous_and_given_a_melting_point():
-    assert not set(MELTING_POINTS) & set(AMORPHOUS)
+def test_the_regularity_test_agrees_with_the_tables_it_replaced():
+    """Six polymers were listed amorphous and thirteen were given a melting
+    point. The structural test reproduces nineteen of those twenty calls, and
+    the exception - polyisobutylene, which is regular and still does not
+    crystallise at rest - is listed as an exception with its reason."""
+    from formulate.experts.melt import (
+        CRYSTALLISES_ONLY_UNDER_STRAIN,
+        DECOMPOSES_BEFORE_MELTING,
+        backbone_stereocentres,
+    )
+
+    was_amorphous = [
+        "[*]CC(c1ccccc1)[*]",          # atactic polystyrene
+        "[*]CC(C)(C(=O)OC)[*]",        # atactic PMMA
+        "[*]CC(Cl)[*]",                # PVC
+        "[*]CC(OC(C)=O)[*]",           # poly(vinyl acetate)
+    ]
+    for repeat in was_amorphous:
+        assert backbone_stereocentres(repeat), repeat
+
+    # The two whose reason is not structural are named as such.
+    assert "[*]CC(C)(C)[*]" in CRYSTALLISES_ONLY_UNDER_STRAIN
+    assert "[*]CC(C#N)[*]" in DECOMPOSES_BEFORE_MELTING
+
+    # And every polymer with a tabulated melting point is regular, bar the two
+    # whose table entries already said "isotactic only" and "stereoregular".
+    needs_stereoregularity = {"[*]CC(C)[*]", "[*]OC(C)C(=O)[*]"}
+    for repeat in MELTING_POINTS:
+        regular = not backbone_stereocentres(repeat)
+        assert regular is (repeat not in needs_stereoregularity), repeat
 
 
 # -- surface tension -------------------------------------------------------
@@ -389,7 +423,7 @@ def test_atactic_polypropylene_is_not_given_the_isotactic_melting_point():
 def test_unstated_tacticity_is_refused_rather_than_assumed():
     prediction = _predict(_polymer("[*]CC(C)[*]"), "melting_point")
     assert prediction.status is PredictionStatus.UNSUPPORTED
-    assert "does not state its tacticity" in " ".join(prediction.notes)
+    assert "does not state" in " ".join(prediction.notes)
 
 
 @requires_rdkit

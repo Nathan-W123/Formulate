@@ -72,9 +72,10 @@ class PolymerLibraryExplorer(Explorer):
 
     @staticmethod
     def _tacticities(repeat: str) -> tuple[Tacticity, ...]:
-        from formulate.experts.melt import TACTICITY_DECIDES_CRYSTALLINITY
+        from formulate.experts.melt import backbone_stereocentres
 
-        if repeat in TACTICITY_DECIDES_CRYSTALLINITY:
+        centres = backbone_stereocentres(repeat)
+        if centres:
             return (Tacticity.ISOTACTIC, Tacticity.ATACTIC)
         return (Tacticity.UNSPECIFIED,)
 

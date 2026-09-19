@@ -9,22 +9,40 @@ that could not be predicted - which is correct behaviour and a useless answer.
 Each is built from something the repository already has, and each refuses
 where that something runs out.
 
-**Melting point** is tabulated, not modelled, and the table is short. It is
-also the one place here where refusing is the *interesting* answer: an
-amorphous polymer has no melting point at all, and saying so is not a coverage
-gap. Polystyrene does not melt; it softens through its glass transition over
-tens of degrees, and a hot-melt route built on it would have no set point. So
-the expert answers for the semicrystalline polymers it has values for, and for
-an amorphous one it returns UNSUPPORTED with that as the reason.
+**Melting point** comes in two halves, and only one of them is tabulated.
 
-**Surface tension** comes from the same measured dispersive/polar surface
-energies the adhesion expert reads, because the total of those two components
-*is* the surface tension. Nothing new is measured. What is added is the
-temperature correction: those values are for a solid at room temperature, and
-a melt at 200 C is perceptibly slacker. Polymer melts follow a near-linear
-``d(gamma)/dT`` of about -0.06 mN/m/K over this range, which is a large enough
-correction to matter - roughly 10 mN/m from room temperature to a hot-melt
-nozzle - and well enough established to apply.
+*Whether* a polymer melts is computed from the structure. A chain crystallises
+when consecutive repeat units can be placed in a regular register, and that
+fails when a backbone atom carries two different substituents - polypropylene's
+hydrogen and methyl, polystyrene's hydrogen and phenyl, PMMA's methyl and
+ester. Polyethylene's two hydrogens, PVDF's two fluorines and polyisobutylene's
+two methyls are not stereocentres, so those chains are regular by construction.
+That test replaced two lists of polymers and reproduces nineteen of their
+twenty calls; the one it misses is listed as an exception with its reason,
+which is kinetic rather than structural.
+
+*At what temperature* it melts is still tabulated, and honestly so. Predicting
+Tm from structure was tried here two ways - cohesive energy over backbone
+flexibility, and a group-contribution melt transition function fitted to the
+thirteen measurements this repository holds - and both came out at 150 to 250 K
+of error, which is worse than useless for a process window. Thirteen points
+cannot support a group fit, and the method that can (van Krevelen's, fitted to
+hundreds of polymers) is a table this repository does not have. So a polymer
+with no measured melting point is refused, and the refusal now reads
+differently from "this polymer has no melting point at all", because the two
+are different answers.
+
+**Surface tension** is measured where a measurement exists and predicted from
+the Sugden parachor otherwise. The measured route reads the same dispersive
+and polar surface energies the adhesion expert does, because the total of
+those two components *is* the surface tension; the parachor route is additive
+over atoms, unsaturation and rings, so it covers any repeat unit RDKit can
+read and lands within a third of the eight measurements that can check it.
+Either way the same temperature correction is added: those values are for a
+solid at room temperature, and a melt at 200 C is perceptibly slacker. Polymer
+melts follow a near-linear ``d(gamma)/dT`` of about -0.06 mN/m/K over this
+range, which is a large enough correction to matter - roughly 10 mN/m from room
+temperature to a hot-melt nozzle - and well enough established to apply.
 
 **Melt viscosity** is the one that is genuinely modelled, and the one to be
 most careful about. The form is standard and the repository already holds both
@@ -245,19 +263,94 @@ def predicted_activation_energy(tg_kelvin: float) -> float:
         ACTIVATION_FROM_TG_INTERCEPT + ACTIVATION_FROM_TG_SLOPE * tg_kelvin,
     )
 
-#: Repeat units whose crystallinity is decided by tacticity rather than by the
-#: repeat unit alone, and which therefore cannot be answered from the SMILES.
+#: Chain regularity, from the structure, is what decides whether a polymer has
+#: a crystalline phase at all - and it is computable rather than tabulated.
 #:
-#: This is not pedantry. The bundled reference set carries *atactic*
-#: polypropylene, which is a tacky amorphous solid with no melting point at
-#: all, and the tabulated 165 C belongs to the isotactic polymer. Keyed on the
-#: repeat unit the two are indistinguishable, so a run asking for a hot melt
-#: was handed a melting point for a material that does not melt.
-TACTICITY_DECIDES_CRYSTALLINITY: dict[str, str] = {
-    "[*]CC(C)[*]": (
-        "polypropylene crystallises only when it is stereoregular: the isotactic "
-        "polymer melts near 165 C and the atactic polymer is amorphous and has no "
-        "melting point"
+#: A chain crystallises when consecutive repeat units can be placed in a
+#: regular register. That fails when a backbone atom carries two *different*
+#: substituents, because then each unit has a handedness and a chain built
+#: without controlling it cannot repeat. Polyethylene's backbone carbons carry
+#: two hydrogens, poly(vinylidene fluoride)'s carry two fluorines and
+#: polyisobutylene's carry two methyls: all three are regular by construction.
+#: Polypropylene's carry a hydrogen and a methyl, polystyrene's a hydrogen and
+#: a phenyl, PMMA's a methyl and an ester: all three are configurational
+#: stereocentres, and all three are amorphous in their ordinary atactic form.
+#:
+#: Substituents are compared by RDKit's canonical symmetry classes rather than
+#: by element, so two branches count as the same substituent when they are
+#: genuinely equivalent and not merely similar.
+#:
+#: Checked against the two tables this replaces, it gets nineteen of twenty:
+#: every polymer that was listed amorphous is flagged as stereoirregular
+#: except polyisobutylene, and every polymer with a tabulated melting point
+#: comes out regular except the two whose own table entries already said
+#: "isotactic only" and "stereoregular". The exception is listed below,
+#: because the reason it is an exception is not structural.
+
+
+def backbone_stereocentres(repeat_unit: str) -> list[str] | None:
+    """Backbone atoms bearing two different substituents, as descriptions.
+
+    An empty list means the chain is configurationally regular and will
+    crystallise if anything will. ``None`` means the repeat unit could not be
+    read at all - not the same answer, and not treated as one.
+    """
+    from rdkit import Chem
+
+    mol = Chem.MolFromSmiles(repeat_unit)
+    if mol is None:
+        return None
+    mol = Chem.AddHs(mol)
+    stars = [a.GetIdx() for a in mol.GetAtoms() if a.GetAtomicNum() == 0]
+    if len(stars) != 2:
+        return None
+    path = set(Chem.GetShortestPath(mol, stars[0], stars[1]))
+    if len(path) < 2:
+        return None
+    ranks = list(Chem.CanonicalRankAtoms(mol, breakTies=False))
+
+    found: list[str] = []
+    for idx in sorted(path):
+        atom = mol.GetAtomWithIdx(idx)
+        # A ring atom's neighbours run round the ring rather than off it, and
+        # a ring in the backbone is rigid rather than handed.
+        if atom.GetAtomicNum() == 0 or atom.IsInRing():
+            continue
+        subs = [nb.GetIdx() for nb in atom.GetNeighbors() if nb.GetIdx() not in path]
+        # Two substituents is what a stereocentre needs. One (an amide NH) is
+        # planar; none is a methylene.
+        if len(subs) != 2:
+            continue
+        if ranks[subs[0]] != ranks[subs[1]]:
+            a, b = (mol.GetAtomWithIdx(s).GetSymbol() for s in subs)
+            found.append(f"a backbone {atom.GetSymbol()} carrying both {a} and {b}")
+    return found
+
+
+#: The one polymer whose regularity the test above reads correctly and whose
+#: behaviour it still gets wrong, and why that is not a structural question.
+#:
+#: Polyisobutylene's backbone carbons carry two methyls, so the chain is
+#: regular and the test says it can crystallise. It can - under strain, which
+#: is why a rubber band stiffens as you stretch it - and at rest it does not,
+#: on a timescale anyone cares about. That is kinetics, and no amount of
+#: looking at the repeat unit will produce it.
+CRYSTALLISES_ONLY_UNDER_STRAIN: dict[str, str] = {
+    "[*]CC(C)(C)[*]": (
+        "polyisobutylene has a regular backbone and still does not crystallise at "
+        "rest: the chain is too mobile to nucleate, and it orders only under strain"
+    ),
+}
+
+#: Polymers that reach their decomposition temperature before their melting
+#: point. This is thermal stability rather than crystallinity, which is why it
+#: is separate from the regularity test above: a stereoregular sample of these
+#: does have a crystalline phase, and heating it still does not give a melt.
+DECOMPOSES_BEFORE_MELTING: dict[str, str] = {
+    "[*]CC(C#N)[*]": (
+        "polyacrylonitrile cyclises and decomposes above about 300 C, below where "
+        "its crystalline phase would melt - which is why it is spun from solution "
+        "and never from a melt"
     ),
 }
 
@@ -318,8 +411,7 @@ def semicrystalline_modulus(candidate: Candidate) -> SolidModulus | None:
     repeat = _repeat_unit(spec)
     if repeat is None:
         return None
-    stereo = _match(repeat, TACTICITY_DECIDES_CRYSTALLINITY)
-    if stereo is not None and spec.tacticity is not Tacticity.ISOTACTIC:
+    if crystallinity(repeat, spec.tacticity).crystalline is not True:
         return None
     found = _match(repeat, SEMICRYSTALLINE_MODULUS)
     return found[1] if found is not None else None
@@ -366,17 +458,67 @@ MELTING_POINTS: dict[str, MeltingPoint] = {
     "[*]OC(C)C(=O)[*]": MeltingPoint(448.0, 10.0, "polylactide, stereoregular; 175 C"),
 }
 
-#: Polymers known to be amorphous, with why. Distinguished from "not in the
-#: table" because the answers are different: one is a coverage gap, the other
-#: is the physical fact that there is nothing to report.
-AMORPHOUS: dict[str, str] = {
-    "[*]CC(c1ccccc1)[*]": "atactic polystyrene has no crystalline phase",
-    "[*]CC(C)(C(=O)OC)[*]": "atactic PMMA has no crystalline phase",
-    "[*]CC(Cl)[*]": "commercial PVC is essentially amorphous, a few percent at most",
-    "[*]CC(C)(C)[*]": "polyisobutylene does not crystallise at rest",
-    "[*]CC(OC(C)=O)[*]": "poly(vinyl acetate) is amorphous, the acetate is too bulky",
-    "[*]CC(C#N)[*]": "polyacrylonitrile decomposes below any melting point",
-}
+#: A polymer's crystallinity now comes from ``crystallinity(repeat, tacticity)``
+#: rather than from a list of polymers someone remembered to add. The six
+#: entries that list held - polystyrene, PMMA, PVC, poly(vinyl acetate),
+#: polyacrylonitrile and polyisobutylene - are reproduced by the regularity
+#: test above except for the last two, which are kept because their reasons
+#: are not structural: see CRYSTALLISES_ONLY_UNDER_STRAIN and
+#: DECOMPOSES_BEFORE_MELTING.
+
+
+@dataclass(frozen=True, slots=True)
+class Crystallinity:
+    """Whether a polymer has a crystalline phase, and how that was decided."""
+
+    #: True if it crystallises, False if it does not, None if the question is
+    #: open because the candidate has not said which stereoisomer it is.
+    crystalline: bool | None
+    reason: str
+
+
+def crystallinity(repeat_unit: str, tacticity: Tacticity) -> Crystallinity:
+    """Does this polymer have a crystalline phase?
+
+    Decided from chain regularity, not from a list. Three answers, and the
+    third is the one that matters: an unspecified tacticity on a chain with a
+    stereocentre leaves the question genuinely open, and answering it either
+    way would hand a run a melting point for a material that may not melt.
+    """
+    strain = _match(repeat_unit, CRYSTALLISES_ONLY_UNDER_STRAIN)
+    if strain is not None:
+        return Crystallinity(False, str(strain[1]))
+    decomposes = _match(repeat_unit, DECOMPOSES_BEFORE_MELTING)
+    if decomposes is not None:
+        return Crystallinity(False, str(decomposes[1]))
+
+    centres = backbone_stereocentres(repeat_unit)
+    if centres is None:
+        return Crystallinity(None, "the repeat unit could not be read")
+    if not centres:
+        return Crystallinity(
+            True,
+            "the backbone carries no atom with two different substituents, so the "
+            "chain is configurationally regular and can pack",
+        )
+    where = centres[0]
+    if tacticity is Tacticity.ATACTIC:
+        return Crystallinity(
+            False,
+            f"the chain has a stereocentre - {where} - and this candidate is the "
+            "atactic one, so consecutive units cannot be placed in register",
+        )
+    if tacticity is Tacticity.UNSPECIFIED:
+        return Crystallinity(
+            None,
+            f"the chain has a stereocentre - {where} - so whether it crystallises "
+            "is decided by tacticity, which this candidate does not state",
+        )
+    return Crystallinity(
+        True,
+        f"the chain has a stereocentre - {where} - but this candidate is "
+        f"{tacticity.value}, so the units repeat in register",
+    )
 
 
 def _repeat_unit(spec: PolymerSpec) -> str | None:
@@ -487,32 +629,22 @@ class PolymerMeltExpert(Expert):
     # -- the three properties ---------------------------------------------
 
     def _melting_point(self, prop, request, domain, repeat):
-        stereo = _match(repeat, TACTICITY_DECIDES_CRYSTALLINITY)
-        if stereo is not None:
-            tacticity = request.candidate.polymer.tacticity
-            if tacticity is Tacticity.ATACTIC:
-                return Prediction.unsupported(
-                    prop, self.id,
-                    f"this polymer has no melting point: {stereo[1]}, and this candidate "
-                    "is the atactic one",
-                )
-            if tacticity is Tacticity.UNSPECIFIED:
-                return Prediction.unsupported(
-                    prop, self.id,
-                    f"{stereo[1]}. This candidate does not state its tacticity, so the "
-                    "question of whether it melts at all is unanswered - and a tabulated "
-                    "melting point keyed on the repeat unit cannot tell the two apart",
-                )
-
-        amorphous = _match(repeat, AMORPHOUS)
-        if amorphous is not None:
+        phase = crystallinity(repeat, request.candidate.polymer.tacticity)
+        if phase.crystalline is False:
             return Prediction.unsupported(
                 prop,
                 self.id,
-                f"this polymer has no melting point: {amorphous[1]}. It softens through "
+                f"this polymer has no melting point: {phase.reason}. It softens through "
                 "its glass transition over tens of degrees instead, which is not a set "
                 "point a melt process can work to",
             )
+        if phase.crystalline is None:
+            return Prediction.unsupported(
+                prop,
+                self.id,
+                f"whether this polymer melts at all is unanswered: {phase.reason}",
+            )
+
         found = _match(repeat, MELTING_POINTS)
         if found is None:
             return Prediction.unsupported(
