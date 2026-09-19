@@ -271,3 +271,102 @@ def test_a_copolymer_is_refused_rather_than_averaged():
     )
     prediction = _predict(_candidate(copolymer, _solvent_component(ACETONE, 0.8)))
     assert prediction.status is not PredictionStatus.OK
+
+
+# -- proposing a dope, which nothing could do ------------------------------
+
+
+def _mixture_spec():
+    from formulate.targets import TargetSpec
+
+    return TargetSpec.model_validate(
+        {
+            "name": "dope",
+            "material_classes": ["mixture"],
+            "requirements": [
+                {
+                    "property": "shear_viscosity",
+                    "direction": "minimize",
+                    "lower": {"value": 1.0, "unit": "Pa*s"},
+                    "upper": {"value": 1.0e6, "unit": "Pa*s"},
+                }
+            ],
+        }
+    )
+
+
+@requires_rdkit
+def test_a_dope_can_be_proposed_at_all():
+    """PolymerSolutionExpert could score one and nothing could propose one,
+    so a specification asking for a dope drew an empty pool and reported
+    '0 of 0 satisfy every hard constraint' - a search that never ran, reading
+    as a search that found nothing."""
+    from formulate.exploration.solutions import PolymerSolutionExplorer
+
+    proposed = PolymerSolutionExplorer().propose(_mixture_spec(), 40)
+    assert len(proposed) == 40
+    for candidate in proposed:
+        components = candidate.mixture.components
+        assert sum(1 for c in components if c.polymer is not None) == 1
+        assert sum(1 for c in components if c.molecule is not None) == 1
+
+
+@requires_rdkit
+def test_a_truncated_draw_spans_chemistries_not_dilutions():
+    """Concentration is the outermost loop, so twenty draws are twenty
+    polymers rather than twenty dilutions of the first one in the file."""
+    from formulate.exploration.solutions import PolymerSolutionExplorer
+
+    proposed = PolymerSolutionExplorer().propose(_mixture_spec(), 20)
+    units = {
+        c.polymer.monomers[0].smiles
+        for cand in proposed
+        for c in cand.mixture.components
+        if c.polymer is not None
+    }
+    fractions = {
+        c.fraction for cand in proposed for c in cand.mixture.components if c.polymer is not None
+    }
+    assert len(units) >= 10
+    assert len(fractions) == 1
+
+
+@requires_rdkit
+def test_a_molecule_specification_draws_nothing_from_it():
+    from formulate.exploration.solutions import PolymerSolutionExplorer
+    from formulate.targets import TargetSpec
+
+    molecules = TargetSpec.model_validate(
+        {
+            "name": "m",
+            "material_classes": ["molecule"],
+            "requirements": [
+                {
+                    "property": "logp",
+                    "direction": "minimize",
+                    "lower": {"value": -5.0, "unit": ""},
+                    "upper": {"value": 5.0, "unit": ""},
+                }
+            ],
+        }
+    )
+    assert PolymerSolutionExplorer().propose(molecules, 10) == []
+
+
+@requires_rdkit
+def test_chain_lengths_reach_beyond_what_a_melt_could_push():
+    """A solution decouples chain length from processing viscosity, which is
+    the whole reason gel spinning exists."""
+    from formulate.exploration.polymers import MOLAR_MASSES as MELT_MASSES
+    from formulate.exploration.solutions import MOLAR_MASSES as DOPE_MASSES
+
+    assert max(DOPE_MASSES) > max(MELT_MASSES)
+
+
+@requires_rdkit
+def test_nothing_is_proposed_twice():
+    from formulate.exploration.solutions import PolymerSolutionExplorer
+
+    proposed = PolymerSolutionExplorer().propose(_mixture_spec(), 300)
+    ids = [c.structure_id for c in proposed]
+    assert len(ids) == len(set(ids))

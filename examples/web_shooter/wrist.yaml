@@ -1,0 +1,144 @@
+# A web fluid that a wrist can actually hold.
+#
+# The previous answer was gel-spun ultra-high-molar-mass polyethylene, and it
+# was the right material and the wrong device: polyethylene is crystalline to
+# 135 C, so its dope only exists above about 130, and a cartridge of 130 C
+# xylene strapped to a person is a hazard rather than a product.
+#
+# This specification puts the wrist constraint in as a REQUIREMENT rather than
+# a footnote. Everything is asked at 40 C - warm, wearable, no burn - and the
+# solubility requirement is asked at the same temperature, so the crystallinity
+# gate in polymer_dissolution fires on any polymer that will not dissolve there.
+#
+# That gate is the interesting part, because it creates a genuine contradiction
+# rather than a coverage gap. Crystallinity is what locks a drawn filament's
+# orientation in, AND it is what stops the polymer dissolving cold. A search
+# under this specification is looking for a material that has one without the
+# other, and if it finds nothing, that is the answer.
+name: web fluid for a wrist device, everything asked at 40 C
+
+conditions:
+  temperature: 40 degC
+  pressure: 1 atm
+  environment: CC(C)=O           # the solvent the dope is asked about
+  surfaces: [aluminium-oxide]
+  spinline:
+    die_diameter: 1000 um
+    die_land: 0.2 mm
+    draw_ratio: 100.0
+    line_speed: 20 m/s
+    filament_count: 200
+
+material_classes: [mixture]
+
+requirements:
+  # THE WRIST CONSTRAINT. Everything below is asked at 40 C, and this is the
+  # one that says the dope exists at all there.
+  - property: relative_energy_difference
+    conditions: {temperature: 40 degC}
+    direction: minimize
+    lower: 0.0
+    upper: 1.0
+    hard: true
+    weight: 4.0
+    rationale: >-
+      the polymer has to be in solution at a temperature a person can wear.
+      A crystalline polymer below its melting point is refused here however
+      close its Hansen parameters sit, because the solvent has to pay the heat
+      of fusion first - which is exactly what ruled out polyethylene.
+      relative_energy_difference rather than solubility_red because that is
+      the name this property carries for a FORMULATION; asking for the
+      polymer-class name here would have eliminated every candidate for a
+      value no expert covers, which is a silent way to get an empty answer
+
+  # Can it be fired?
+  - property: shear_viscosity
+    conditions: {temperature: 40 degC}
+    direction: in_range
+    lower: 1 Pa*s
+    upper: 10000 Pa*s
+    hard: true
+    rationale: a fluid, not a gel and not water
+
+  - property: extensional_strain_hardening
+    conditions: {temperature: 40 degC}
+    direction: maximize
+    lower: 0.5
+    upper: 20.0
+    hard: true
+    weight: 4.0
+    rationale: >-
+      below about a half the chains relax as fast as the flow stretches them
+      and the jet beads up instead of thinning
+
+  - property: extrusion_pressure
+    conditions: {temperature: 40 degC}
+    direction: minimize
+    lower: 10 bar
+    upper: 250 bar
+    hard: true
+    weight: 3.0
+    rationale: a compressed-air cylinder of the kind paintball hardware carries
+
+  - property: filament_stability
+    conditions: {temperature: 40 degC}
+    direction: maximize
+    lower: 1.0
+    upper: 20.0
+    hard: true
+    rationale: solidify before capillary forces pinch it
+
+  - property: solidification_time
+    conditions: {temperature: 40 degC}
+    direction: in_range
+    upper: 0.1 s
+    hard: true
+    rationale: locked before the chains relax and the orientation is lost
+
+  # Will what lands hold?
+  - property: entanglement_molar_mass
+    conditions: {temperature: 40 degC}
+    direction: minimize
+    lower: 0.5 kg/mol
+    upper: 60 kg/mol
+    weight: 3.0
+    rationale: >-
+      a dense entanglement network is what carries the draw. Dilution raises
+      this - solvent does not join the network - so the bound is looser than
+      the melt specification's and it is still a bound
+
+  - property: synthetic_accessibility
+    direction: minimize
+    lower: 1.0
+    upper: 6.0
+    hard: true
+    weight: 1.0
+    rationale: the monomer is reconstructed from the repeat unit and scored
+
+assumptions:
+  - statement: >-
+      THE CONTRADICTION THIS SEARCH IS TESTING. Crystallinity locks a drawn
+      filament's orientation in, and crystallinity is what stops a polymer
+      dissolving cold. Asking for a room-temperature dope and a fibre that
+      holds its orientation is asking for a material that has one without the
+      other. If the search returns nothing, that is the finding, and the routes
+      out are a soluble precursor that crystallises AFTER spinning - the way
+      poly(vinyl alcohol) fibre and carbon fibre are made - or a different
+      solidification mechanism entirely. Neither is a search this engine can
+      run, because neither is a property in its registry.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      Chain orientation after drawing, fibre tensile strength and creep still
+      have no name in this registry. A candidate passing here has cleared the
+      processing criteria and the solubility criterion, not the acceptance
+      criteria for the finished web.
+    source: inferred
+    made_by: operator
+  - statement: >-
+      The solvent is fixed at acetone by conditions.environment. That is a
+      choice, not a result: this run asks which polymer dissolves in acetone
+      and spins, not which solvent is best. Sweeping the solvent is a separate
+      run and the explorer proposes them.
+    source: inferred
+    made_by: operator

@@ -94,6 +94,7 @@ class DeterministicCoordinator:
         from formulate.exploration.database import ReferenceDatabaseExplorer
         from formulate.exploration.mixtures import MixtureSeedExplorer
         from formulate.exploration.polymers import PolymerLibraryExplorer
+        from formulate.exploration.solutions import PolymerSolutionExplorer
 
         self.registry = registry if registry is not None else default_registry()
         # One explorer per material class the specification can name. Any class
@@ -110,6 +111,7 @@ class DeterministicCoordinator:
                 PolymerLibraryExplorer(),
                 MixtureSeedExplorer(),
                 PolymerBlendExplorer(),
+                PolymerSolutionExplorer(),
             ]
         )
         self.config = config or RunConfig()
