@@ -24,10 +24,10 @@ print("  mixer tips are a consumable, about 30 cents each. Budget one per shot."
 print("\n"+"="*64); print("C. THE PROBLEM NEITHER OF THOSE IS"); print("="*64)
 v, d = 9.0, 4.4e-3
 print(f"  at {v} m/s the jet is in the air for {3.0/v*1000:.0f} ms over 3 m.")
-print(f"  accelerated CA gels in roughly 1-5 s. So it does NOT set in flight:")
-print(f"  it arrives liquid, bonds on contact (which CA does superbly), and")
-print(f"  then cures while hanging - during which it sags and cannot hold load.")
-print(f"\n  UV was the obvious escape and it fails on exposure time:")
+print("  accelerated CA gels in roughly 1-5 s. So it does NOT set in flight:")
+print("  it arrives liquid, bonds on contact (which CA does superbly), and")
+print("  then cures while hanging - during which it sags and cannot hold load.")
+print("\n  UV was the obvious escape and it fails on exposure time:")
 ring_mm = 20
 expo = ring_mm/1e3/v
 print(f"    a {ring_mm} mm LED ring at {v} m/s gives {expo*1e3:.1f} ms of light.")

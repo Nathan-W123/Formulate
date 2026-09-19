@@ -80,10 +80,10 @@ for mu in (2.0, 10.0, 20.0):
     print(f"  melt at {mu:>4} Pa.s -> {dP/1e5:>5.2f} bar   "
           f"{'fits the 6 bar cartridge' if dP < 6e5 else 'too stiff'}")
 print(f"\n  flow {Q*1e6:.0f} mL/s, a 3 m shot is {shot_g:.0f} g in {3.0/9.0*1e3:.0f} ms")
-print(f"  that is far past what a glue gun melts on demand, so the reservoir has")
+print("  that is far past what a glue gun melts on demand, so the reservoir has")
 print(f"  to be pre-melted: {melt_J/1e3:.0f} kJ to bring {shot_g:.0f} g up from cold,")
 print(f"  = {melt_J/3600:.1f} Wh, or {melt_J/300:.0f} W over five minutes.")
-print(f"  a 100 W cartridge heater in an aluminium tube, and a small LiPo.")
+print("  a 100 W cartridge heater in an aluminium tube, and a small LiPo.")
 
 print("\n" + "=" * 72)
 print("WHAT THIS BUYS, AND WHAT IT COSTS")

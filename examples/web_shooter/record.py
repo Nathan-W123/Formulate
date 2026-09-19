@@ -39,7 +39,7 @@ def render(out="web_shooter_flight.gif", fps=20):
     k25 = math.log(1 / (1 - ALPHA_GEL)) / 0.200
     o = simulate(k25, report=False)
     ts, r = o["ts"], o["r"]
-    T, a = o["T_field"], o["a_field"]
+    T = o["T_field"]
     Tmax, a_core, a_surf, pinch = o["Tmax"], o["a_core"], o["a_surf"], o["pinch"]
     T_lo, T_hi = 25.0, max(80.0, Tmax.max())
 

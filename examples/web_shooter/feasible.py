@@ -10,14 +10,14 @@ print("="*70)
 mass = A_NEED*L_SPAN*rho
 stress = mass*9.81/A_NEED
 print(f"  3 m of rope weighs {mass*1e3:.0f} g, hanging from its own top: {stress/1e3:.0f} kPa")
-print(f"  a viscous fluid at that stress extends at sigma/(3*eta):\n")
+print("  a viscous fluid at that stress extends at sigma/(3*eta):\n")
 for eta in (5, 1e3, 1e5, 1e8, 1e9):
     rate = stress/(3*eta)
     print(f"    eta = {eta:>8.0e} Pa.s -> strain rate {rate:>10.2e} /s "
           f"= {rate*100:>10.1e} % per second   {'OK' if rate < 0.01 else 'it falls'}")
-print(f"\n  -> needs ~1e8 Pa.s, which is a SOLID. 'Arrives liquid, cures on the")
-print(f"     wall' was wrong: it would run down the wall and drip. It has to be")
-print(f"     solid when it lands, so it must fully cure IN FLIGHT.")
+print("\n  -> needs ~1e8 Pa.s, which is a SOLID. 'Arrives liquid, cures on the")
+print("     wall' was wrong: it would run down the wall and drip. It has to be")
+print("     solid when it lands, so it must fully cure IN FLIGHT.")
 
 print("\n" + "="*70)
 print("SO: full cure in flight, which means shedding the exotherm in flight")
@@ -55,8 +55,8 @@ for d_mm in (0.2, 0.3, 0.5, 1.0, 2.0, 4.4):
         flags = ("P" if not c1 else ".")+("B" if not c2 else ".")+("T" if not c3 else ".")
         print(f"{d_mm:>6}mm{mu:>7}Pa.s{n:>7.0f}{dP/1e5:>9.1f}b{Lb:>9.1f}m{t_th*1e3:>10.0f}ms"
               f"  {'FEASIBLE' if good else 'fails '+flags}")
-print(f"\n  key: P = over pressure budget, B = breaks up early, T = too thick to")
-print(f"       shed its own cure heat")
+print("\n  key: P = over pressure budget, B = breaks up early, T = too thick to")
+print("       shed its own cure heat")
 print(f"\n  ANY FEASIBLE COMBINATION? {'yes' if ok_any else 'NO - the region is empty'}")
 
 print("\n" + "="*70)
@@ -107,5 +107,5 @@ print(f"  breakup    {Lb:>6.1f} m     vs {L_SPAN:.0f} needed        {'PASS' if L
 print(f"  exotherm   +{dT:>5.0f} K     reaching {25+dT:.0f} C        {'PASS' if dT<=100 else 'FAIL'}")
 print(f"  area       {math.pi*R**2*1e6:>6.1f} mm2   vs {A_NEED*1e6:.1f} needed     "
       f"{'PASS' if math.pi*R**2>=A_NEED*0.99 else 'FAIL'}")
-print(f"\n  the region is no longer empty. The fix was never a different reaction -")
-print(f"  it was reacting less of the mass, by starting from an oligomer.")
+print("\n  the region is no longer empty. The fix was never a different reaction -")
+print("  it was reacting less of the mass, by starting from an oligomer.")

@@ -1,4 +1,3 @@
-import math
 print("="*66)
 print("CAN ACCELERATED CA GEL A 4.4 mm ROPE IN 333 ms?")
 print("="*66)
@@ -39,7 +38,7 @@ for x in (0.05,0.10,0.15,0.20,0.30,0.50,1.00):
 
 x_safe = (200-25)/dT_full
 print(f"\n  ceiling: {x_safe:.0%} conversion before it cooks itself.")
-print(f"  full cure in flight is not slow chemistry - it is thermally impossible.")
+print("  full cure in flight is not slow chemistry - it is thermally impossible.")
 
 print("\n" + "="*66)
 print("SO WHAT IS ACTUALLY AVAILABLE")

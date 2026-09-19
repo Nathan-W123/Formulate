@@ -54,7 +54,7 @@ for label, price in (("PMMA resin (Elvacite / Degalan / Paraloid grade)", 25),
                      ("blended, roughly", 30)):
     print(f"  {label:<48} ~${price}/kg")
 print(f"\n  a {shot_g:.0f} g shot costs about ${shot_g/1000*30:.2f}")
-print(f"  a custom trifunctional CA-terminated oligomer is a five-figure")
-print(f"  synthesis before you have a gram, and CA esters are made by")
-print(f"  Knoevenagel condensation then cracked back from the polymer -")
-print(f"  putting that end group on an oligomer backbone is a research project.")
+print("  a custom trifunctional CA-terminated oligomer is a five-figure")
+print("  synthesis before you have a gram, and CA esters are made by")
+print("  Knoevenagel condensation then cracked back from the polymer -")
+print("  putting that end group on an oligomer backbone is a research project.")

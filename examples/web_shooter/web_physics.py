@@ -15,7 +15,7 @@ for n, uts, rho, note in mats:
     A = F50/(uts*1e6/SF)
     print(f"{n:<44}{uts:>6.0f}M{A*1e6:>9.1f}mm2{math.sqrt(4*A/math.pi)*1e3:>11.1f}mm")
 
-print(f"\n  ...and what 3 m of that weighs (the real showstopper):")
+print("\n  ...and what 3 m of that weighs (the real showstopper):")
 for n, uts, rho, note in mats:
     A = F50/(uts*1e6/SF); V = A*3.0
     dry = V*rho

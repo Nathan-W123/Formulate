@@ -24,8 +24,8 @@ for x_m in (0.05,0.10,0.15,0.19,0.22,0.30,0.40):
     print(f"{x_m:>8.0%}{x_o:>10.0%}{heat:>8.0f}J{dT:>6.0f}K{25+dT:>7.0f}C"
           f"{eta:>8.1f}Pa.s{dP:>9.2f}bar  {flag}")
 
-print(f"\n  the window is monomer 10-19%. Below it the resin is too stiff to push,")
-print(f"  above it the exotherm cooks the rope. Take the middle.\n")
+print("\n  the window is monomer 10-19%. Below it the resin is too stiff to push,")
+print("  above it the exotherm cooks the rope. Take the middle.\n")
 print("="*66); print("THE MIXTURE"); print("="*66)
 print("  STREAM A                                                    % w/w")
 for n,p in (("cyanoacrylate-terminated oligomer, Mn ~3000, f~3", 77),
