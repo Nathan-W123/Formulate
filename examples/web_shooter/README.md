@@ -1652,6 +1652,92 @@ poly(vinyl alcohol) fibre and carbon fibre are made, or an entirely different
 solidification mechanism. Neither is a search this engine can run, because
 neither is a property in its registry.
 
+## The wrist device: three questions, asked together
+
+The gel-spun polyethylene answer was the right material and the wrong device -
+its dope needs 130 C. Constraining the search to a wearable temperature turned
+up a second failure of method, which is worth more than the first answer.
+
+Three questions have to be answered at once, and every earlier run in this
+document answered one or two and reported a winner:
+
+1. does it SPIN - strain hardening at or above about a half
+2. can it be FIRED - pressure inside what a cartridge on a person supplies
+3. does it DISSOLVE - at a temperature a person can wear
+
+The third kept getting skipped. `PolymerSolutionExpert` prints
+"THIS ASSUMES THE POLYMER DISSOLVES" on every prediction it makes, for exactly
+this reason, and the assumption still went unchecked through several rounds.
+A viscosity computed for a polymer that will not dissolve is a number about a
+suspension, not a dope.
+
+Two bugs came out of asking properly, both mine:
+
+**The whole pool was in water.** `PolymerSolutionExplorer` nested its four
+axes with fifty solvents second and five hundred repeat units fourth, so a
+draw of 2500 never reached a second solvent. Water has no carbon, the
+Orrick-Erbar viscosity correlation refuses it on exactly those grounds, and
+the run reported 2500 candidates whose viscosity could not be predicted -
+which reads as a finding about polymers and is a finding about loop order. The
+product is now walked diagonally: 34 distinct solvents in the first 60 draws
+against 1 before.
+
+**The winner could not be checked.** Poly(4-methylstyrene) outscored
+everything on spinnability and pressure and was recommended twice. Asked
+whether it dissolves, the engine answers "no fitted interaction radius" -
+because this repository established that the Hansen radius is NOT derivable
+from structure, over seven tabulated spheres whose R0/delta ratios span 3.45x
+at r^2 = 0.11, and built that refusal into `polymer_dissolution`. A solubility
+that cannot be computed is a refusal, not a pass. The recommendation walked
+straight past a limit this repository had measured and written down itself.
+
+### What survives all three
+
+```bash
+python examples/web_shooter/wrist_candidates.py
+```
+
+```
+    bar     Wi    RED  polymer / solvent (flash) / wt% / kg per mol
+   24.7   1.46   0.65  polystyrene in toluene (fp 5 C), 20%, 1500
+   30.6   2.00   0.88  PMMA in 2-heptanone (fp 37 C), 20%, 1500
+   40.4   2.64   0.80  polystyrene in 2-heptanone (fp 37 C), 20%, 1500
+   56.6   4.55   0.65  polystyrene in toluene (fp 5 C), 15%, 4000
+   91.5   8.17   0.80  polystyrene in 2-heptanone (fp 37 C), 15%, 4000
+
+8 combinations could not be answered at all: poly(4-methylstyrene)
+```
+
+**Polystyrene at 4000 kg/mol, 15% in 2-heptanone. 92 bar, Weissenberg 8.17,
+RED 0.80.**
+
+Sixteen times the strain-hardening threshold, against melt candidates that
+scraped past at 0.5 to 0.8 and did not survive a robustness check. A solvent
+whose flash point is 37 C, so there is no flammable vapour at room temperature
+- which acetone at -24 C and 2-butanone at -10 cannot say. And 92 bar is a
+small compressed-air cylinder.
+
+For the simplest hardware, the same polymer at 1500 kg/mol and 20% gives
+Weissenberg 2.64 at 40 bar, which is a CO2 cartridge.
+
+Polystyrene wins partly for an unglamorous reason: it is one of the seven
+polymers with a MEASURED Hansen sphere, so the solubility question can be
+asked of it at all. That is a statement about this repository's data rather
+than about polystyrene's superiority. Poly(4-methylstyrene) may well be better
+and is simply not checkable.
+
+### What it is worth
+
+Amorphous, so it dissolves cold. Glassy at room temperature - polystyrene's
+glass transition is 100 C - so it does not cold-flow while a web is loaded,
+which is a different regime from the poly(vinyl methyl ether) that led an
+earlier ranking with a glass transition of -31 C. Two hundred filaments drawn
+to 100 um is 1.57 mm^2, which at 100 to 300 MPa is 35 to 106 lb.
+
+That range is an assumption about draw quality, not a prediction. Chain
+orientation, fibre tensile strength and creep still have no name in this
+registry, and they are the three that decide whether a web holds a person.
+
 ## Verdict
 
 The engine handled the parts it covers and refused the rest legibly rather than
